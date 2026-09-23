@@ -29,21 +29,21 @@ Didefinisikan sebagai CSS custom property di `:root`, dipakai lewat Tailwind. **
 ```css
 :root {
   /* Netral — tulang punggung antarmuka */
-  --background:        oklch(0.99 0.002 240);
-  --foreground:        oklch(0.21 0.01 250);
-  --muted:             oklch(0.96 0.004 240);
-  --muted-foreground:  oklch(0.52 0.012 250);
-  --border:            oklch(0.92 0.005 240);
-  --card:              oklch(1 0 0);
+  --background: oklch(0.99 0.002 240);
+  --foreground: oklch(0.21 0.01 250);
+  --muted: oklch(0.96 0.004 240);
+  --muted-foreground: oklch(0.52 0.012 250);
+  --border: oklch(0.92 0.005 240);
+  --card: oklch(1 0 0);
 
   /* Aksen — satu warna, dipakai hemat */
-  --primary:           oklch(0.52 0.11 205);
-  --primary-foreground:oklch(0.99 0.002 240);
+  --primary: oklch(0.52 0.11 205);
+  --primary-foreground: oklch(0.99 0.002 240);
 
   /* Semantik */
-  --success:           oklch(0.58 0.12 155);
-  --warning:           oklch(0.72 0.14 75);
-  --destructive:       oklch(0.55 0.19 25);
+  --success: oklch(0.58 0.12 155);
+  --warning: oklch(0.72 0.14 75);
+  --destructive: oklch(0.55 0.19 25);
 
   --radius: 0.625rem;
 }
@@ -63,24 +63,24 @@ Aturan pemakaian:
 
 Dua typeface saja.
 
-| Peran | Font | Pemakaian |
-|---|---|---|
-| Antarmuka | **Inter** | Seluruh teks antarmuka, tabel, formulir |
-| Tampilan | **Instrument Serif** atau **Fraunces** | Judul halaman dan judul bagian besar saja |
+| Peran     | Font                                   | Pemakaian                                 |
+| --------- | -------------------------------------- | ----------------------------------------- |
+| Antarmuka | **Inter**                              | Seluruh teks antarmuka, tabel, formulir   |
+| Tampilan  | **Instrument Serif** atau **Fraunces** | Judul halaman dan judul bagian besar saja |
 
 Serif pada judul adalah satu-satunya keputusan yang membuat tampilan tidak terlihat seperti template bootstrap. Jangan dipakai di tempat lain.
 
 Skala:
 
-| Token | Ukuran | Tinggi baris | Pemakaian |
-|---|---|---|---|
-| `display` | 40–56px | 1.1 | Judul hero, satu per halaman |
-| `h1` | 30px | 1.2 | Judul halaman |
-| `h2` | 24px | 1.3 | Judul bagian |
-| `h3` | 18px | 1.4 | Judul kartu |
-| `body` | 15px | 1.6 | Teks utama |
-| `small` | 13px | 1.5 | Metadata, label |
-| `caption` | 12px | 1.4 | Keterangan, syarat |
+| Token     | Ukuran  | Tinggi baris | Pemakaian                    |
+| --------- | ------- | ------------ | ---------------------------- |
+| `display` | 40–56px | 1.1          | Judul hero, satu per halaman |
+| `h1`      | 30px    | 1.2          | Judul halaman                |
+| `h2`      | 24px    | 1.3          | Judul bagian                 |
+| `h3`      | 18px    | 1.4          | Judul kartu                  |
+| `body`    | 15px    | 1.6          | Teks utama                   |
+| `small`   | 13px    | 1.5          | Metadata, label              |
+| `caption` | 12px    | 1.4          | Keterangan, syarat           |
 
 Aturan:
 
@@ -118,17 +118,17 @@ Basis: **shadcn/ui**. Disalin ke `components/ui/`, lalu disesuaikan token-nya. J
 
 Komponen khusus domain yang perlu perhatian:
 
-| Komponen | Catatan |
-|---|---|
-| `PropertyCard` | Foto 4:3, nama, lokasi, peringkat, harga per malam, label supplier. Seluruh kartu dapat diklik, bukan hanya tombolnya |
-| `RatePlanRow` | Kebijakan pembatalan dan inklusi **wajib terlihat tanpa diklik**. Ini kewajiban dari FR-11 |
-| `SearchBar` | Kota, rentang tanggal, jumlah tamu. Di mobile berubah jadi lembar penuh layar |
-| `DateRangePicker` | Dua bulan di desktop, satu bulan bergulir di mobile. Tanggal tidak tersedia ditandai jelas |
-| `PriceDisplay` | Harga akhir sebagai teks utama, rincian pajak di bawah dengan ukuran `small`. Jangan menyembunyikan biaya |
-| `HoldCountdown` | Netral di atas 5 menit, `warning` di bawahnya. Jangan berkedip |
-| `PartialResultNotice` | Pemberitahuan bahwa sebagian penyedia belum menjawab. Informatif, bukan alarm |
-| `RateChangeDialog` | Harga lama, harga baru, selisih. Aksi utama "Terima harga baru", aksi sekunder "Batal" |
-| `BookingStatusTimeline` | Tahapan pemesanan secara vertikal dengan keadaan sekarang ditandai |
+| Komponen                | Catatan                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `PropertyCard`          | Foto 4:3, nama, lokasi, peringkat, harga per malam, label supplier. Seluruh kartu dapat diklik, bukan hanya tombolnya |
+| `RatePlanRow`           | Kebijakan pembatalan dan inklusi **wajib terlihat tanpa diklik**. Ini kewajiban dari FR-11                            |
+| `SearchBar`             | Kota, rentang tanggal, jumlah tamu. Di mobile berubah jadi lembar penuh layar                                         |
+| `DateRangePicker`       | Dua bulan di desktop, satu bulan bergulir di mobile. Tanggal tidak tersedia ditandai jelas                            |
+| `PriceDisplay`          | Harga akhir sebagai teks utama, rincian pajak di bawah dengan ukuran `small`. Jangan menyembunyikan biaya             |
+| `HoldCountdown`         | Netral di atas 5 menit, `warning` di bawahnya. Jangan berkedip                                                        |
+| `PartialResultNotice`   | Pemberitahuan bahwa sebagian penyedia belum menjawab. Informatif, bukan alarm                                         |
+| `RateChangeDialog`      | Harga lama, harga baru, selisih. Aksi utama "Terima harga baru", aksi sekunder "Batal"                                |
+| `BookingStatusTimeline` | Tahapan pemesanan secara vertikal dengan keadaan sekarang ditandai                                                    |
 
 ---
 
@@ -136,12 +136,12 @@ Komponen khusus domain yang perlu perhatian:
 
 Setiap tampilan yang mengambil data **wajib** punya empat keadaan. Tidak ada pengecualian.
 
-| Keadaan | Aturan |
-|---|---|
-| Memuat | Skeleton yang menyerupai bentuk akhirnya. Bukan spinner di tengah layar |
-| Kosong | Ilustrasi atau ikon sederhana, penjelasan singkat, dan satu aksi lanjutan |
-| Error | Menjelaskan apa yang terjadi dalam bahasa manusia, dan menyediakan cara mencoba lagi |
-| Berisi | Tampilan normal |
+| Keadaan | Aturan                                                                               |
+| ------- | ------------------------------------------------------------------------------------ |
+| Memuat  | Skeleton yang menyerupai bentuk akhirnya. Bukan spinner di tengah layar              |
+| Kosong  | Ilustrasi atau ikon sederhana, penjelasan singkat, dan satu aksi lanjutan            |
+| Error   | Menjelaskan apa yang terjadi dalam bahasa manusia, dan menyediakan cara mencoba lagi |
+| Berisi  | Tampilan normal                                                                      |
 
 Khusus pencarian, ada keadaan kelima: **parsial** — sebagian supplier sudah menjawab, sebagian belum. Ini keadaan pertama kali pengguna lihat, jadi harus dirancang serius, bukan ditambahkan belakangan.
 

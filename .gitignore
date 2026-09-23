@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Test output
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Environment — nilai rahasia tidak pernah masuk repo
+.env
+.env.*
+!.env.example
+
+# Prisma
+**/prisma/generated/
+**/prisma/*.db
+**/prisma/*.db-journal
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Editor dan OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Hasil uji beban — ringkasan disimpan manual di docs/evidence/
+infra/k6/results/*
+!infra/k6/results/.gitkeep
+
+# Volume lokal
+infra/data/

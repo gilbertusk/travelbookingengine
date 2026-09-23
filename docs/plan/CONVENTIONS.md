@@ -48,12 +48,12 @@ Kalau sebuah aturan bisnis butuh memanggil database untuk diuji, aturan itu sala
 
 ## 2. Batas ukuran
 
-| Unit | Normal | Maksimum |
-|---|---|---|
-| Fungsi | < 30 baris | 50 baris |
-| File | 150–300 baris | 400 baris |
-| Kedalaman nesting | 2 | 3 |
-| Parameter fungsi | 3 | 4, lebih dari itu pakai objek |
+| Unit              | Normal        | Maksimum                      |
+| ----------------- | ------------- | ----------------------------- |
+| Fungsi            | < 30 baris    | 50 baris                      |
+| File              | 150–300 baris | 400 baris                     |
+| Kedalaman nesting | 2             | 3                             |
+| Parameter fungsi  | 3             | 4, lebih dari itu pakai objek |
 
 Melewati maksimum berarti pecah, bukan minta pengecualian.
 
@@ -131,16 +131,16 @@ type PriceCheckResult =
 
 ## 7. Penamaan
 
-| Jenis | Aturan | Contoh |
-|---|---|---|
-| Variabel, fungsi | camelCase | `calculateMarkup` |
-| Boolean | awalan `is`, `has`, `should`, `can` | `isRefundable` |
-| Tipe, kelas, komponen | PascalCase | `RatePlan`, `BookingSaga` |
-| Konstanta | UPPER_SNAKE_CASE | `SEARCH_TIMEOUT_MS` |
-| File berisi komponen React | PascalCase | `RatePlanCard.tsx` |
-| File lain | kebab-case | `price-check.ts` |
-| Hook React | awalan `use` | `useSearchResults` |
-| Port (interface) | akhiran peran | `SupplierGateway`, `BookingRepository` |
+| Jenis                      | Aturan                              | Contoh                                 |
+| -------------------------- | ----------------------------------- | -------------------------------------- |
+| Variabel, fungsi           | camelCase                           | `calculateMarkup`                      |
+| Boolean                    | awalan `is`, `has`, `should`, `can` | `isRefundable`                         |
+| Tipe, kelas, komponen      | PascalCase                          | `RatePlan`, `BookingSaga`              |
+| Konstanta                  | UPPER_SNAKE_CASE                    | `SEARCH_TIMEOUT_MS`                    |
+| File berisi komponen React | PascalCase                          | `RatePlanCard.tsx`                     |
+| File lain                  | kebab-case                          | `price-check.ts`                       |
+| Hook React                 | awalan `use`                        | `useSearchResults`                     |
+| Port (interface)           | akhiran peran                       | `SupplierGateway`, `BookingRepository` |
 
 Istilah domain **wajib** mengikuti glosarium PRD Bab 8. Jangan menulis `hotel` untuk sesuatu yang di PRD disebut `property`.
 
@@ -163,12 +163,14 @@ const CIRCUIT_BREAKER_ERROR_THRESHOLD = 0.5
 Dua sumber bug paling mahal di domain ini.
 
 **Uang**
+
 - Dilarang memakai `number` untuk nilai uang
 - Seluruh perhitungan lewat `packages/money`
 - Nilai selalu membawa mata uangnya. Tidak ada angka uang tanpa mata uang
 - Pembulatan dilakukan sekali di akhir, dan aturannya dinyatakan eksplisit
 
 **Waktu**
+
 - Tanggal masuk dan keluar adalah **tanggal lokal properti**, disimpan sebagai `DATE`, bukan `TIMESTAMP`
 - Waktu kejadian sistem disimpan sebagai UTC `TIMESTAMPTZ`
 - Jangan pernah mengonversi tanggal menginap ke UTC

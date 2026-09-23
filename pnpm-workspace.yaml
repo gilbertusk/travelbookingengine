@@ -1,0 +1,7 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  # Biner native untuk eslint-import-resolver-typescript. Dibutuhkan agar
+  # aturan boundary dapat memetakan impor gaya NodeNext (.js) ke berkas .ts.
+  unrs-resolver: true

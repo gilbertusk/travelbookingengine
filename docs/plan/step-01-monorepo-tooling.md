@@ -62,10 +62,20 @@ lalu commit dengan pesan: chore: setup monorepo and tooling
 - [ ] `pnpm install` berjalan tanpa galat
 - [ ] `pnpm lint` dan `pnpm typecheck` bersih
 - [ ] Commit dengan pesan tidak sesuai konvensi ditolak oleh commitlint
-- [ ] Aturan import boundary aktif dan dapat dibuktikan dengan satu file uji yang sengaja melanggar
-- [ ] Turborepo cache bekerja (jalankan `pnpm build` dua kali, yang kedua memakai cache)
+- [ ] Aturan import boundary aktif dan dapat dibuktikan dengan `pnpm verify:boundaries`
+- [ ] Turborepo terpasang dan `turbo.json` mendeklarasikan seluruh task. **Verifikasi cache ditunda ke Step 03**, karena belum ada workspace yang punya task nyata untuk di-cache
 - [ ] Commit `chore: setup monorepo and tooling` terbuat
 
 ## Catatan
 
 Aturan `eslint-plugin-boundaries` adalah investasi terpenting di step ini. Tanpa penegakan otomatis, pemisahan layer akan bocor pada minggu ketiga dan tidak akan pernah diperbaiki.
+
+### Dua jebakan yang ditemukan saat mengerjakan step ini
+
+Keduanya membuat aturan boundary **lolos tanpa galat** padahal kodenya melanggar — kegagalan diam-diam yang paling berbahaya, karena memberi rasa aman palsu selama berbulan-bulan.
+
+**1. Mode pencocokan pola adalah `folder`, bukan berkas.** Menulis `pattern: 'apps/*/src/domain/**/*'` membuat setiap berkas bertipe tidak dikenal dan aturannya tidak pernah berjalan. Yang benar `pattern: 'apps/*/src/domain'`.
+
+**2. Impor gaya NodeNext perlu resolver TypeScript.** Tanpa `eslint-import-resolver-typescript`, impor `'../infrastructure/thing.js'` tidak dapat dipetakan ke `thing.ts`, dependensinya dianggap tidak dikenal, dan aturannya lolos.
+
+Inilah alasan `pnpm verify:boundaries` ada dan wajib dijalankan. Menyalakan aturan lalu menganggapnya bekerja tanpa bukti adalah kesalahan yang justru paling mudah dilakukan di step ini.
