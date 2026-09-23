@@ -53,7 +53,8 @@ export {
   type CorrelationContext,
 } from './correlation/correlation.js'
 
-export { REDACTED, createLogger, type LoggerOptions } from './logger/logger.js'
+export { REDACTED, buildLoggerOptions, createLogger, type LoggerOptions } from './logger/logger.js'
+export type { Logger } from 'pino'
 
 export { baseEnvSchema, createConfig, type BaseEnv } from './config/config.js'
 

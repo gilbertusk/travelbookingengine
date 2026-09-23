@@ -43,7 +43,12 @@ export const node = [
         { type: 'http', pattern: 'apps/*/src/http' },
         { type: 'messaging', pattern: 'apps/*/src/messaging' },
         { type: 'config', pattern: 'apps/*/src/config.ts', mode: 'file' },
+        // Composition root boleh menyentuh semuanya, karena tugasnya memang
+        // merangkai. Ia tersebar di dua tempat: berkas bootstrap, dan folder
+        // composition untuk perangkaian yang juga dipakai pengujian.
+        { type: 'composition-root', pattern: 'apps/*/src/composition' },
         { type: 'composition-root', pattern: 'apps/*/src/index.ts', mode: 'file' },
+        { type: 'testing', pattern: 'apps/*/src/testing' },
       ],
     },
     rules: {
@@ -73,6 +78,9 @@ export const node = [
 
             // Wiring hanya terjadi di composition root.
             { from: 'composition-root', allow: ['*'] },
+
+            // Perkakas uji merangkai sistem sungguhan, jadi ia juga perangkai.
+            { from: 'testing', allow: ['*'] },
           ],
         },
       ],
@@ -93,6 +101,16 @@ export const node = [
         },
       ],
     },
+  },
+  {
+    // Aturan boundary tidak berlaku pada berkas uji. Uji memang merangkai
+    // lapisan untuk mengujinya, dan itu bukan kebocoran arsitektur.
+    //
+    // Blok ini harus berada PALING AKHIR: konfigurasi flat ESLint dimenangkan
+    // oleh yang terakhir, jadi menaruhnya sebelum blok boundary membuatnya
+    // tidak berpengaruh sama sekali — tanpa galat, tanpa peringatan.
+    files: ['**/*.test.ts'],
+    rules: { 'boundaries/element-types': 'off' },
   },
 ]
 
