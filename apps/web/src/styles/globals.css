@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+/**
+ * Token desain.
+ *
+ * Terjemahan langsung dari docs/plan/DESIGN-SYSTEM.md. Satu-satunya tempat di
+ * seluruh aplikasi yang boleh memuat nilai warna, ukuran huruf, atau jarak.
+ * Komponen memakainya lewat kelas semantik — `bg-background`, bukan `bg-white`.
+ *
+ * Alasannya bukan kerapian. Nilai mentah yang tersebar membuat dark mode
+ * menjadi pekerjaan menyisir ratusan berkas, dan perubahan warna aksen menjadi
+ * keputusan yang terlalu mahal untuk diambil.
+ */
+
+@theme {
+  /* Netral — tulang punggung antarmuka */
+  --color-background: oklch(0.99 0.002 240);
+  --color-foreground: oklch(0.21 0.01 250);
+  --color-muted: oklch(0.96 0.004 240);
+  --color-muted-foreground: oklch(0.52 0.012 250);
+  --color-border: oklch(0.92 0.005 240);
+  --color-input: oklch(0.92 0.005 240);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.21 0.01 250);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.21 0.01 250);
+
+  /* Aksen — satu warna, dipakai hemat: satu aksi utama per layar */
+  --color-primary: oklch(0.52 0.11 205);
+  --color-primary-foreground: oklch(0.99 0.002 240);
+
+  /* Semantik. Merah hanya untuk merusak atau salah, kuning hanya untuk
+     peringatan nyata. Keduanya bukan untuk dekorasi. */
+  /* 0.52, bukan 0.58: hijau yang lebih terang hanya mencapai 3.9:1 sebagai
+     teks di atas latar terang, dan badge "Terkonfirmasi" berukuran caption
+     membutuhkan 4.5:1. */
+  --color-success: oklch(0.52 0.12 155);
+  --color-success-foreground: oklch(0.99 0.002 240);
+  --color-warning: oklch(0.72 0.14 75);
+  --color-warning-foreground: oklch(0.21 0.01 250);
+  --color-destructive: oklch(0.55 0.19 25);
+  --color-destructive-foreground: oklch(0.99 0.002 240);
+
+  /* Cincin fokus memakai aksen: satu-satunya pemakaian aksen yang boleh
+     muncul lebih dari sekali per layar, karena hanya satu yang terlihat
+     pada satu waktu. */
+  --color-ring: oklch(0.52 0.11 205);
+
+  /* Tipografi — dua typeface, tidak lebih. Serif hanya untuk judul. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, serif;
+
+  --text-display: 3.5rem;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.02em;
+  --text-h1: 1.875rem;
+  --text-h1--line-height: 1.2;
+  --text-h1--letter-spacing: -0.015em;
+  --text-h2: 1.5rem;
+  --text-h2--line-height: 1.3;
+  --text-h2--letter-spacing: -0.01em;
+  --text-h3: 1.125rem;
+  --text-h3--line-height: 1.4;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.6;
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.5;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.4;
+
+  /* Skala 4px. Tailwind menurunkan seluruh utilitas jarak dari satu nilai
+     dasar ini, jadi p-5 = 20px dan gap-12 = 48px tetap berada di skala. */
+  --spacing: 0.25rem;
+
+  /* Radius seragam: 10px kartu dan tombol, 6px elemen kecil, penuh untuk
+     badge dan avatar. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+
+  /* Satu tingkat bayangan saja, dan hanya untuk yang benar-benar melayang.
+     Kartu di dalam daftar memakai border, bukan bayangan. */
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 12px rgb(0 0 0 / 0.06);
+
+  /* Lebar konten. Halaman detail lebih sempit supaya baris teksnya tidak
+     melewati batas keterbacaan. */
+  --container-content: 75rem;
+  --container-detail: 60rem;
+  --container-prose: 42rem;
+
+  /* Gerak: 150–250ms, masuk dengan easing, keluar linear. */
+  --ease-enter: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/**
+ * Dark mode.
+ *
+ * Token yang sama didefinisikan ulang. Tidak ada satu pun kelas `dark:` berisi
+ * warna mentah di komponen mana pun — kalau ada, gelapnya akan benar di satu
+ * tempat dan salah di tempat lain, dan tidak ada yang tahu yang mana.
+ *
+ * Kontras diukur, bukan dikira-kira. Angkanya tercatat di
+ * docs/plan/step-09-frontend-foundation.md; seluruh pasangan teks melewati
+ * AA di kedua tema.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+[data-theme='dark'] {
+  --color-background: oklch(0.17 0.008 250);
+  --color-foreground: oklch(0.95 0.004 240);
+  --color-muted: oklch(0.23 0.01 250);
+  --color-muted-foreground: oklch(0.69 0.012 250);
+  --color-border: oklch(0.28 0.012 250);
+  --color-input: oklch(0.28 0.012 250);
+  --color-card: oklch(0.2 0.009 250);
+  --color-card-foreground: oklch(0.95 0.004 240);
+  --color-popover: oklch(0.22 0.01 250);
+  --color-popover-foreground: oklch(0.95 0.004 240);
+
+  /* Aksen dinaikkan terangnya: warna yang benar di atas latar putih menjadi
+     terlalu gelap untuk dibaca di atas latar gelap. */
+  --color-primary: oklch(0.72 0.1 205);
+  --color-primary-foreground: oklch(0.17 0.008 250);
+
+  --color-success: oklch(0.7 0.11 155);
+  --color-success-foreground: oklch(0.17 0.008 250);
+  --color-warning: oklch(0.79 0.13 75);
+  --color-warning-foreground: oklch(0.17 0.008 250);
+  --color-destructive: oklch(0.65 0.16 25);
+  /* Gelap, bukan terang. Merah di tampilan gelap harus cukup terang untuk
+     terbaca sebagai teks di atas latar gelap — dan merah seterang itu tidak
+     dapat menampung teks putih: putih di atasnya hanya 3.4:1. Teks gelap di
+     atasnya mencapai 5.5:1. */
+  --color-destructive-foreground: oklch(0.17 0.008 250);
+
+  --color-ring: oklch(0.72 0.1 205);
+
+  /* Bayangan halus tidak terlihat di atas latar gelap; yang bekerja adalah
+     bayangan yang lebih pekat dan lebih rapat. */
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    /* Judul yang dituju dari tautan lompat tidak boleh tertutup header. */
+    scroll-padding-top: --spacing(20);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Angka pada harga dan tabel harus berbaris rata secara vertikal. */
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Fokus hanya ditampilkan saat navigasi keyboard, dan saat itu harus
+     benar-benar terlihat — bukan garis tipis yang hilang di atas border. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklch, var(--color-primary) 22%, transparent);
+  }
+}
+
+/**
+ * prefers-reduced-motion.
+ *
+ * Gerakan posisi dimatikan seluruhnya; perubahan opasitas disisakan karena
+ * itulah yang membawa informasi "sesuatu berubah" tanpa memicu gejala pada
+ * orang yang sensitif terhadap gerak.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-serif);
+  font-weight: 400;
+}
