@@ -97,3 +97,21 @@ Setelah selesai, commit: feat: add mock supplier service with failure injection
 ## Catatan
 
 Godaan terbesar di step ini adalah membuat kelima supplier hampir sama untuk menghemat waktu. Jangan. Perbedaan protokol, mata uang, dan penamaan field adalah satu-satunya hal yang membuat lapisan adapter di Step 10 punya alasan untuk ada.
+
+### Temuan saat mengerjakan step ini
+
+**1. Aturan boundary menangkap pelanggaran arsitektur yang nyata.** Berkas perangkaian aplikasi awalnya diletakkan di `http/`, sehingga ia mengimpor dari `infrastructure/` — persis yang dilarang. Dua perbaikan menyusul: perangkaian dipindah ke `src/composition/`, dan `RefIndex` dinaikkan dari detail infrastruktur menjadi port di `application/`. Tanpa penegakan otomatis, kebocoran ini tidak akan pernah terlihat.
+
+**2. Factory router melanggar batas 50 baris, dan itu benar.** Enam rute dengan handler inline memang tidak terbaca. Pola yang ditetapkan: **factory hanya mendaftarkan, setiap rute punya pabrik handler sendiri**. Pola ini berlaku untuk seluruh service berikutnya.
+
+**3. `return voidFunction()` melanggar `no-confusing-void-expression`.** Pola `if (!ok) return sendFailure(res, err)` harus ditulis sebagai blok dengan `return` tersendiri. Menyebalkan, tetapi benar — `return` yang tampak mengembalikan sesuatu padahal tidak adalah sumber kebingungan nyata.
+
+**4. supertest mengurai JSON sendiri, dan itu menyembunyikan suntikan `malformed`.** Pengujian gagal dengan `SyntaxError` sebelum sampai ke assertion. Butuh `.buffer(true).parse(...)` untuk mengambil badan respons mentah.
+
+**5. Menyetel sumber keacakan ke nol membuat SELURUH supplier gagal**, bukan hanya yang disuntik — LUNA dan ZEPH punya peluang kegagalan bawaan. Uji isolasi antar supplier jadi tidak berarti. Cara yang benar: suntik dengan `rate: 1` dan biarkan keacakannya tinggi.
+
+**6. Urutan blok pada konfigurasi flat ESLint menentukan.** Pengecualian aturan boundary untuk berkas uji tidak berpengaruh apa pun ketika diletakkan sebelum blok yang mengaktifkannya — tanpa galat, tanpa peringatan. Harus di paling akhir.
+
+### Estimasi
+
+Diperkirakan 6 jam. Kenyataannya **jauh lebih lama** — bagian implementasi berjalan lancar, tetapi menegakkan konvensi kode (batas ukuran fungsi, arah ketergantungan, larangan `any`) pada kode sebanyak ini memakan waktu sebanding dengan menulisnya. Perkirakan 12–16 jam untuk step sejenis, dan sesuaikan perkiraan step-step berikutnya yang menyentuh lapisan HTTP.
