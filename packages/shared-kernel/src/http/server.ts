@@ -30,6 +30,15 @@ export interface HttpServerOptions {
    * terlihat sebagai grafik kosong berminggu-minggu kemudian.
    */
   readonly metrics?: Metrics | undefined
+  /**
+   * 'none' mematikan penguraian badan permintaan sepenuhnya.
+   *
+   * Dibutuhkan gateway: badan yang sudah terurai tidak dapat diteruskan lagi
+   * sebagai aliran, dan mengurai lalu menyusun ulangnya berarti gateway
+   * memutuskan bentuk data yang sebenarnya bukan urusannya — serta memutus
+   * unggahan besar dan Server-Sent Events.
+   */
+  readonly bodyParser?: 'json' | 'none' | undefined
 }
 
 /**
@@ -77,7 +86,9 @@ export function createHttpServer(options: HttpServerOptions): Express {
       credentials: true,
     }),
   )
-  app.use(express.json({ limit: options.bodyLimit ?? DEFAULT_BODY_LIMIT }))
+  if (options.bodyParser !== 'none') {
+    app.use(express.json({ limit: options.bodyLimit ?? DEFAULT_BODY_LIMIT }))
+  }
 
   if (options.metrics !== undefined) {
     app.get('/metrics', metricsHandler(options.metrics.registry))
