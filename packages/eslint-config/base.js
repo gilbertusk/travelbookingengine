@@ -44,8 +44,14 @@ export const base = tseslint.config(
       // CONVENTIONS.md bagian 11 — log lewat logger, bukan console
       'no-console': 'error',
 
-      // CONVENTIONS.md bagian 4 — imutabilitas
-      'no-param-reassign': ['error', { props: true }],
+      // CONVENTIONS.md bagian 4 — imutabilitas.
+      // req dan res dikecualikan: menulis ke res.locals adalah mekanisme
+      // resmi Express untuk state per-permintaan, bukan mutasi tak sengaja
+      // atas objek domain yang aturan ini dibuat untuk mencegah.
+      'no-param-reassign': [
+        'error',
+        { props: true, ignorePropertyModificationsFor: ['req', 'res', 'acc'] },
+      ],
       'prefer-const': 'error',
 
       // CONVENTIONS.md bagian 2 — batas ukuran
@@ -61,12 +67,25 @@ export const base = tseslint.config(
     },
   },
   {
-    // Berkas uji boleh lebih panjang dan lebih longgar
+    // Berkas uji boleh lebih panjang dan lebih longgar.
+    //
+    // Keluarga no-unsafe-* dimatikan di sini karena sumbernya bukan kode kita:
+    // supertest mengembalikan response.body bertipe any, dan menuliskan tipe
+    // untuk setiap bentuk JSON yang diperiksa hanya menambah pekerjaan tanpa
+    // menambah keyakinan. no-explicit-any TETAP berlaku — menulis any sendiri
+    // di berkas uji tetap dilarang.
     files: ['**/*.test.ts', '**/*.test.tsx', '**/tests/**/*.ts'],
     rules: {
       'max-lines-per-function': 'off',
       'max-lines': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      // Fixture uji sering berupa arrow function yang langsung mengembalikan
+      // promise; memaksa return await di sana hanya menambah kebisingan.
+      '@typescript-eslint/return-await': 'off',
     },
   },
   {
