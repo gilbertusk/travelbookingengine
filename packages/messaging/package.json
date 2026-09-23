@@ -1,0 +1,35 @@
+{
+  "name": "@tbe/messaging",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "topics:create": "node dist/bin/create-topics.js"
+  },
+  "dependencies": {
+    "@tbe/event-contracts": "workspace:*",
+    "@tbe/shared-kernel": "workspace:*",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^2.0.1",
+    "kafkajs": "^2.2.4",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tbe/tsconfig": "workspace:*",
+    "@types/amqplib": "^0.10.8",
+    "@vitest/coverage-v8": "^5.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

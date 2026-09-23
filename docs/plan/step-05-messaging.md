@@ -106,9 +106,33 @@ Setelah selesai, commit: feat: add event contracts and messaging packages
 - [ ] Pesan cacat masuk dead letter tanpa retry
 - [ ] `correlationId` pulih otomatis di consumer — dibuktikan dengan test
 - [ ] Commit offset hanya terjadi setelah handler selesai — dibuktikan dengan test
-- [ ] `pnpm topics:create` membuat seluruh topik dan dapat dijalankan berulang tanpa galat
+- [ ] `pnpm topics:create` membuat seluruh topik dan dapat dijalankan berulang tanpa galat — **belum diverifikasi terhadap broker sungguhan**, lihat Catatan
 - [ ] Commit terbuat
 
 ## Catatan
 
 Pemisahan peran yang ditegakkan lewat API adalah jawaban untuk risiko R4 di PRD. Ketika penilai bertanya "kenapa dua broker", kode ini sendiri yang menjelaskannya — bukan paragraf di README.
+
+### Temuan saat mengerjakan step ini
+
+**1. Header `x-death` milik RabbitMQ tidak dapat dipakai menghitung percobaan.** Nilainya dihitung **per antrian**, sehingga pesan yang melewati tiga antrian tunda berbeda punya tiga hitungan terpisah dan tidak satu pun mewakili jumlah percobaan sebenarnya. Hitungan disimpan di header kita sendiri, `x-tbe-retry-count`.
+
+**2. Pesan cacat di Kafka tidak boleh dilempar dari consumer.** Melempar berarti offset tidak ter-commit dan partisi berhenti **selamanya** pada pesan yang tidak akan pernah bisa diproses — seluruh pemesanan di partisi itu ikut berhenti. Pesan cacat dikirim ke dead letter lalu dianggap selesai. Kegagalan pemrosesan yang sebenarnya tetap dilempar.
+
+**3. Kunci partisi yang hilang adalah kegagalan senyap.** Kafka akan menyebar pesan round-robin tanpa satu pun galat, dan urutan per pemesanan hilang. Karena itu kunci yang hilang dilaporkan sebagai galat saat menerbitkan, bukan dibiarkan menjadi `null`.
+
+**4. Header RabbitMQ tiba sebagai string, angka, atau Buffer** tergantung klien penerbitnya. Ketiganya harus dinormalkan; `String(value)` atas Buffer atau objek menghasilkan nilai yang menyesatkan.
+
+**5. Topologi dideklarasikan sebagai data, bukan sebagai rangkaian `assertQueue`.** Dengan begitu ia dapat diperiksa pengujian tanpa broker yang berjalan. Topologi yang hanya ada sebagai efek samping pemanggilan hanya bisa diperiksa dengan membuka antarmuka RabbitMQ dan melihatnya dengan mata.
+
+### Yang belum diverifikasi
+
+Docker Desktop tidak berjalan saat step ini dikerjakan, sehingga **`pnpm topics:create` belum pernah dijalankan terhadap Kafka sungguhan**. Yang sudah terbukti: skripnya ter-build, dapat dimuat, dan mencoba menyambung ke broker. Yang belum: pembuatan topik yang sebenarnya, dan sifat idempotennya pada pemanggilan kedua.
+
+Jalankan ini setelah Docker menyala, sebelum memulai Step 06:
+
+```bash
+pnpm infra:up && pnpm topics:create && pnpm topics:create
+```
+
+Pemanggilan kedua harus melaporkan "Seluruh topik sudah ada."
