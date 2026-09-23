@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    environment: development
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Service aplikasi. Target yang belum ada akan tampil "down" di Prometheus,
+  # dan itu memang yang diinginkan: lebih baik terlihat mati daripada tidak
+  # terdaftar sama sekali dan diam-diam tidak pernah dipantau.
+  - job_name: tbe-services
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:4000']
+        labels: { service: mock-supplier }
+      - targets: ['host.docker.internal:4001']
+        labels: { service: api-gateway }
+      - targets: ['host.docker.internal:4002']
+        labels: { service: auth-service }
+      - targets: ['host.docker.internal:4003']
+        labels: { service: search-service }
+      - targets: ['host.docker.internal:4004']
+        labels: { service: supplier-service }
+      - targets: ['host.docker.internal:4005']
+        labels: { service: pricing-service }
+      - targets: ['host.docker.internal:4006']
+        labels: { service: booking-service }
+      - targets: ['host.docker.internal:4007']
+        labels: { service: payment-service }
+      - targets: ['host.docker.internal:4008']
+        labels: { service: voucher-service }
+      - targets: ['host.docker.internal:4009']
+        labels: { service: notification-service }
+      - targets: ['host.docker.internal:4010']
+        labels: { service: analytics-service }

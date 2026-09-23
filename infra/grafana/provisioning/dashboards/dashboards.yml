@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: tbe
+    type: file
+    disableDeletion: true
+    # Dasbor disediakan dari berkas, bukan dibuat lewat antarmuka. Dasbor yang
+    # hanya hidup di database Grafana hilang begitu volume-nya dihapus, dan
+    # tidak pernah ikut ditinjau saat perubahan kode mengubah nama metrik.
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

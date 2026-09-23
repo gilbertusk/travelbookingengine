@@ -90,7 +90,10 @@ export const node = [
   {
     // process.env hanya boleh dibaca di config.ts — CONVENTIONS.md bagian 12
     files: ['apps/*/src/**/*.ts'],
-    ignores: ['apps/*/src/config.ts'],
+    // telemetry.ts dikecualikan bersama config.ts: inisialisasi penelusuran
+    // harus berjalan sebelum modul apa pun dimuat, termasuk config.ts sendiri,
+    // sehingga ia tidak dapat membaca env lewat skema yang belum ada.
+    ignores: ['apps/*/src/config.ts', 'apps/*/src/telemetry.ts'],
     rules: {
       'no-restricted-properties': [
         'error',

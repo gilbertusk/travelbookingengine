@@ -64,7 +64,7 @@ Setelah selesai, commit: feat: add observability baseline with tracing and metri
 
 ## Definisi Selesai
 
-- [ ] Satu permintaan menghasilkan trace utuh di Jaeger, melewati batas service
+- [ ] Satu permintaan menghasilkan trace utuh di Jaeger, melewati batas service — **belum diverifikasi**, lihat Catatan
 - [ ] Konteks trace merambat lewat Kafka dan RabbitMQ, bukan hanya HTTP
 - [ ] Setiap baris log memuat `traceId` dan `correlationId`
 - [ ] `/metrics` tersedia dan ter-scrape Prometheus
@@ -75,3 +75,37 @@ Setelah selesai, commit: feat: add observability baseline with tracing and metri
 ## Catatan
 
 Perambatan konteks trace lewat amplop pesan sering dilewatkan. Tanpa itu, trace terputus tepat di titik paling menarik — ketika alur berpindah dari HTTP ke saga asinkron. Tangkapan layar trace utuh inilah yang akan masuk README di Step 29.
+
+### Temuan saat mengerjakan step ini
+
+**1. `initTracing` harus berjalan sebelum modul apa pun dimuat.** Instrumentasi otomatis bekerja dengan menambal pustaka pada saat dimuat, dan pustaka yang sudah terlanjur dimuat tidak akan ikut terinstrumentasi. Impor ESM dijalankan seluruhnya sebelum satu pun baris badan modul, jadi memanggil `initTracing()` di tengah `index.ts` **selalu terlambat**. Penyelesaiannya: berkas `telemetry.ts` yang menginisialisasi saat dimuat, diimpor paling pertama.
+
+Konsekuensinya `telemetry.ts` membaca `process.env` langsung, karena `config.ts` sendiri belum boleh dimuat pada titik itu. Aturan lint diperluas untuk mengecualikan berkas ini bersama `config.ts`.
+
+**2. Span tidak aktif tanpa context manager.** `startActiveSpan` tetap membuat span, tetapi `getActiveSpan()` selalu `undefined`, span bersarang kehilangan induknya, dan perambatan trace tidak menghasilkan apa pun — semuanya tanpa satu pun galat. Pada produksi `NodeSDK` mendaftarkan context manager sendiri; pada pengujian harus manual.
+
+**3. `setGlobalTracerProvider` mengabaikan pendaftaran kedua.** Mendaftarkan provider di `beforeEach` membuat seluruh test setelah yang pertama kehilangan span, dan yang muncul hanya peringatan di konsol.
+
+**4. Label rute harus memakai pola rute, bukan path mentah.** `/bookings/bkg_123` sebagai label membuat setiap pemesanan menjadi deret waktu tersendiri di Prometheus. Beberapa ribu pemesanan sudah cukup untuk membuat Prometheus tidak dapat dipakai. Express menyediakan `req.route.path` yang berisi `/bookings/:bookingId` — itu yang dipakai.
+
+**5. Histogram yang terdaftar tetapi tidak pernah diisi terlihat sama seperti yang berfungsi.** `/metrics` menampilkan baris `# HELP` dan `# TYPE` tanpa satu pun sampel, dan panel Grafana-nya kosong tanpa alasan terlihat. Ini ketahuan hanya karena endpoint-nya benar-benar dipanggil dan keluarannya dibaca.
+
+### Yang sudah diverifikasi langsung
+
+`/metrics` pada mock-supplier yang berjalan menyajikan seluruh metrik domain dengan label `service`, dan permintaan sungguhan tercatat sebagai `http_request_duration_seconds` dengan label rute `/sky/bookings/:bookingId`.
+
+### Yang belum diverifikasi
+
+Docker Desktop masih tidak berjalan, jadi **Jaeger, Prometheus, dan Grafana belum pernah disentuh**. Yang belum terbukti: trace muncul di Jaeger, Prometheus berhasil scrape, dan dasbor Grafana ter-provision dengan benar.
+
+Jalankan ini setelah Docker menyala:
+
+```bash
+pnpm infra:up
+pnpm topics:create
+pnpm --filter @tbe/mock-supplier dev
+# lalu kirim beberapa permintaan, dan periksa:
+#   Jaeger      http://localhost:16686   — cari service "mock-supplier"
+#   Prometheus  http://localhost:9090/targets — target mock-supplier harus UP
+#   Grafana     http://localhost:3001    — dasbor "Travel Booking Engine — Ikhtisar"
+```

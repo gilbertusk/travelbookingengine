@@ -1,8 +1,10 @@
 import cors from 'cors'
-import express, { type Express } from 'express'
+import express, { type Express, type RequestHandler } from 'express'
 import helmet from 'helmet'
 import type { Logger } from 'pino'
 import { pinoHttp } from 'pino-http'
+import type { Metrics } from '../observability/metrics.js'
+import { metricsHandler } from '../observability/metrics.js'
 import { correlationIdOf, correlationMiddleware } from './correlation-middleware.js'
 import { createErrorHandler, notFoundHandler } from './error-handler.js'
 
@@ -21,6 +23,33 @@ export interface HttpServerOptions {
   readonly logger: Logger
   readonly corsOrigins?: readonly string[] | undefined
   readonly bodyLimit?: string | undefined
+  /**
+   * Bila diberikan, /metrics dipasang otomatis dan durasi setiap permintaan
+   * dicatat. Endpoint metrik yang harus didaftarkan manual di setiap service
+   * adalah endpoint yang akan terlupa di salah satunya, dan ketiadaannya baru
+   * terlihat sebagai grafik kosong berminggu-minggu kemudian.
+   */
+  readonly metrics?: Metrics | undefined
+}
+
+/**
+ * Mencatat durasi permintaan dengan label pola rute, bukan path mentah.
+ *
+ * Path mentah memuat pengenal — /bookings/bkg_123 — dan setiap pemesanan akan
+ * menjadi deret waktu tersendiri di Prometheus. Beberapa ribu pemesanan cukup
+ * untuk membuat Prometheus tidak dapat dipakai.
+ */
+function createHttpMetricsMiddleware(metrics: Metrics): RequestHandler {
+  return (req, res, next) => {
+    const stop = metrics.domain.httpRequestDuration.startTimer()
+
+    res.on('finish', () => {
+      const route = `${req.baseUrl}${req.route === undefined ? '(unmatched)' : (req.route as { path: string }).path}`
+      stop({ method: req.method, route, status: String(res.statusCode) })
+    })
+
+    next()
+  }
 }
 
 export function createHttpServer(options: HttpServerOptions): Express {
@@ -49,6 +78,11 @@ export function createHttpServer(options: HttpServerOptions): Express {
     }),
   )
   app.use(express.json({ limit: options.bodyLimit ?? DEFAULT_BODY_LIMIT }))
+
+  if (options.metrics !== undefined) {
+    app.get('/metrics', metricsHandler(options.metrics.registry))
+    app.use(createHttpMetricsMiddleware(options.metrics))
+  }
 
   return app
 }

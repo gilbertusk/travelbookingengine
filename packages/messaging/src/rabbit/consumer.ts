@@ -4,7 +4,12 @@ import {
   type CommandType,
   type Message,
 } from '@tbe/event-contracts'
-import { ValidationError, runWithCorrelation, type Logger } from '@tbe/shared-kernel'
+import {
+  ValidationError,
+  runWithCorrelation,
+  withTraceparent,
+  type Logger,
+} from '@tbe/shared-kernel'
 import type { CommandOutcome, IncomingCommand, RabbitPublisher } from '../ports.js'
 import { dispositionFor, headerString, type Disposition } from '../retry.js'
 import { publishOptions } from './sender.js'
@@ -48,8 +53,10 @@ export function createCommandConsumer<T extends CommandType>(
     }
 
     try {
-      await runWithCorrelation(parsed.correlationId, async () => {
-        await options.handle(parsed.payload, parsed)
+      await withTraceparent(parsed.traceparent, async () => {
+        await runWithCorrelation(parsed.correlationId, async () => {
+          await options.handle(parsed.payload, parsed)
+        })
       })
       return 'ack'
     } catch (error) {

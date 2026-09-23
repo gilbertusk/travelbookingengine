@@ -18,15 +18,25 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.80.0",
+    "@opentelemetry/core": "^2.11.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "prom-client": "^15.1.3",
     "uuid": "^14.0.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@opentelemetry/context-async-hooks": "^2.11.0",
     "@tbe/tsconfig": "workspace:*",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

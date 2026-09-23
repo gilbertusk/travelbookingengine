@@ -6,7 +6,7 @@ import {
   type EventType,
   type Message,
 } from '@tbe/event-contracts'
-import { runWithCorrelation, type Logger } from '@tbe/shared-kernel'
+import { runWithCorrelation, withTraceparent, type Logger } from '@tbe/shared-kernel'
 import type { IncomingEvent, KafkaProducerPort } from '../ports.js'
 
 /**
@@ -49,8 +49,12 @@ export function createEventConsumer(options: EventHandlerOptions): EventConsumer
       return
     }
 
-    await runWithCorrelation(message.correlationId, async () => {
-      await options.handle(message)
+    // Trace dipulihkan sebelum correlation, sehingga span yang dibuat
+    // handler menjadi anak dari span yang menerbitkan pesannya.
+    await withTraceparent(message.traceparent, async () => {
+      await runWithCorrelation(message.correlationId, async () => {
+        await options.handle(message)
+      })
     })
   }
 }

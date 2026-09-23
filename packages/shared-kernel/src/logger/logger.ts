@@ -5,6 +5,7 @@ import {
   type LoggerOptions as PinoLoggerOptions,
 } from 'pino'
 import { getCorrelationId } from '../correlation/correlation.js'
+import { currentTraceIds } from '../observability/trace-context.js'
 
 /**
  * Logger terstruktur untuk seluruh service.
@@ -80,7 +81,17 @@ export function buildLoggerOptions(options: LoggerOptions): PinoLoggerOptions {
     },
     mixin: (): Record<string, string> => {
       const correlationId = getCorrelationId()
-      return correlationId === undefined ? {} : { correlationId }
+      const { traceId, spanId } = currentTraceIds()
+
+      // traceId membuat log dapat dilompati ke trace-nya di Jaeger, dan
+      // sebaliknya. Tanpa keduanya di baris yang sama, menghubungkan sebuah
+      // galat ke span tempat ia terjadi berarti mencocokkan cap waktu dengan
+      // mata.
+      return {
+        ...(correlationId === undefined ? {} : { correlationId }),
+        ...(traceId === undefined ? {} : { traceId }),
+        ...(spanId === undefined ? {} : { spanId }),
+      }
     },
     formatters: {
       level: (label: string): Record<string, string> => ({ level: label }),

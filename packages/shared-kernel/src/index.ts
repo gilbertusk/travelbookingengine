@@ -81,3 +81,26 @@ export {
   type ManagedApp,
   type ManagedResource,
 } from './lifecycle/lifecycle.js'
+
+export { currentTraceIds, type TraceIds } from './observability/trace-context.js'
+export {
+  initTracing,
+  tracingResource,
+  type TracingHandle,
+  type TracingOptions,
+} from './observability/tracing.js'
+export { annotateSpan, withSpan } from './observability/span.js'
+export {
+  currentTraceparent,
+  isValidTraceparent,
+  withTraceparent,
+} from './observability/propagation.js'
+export {
+  CIRCUIT_STATE_VALUES,
+  createMetrics,
+  metricsHandler,
+  observeDuration,
+  type DomainMetrics,
+  type Metrics,
+  type MetricsOptions,
+} from './observability/metrics.js'

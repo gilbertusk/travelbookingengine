@@ -4,4 +4,7 @@ packages:
 allowBuilds:
   # Biner native untuk eslint-import-resolver-typescript. Dibutuhkan agar
   # aturan boundary dapat memetakan impor gaya NodeNext (.js) ke berkas .ts.
+  # protobufjs hanya menyusun binding protobuf saat instalasi; tidak menjalankan
+  # apa pun saat aplikasi berjalan.
+  protobufjs: true
   unrs-resolver: true

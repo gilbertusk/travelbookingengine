@@ -8,6 +8,7 @@ import { ValidationError } from '@tbe/shared-kernel'
 import type { PublishOptions, RabbitPublisher } from '../ports.js'
 import { RETRY_COUNT_HEADER } from '../retry.js'
 import { COMMAND_EXCHANGE } from './topology.js'
+import { traceparentField } from '../trace.js'
 
 /**
  * Pengirim perintah.
@@ -37,7 +38,7 @@ export function createCommandSender(publisher: RabbitPublisher): CommandSender {
         eventType: type,
         payload,
         ...(options?.causationId === undefined ? {} : { causationId: options.causationId }),
-        ...(options?.traceparent === undefined ? {} : { traceparent: options.traceparent }),
+        ...traceparentField(options?.traceparent),
       })
 
       // Divalidasi sebelum dikirim, bukan hanya saat diterima. Perintah cacat

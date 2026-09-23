@@ -1,6 +1,11 @@
 import type { Express } from 'express'
 import type { Logger } from '@tbe/shared-kernel'
-import { createHttpServer, finalizeHttpServer } from '@tbe/shared-kernel'
+import {
+  createHttpServer,
+  createMetrics,
+  finalizeHttpServer,
+  type Metrics,
+} from '@tbe/shared-kernel'
 import { createChaosRegistry, type ChaosRegistry } from '../application/chaos.js'
 import type { OperationDeps } from '../application/ports.js'
 import { buildCatalog } from '../domain/catalog.js'
@@ -21,6 +26,7 @@ import { createZephRouter } from '../http/suppliers/zeph.js'
 export interface MockSupplierApp {
   readonly app: Express
   readonly context: SupplierContext
+  readonly metrics: Metrics
 }
 
 export interface BuildAppOptions {
@@ -62,7 +68,11 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
     catalog,
   }
 
-  const app = createHttpServer({ logger: options.logger })
+  // Registry metrik diteruskan ke pabrik server, yang memasang /metrics
+  // sendiri. Endpoint yang harus didaftarkan manual di setiap service adalah
+  // endpoint yang akan terlupa di salah satunya.
+  const metrics = createMetrics({ serviceName: 'mock-supplier' })
+  const app = createHttpServer({ logger: options.logger, metrics })
 
   app.get('/health/live', (_req, res) => {
     res.json({ data: { status: 'alive' }, error: null })
@@ -78,5 +88,5 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
 
   finalizeHttpServer(app, options.logger)
 
-  return { app, context }
+  return { app, context, metrics }
 }

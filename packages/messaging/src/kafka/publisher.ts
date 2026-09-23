@@ -8,6 +8,7 @@ import {
 } from '@tbe/event-contracts'
 import { ValidationError } from '@tbe/shared-kernel'
 import type { KafkaProducerPort } from '../ports.js'
+import { traceparentField } from '../trace.js'
 
 /**
  * Penerbit peristiwa.
@@ -39,7 +40,10 @@ export function createEventPublisher(producer: KafkaProducerPort): EventPublishe
         eventType: type,
         payload,
         ...(options?.causationId === undefined ? {} : { causationId: options.causationId }),
-        ...(options?.traceparent === undefined ? {} : { traceparent: options.traceparent }),
+        // Diambil otomatis dari trace yang sedang berjalan. Penerusan manual
+        // adalah hal pertama yang terlupa, dan akibatnya trace terputus tepat
+        // saat alur masuk ke saga asinkron.
+        ...traceparentField(options?.traceparent),
       })
 
       const parsed = EVENT_SCHEMAS[type].safeParse(message)

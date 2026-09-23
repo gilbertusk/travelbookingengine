@@ -14,6 +14,8 @@ const envSchema = baseEnvSchema.extend({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  OTEL_ENABLED: z.enum(['true', 'false']).default('true'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318/v1/traces'),
 })
 
 export type Config = z.infer<typeof envSchema>

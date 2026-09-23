@@ -195,6 +195,57 @@ services:
       retries: 10
     networks: [tbe]
 
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: tbe-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    ports:
+      - '${PROMETHEUS_PORT}:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      # Service aplikasi berjalan di host, bukan di dalam Compose. Tanpa ini,
+      # Prometheus di dalam container tidak dapat menjangkau /metrics mereka.
+      - 'host.docker.internal:host-gateway'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9090/-/healthy']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [tbe]
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: tbe-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - '${GRAFANA_PORT}:3000'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/health | grep -q ok']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks: [tbe]
+
   mailpit:
     image: axllent/mailpit:latest
     container_name: tbe-mailpit
@@ -218,6 +269,8 @@ volumes:
   rabbitmq-data:
   kafka-data:
   minio-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   tbe:
