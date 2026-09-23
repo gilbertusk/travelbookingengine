@@ -17,7 +17,10 @@ Buat infra/docker-compose.yml berisi layanan berikut:
 
 1. postgres — PostgreSQL 16
    - Satu instance, tapi siapkan skrip init yang membuat database terpisah untuk tiap
-     service: auth, supplier, pricing, booking, payment, voucher, analytics
+     service: auth, search, supplier, pricing, booking, payment, voucher,
+     notification, analytics
+   - search punya database sendiri karena keputusan Q5 menaruh katalog properti
+     di sana; notification karena Step 24 menyimpan catatan pengiriman
    - Volume persisten, healthcheck dengan pg_isready
 
 2. redis — Redis 7
@@ -77,3 +80,13 @@ lalu commit: chore: add local infrastructure with docker compose
 ## Catatan
 
 Keyspace notification Redis sering terlupa dan baru ketahuan saat Step 17 ketika hold tidak pernah terlepas. Verifikasi sekarang.
+
+### Tiga hambatan yang ditemukan saat mengerjakan step ini
+
+**1. `minio/minio:latest` tidak lagi ada di Docker Hub.** Penarikan gagal dengan `pull access denied`, yang menyesatkan karena terdengar seperti masalah izin padahal tag-nya memang sudah tidak diterbitkan. Sumbernya dipindahkan ke `quay.io/minio/minio` dan `quay.io/minio/mc`.
+
+**2. `docker compose up --wait` menganggap container sekali-jalan sebagai kegagalan**, meski keluar dengan kode 0. Container pembuat bucket membuat seluruh perintah `infra:up` gagal padahal semua layanan sehat. Penyelesaiannya: container itu dipindahkan ke profil `init` dan dijalankan sebagai langkah tersendiri.
+
+**3. Git Bash di Windows mengacak path absolut pada `docker exec`.** Perintah seperti `docker exec tbe-kafka /opt/kafka/bin/kafka-topics.sh` gagal karena path-nya diubah menjadi `C:/Program Files/Git/opt/kafka/...`. Awali dengan `MSYS_NO_PATHCONV=1`. Ini akan sering muncul mulai Step 05 saat mengelola topik Kafka dari baris perintah.
+
+Selain itu, `kafbat/kafka-ui` tidak punya healthcheck bawaan, sehingga perlu ditambahkan manual lewat endpoint `/actuator/health`. Tanpa itu satu layanan lolos dari ketentuan "setiap layanan punya healthcheck" tanpa terlihat.

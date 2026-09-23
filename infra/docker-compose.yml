@@ -1,0 +1,224 @@
+name: tbe
+
+# Infrastruktur pengembangan lokal.
+# Seluruh kredensial berasal dari infra/.env — tidak ada nilai rahasia di berkas ini.
+# Setiap layanan wajib punya healthcheck; service aplikasi nanti bergantung padanya
+# lewat depends_on dengan condition service_healthy.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tbe-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      # Daftar database per service. Dibaca oleh init-db.sh saat inisialisasi pertama.
+      SERVICE_DATABASES: ${SERVICE_DATABASES}
+    ports:
+      - '${POSTGRES_PORT}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [tbe]
+
+  redis:
+    image: redis:7-alpine
+    container_name: tbe-redis
+    restart: unless-stopped
+    # notify-keyspace-events Ex mengaktifkan notifikasi kunci kedaluwarsa.
+    # Ini yang dipakai Step 17 untuk melepas hold secara otomatis. Tanpa flag
+    # ini hold tidak pernah terlepas, dan itu baru ketahuan jauh di kemudian hari.
+    command: >
+      redis-server
+      --notify-keyspace-events Ex
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+    ports:
+      - '${REDIS_PORT}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [tbe]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: tbe-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - '${RABBITMQ_PORT}:5672'
+      - '${RABBITMQ_MANAGEMENT_PORT}:15672'
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_running']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [tbe]
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: tbe-kafka
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topik dibuat lewat skrip pada Step 05, bukan otomatis. Pembuatan otomatis
+      # menyembunyikan salah ketik nama topik sebagai topik baru yang sunyi.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - '${KAFKA_PORT}:29092'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    networks: [tbe]
+
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: tbe-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: tbe-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    ports:
+      - '${KAFKA_UI_PORT}:8080'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget -qO- http://localhost:8080/actuator/health | grep -q ''"status":"UP"''']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+    networks: [tbe]
+
+  minio:
+    # quay.io, bukan Docker Hub: MinIO tidak lagi menerbitkan tag latest di sana
+    image: quay.io/minio/minio:latest
+    container_name: tbe-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - '${MINIO_PORT}:9000'
+      - '${MINIO_CONSOLE_PORT}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [tbe]
+
+  # Membuat bucket awal lalu berhenti. Berada di profil terpisah karena
+  # docker compose up --wait memperlakukan container sekali-jalan yang sudah
+  # selesai sebagai kegagalan, meski keluar dengan kode 0. Dijalankan sebagai
+  # langkah tersendiri oleh pnpm infra:up.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    profiles: [init]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET &&
+      echo 'bucket siap: '$$MINIO_BUCKET
+      "
+    networks: [tbe]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: tbe-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: 'true'
+    ports:
+      - '${JAEGER_UI_PORT}:16686'
+      - '${OTLP_GRPC_PORT}:4317'
+      - '${OTLP_HTTP_PORT}:4318'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:14269/']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [tbe]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: tbe-mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - '${MAILPIT_SMTP_PORT}:1025'
+      - '${MAILPIT_UI_PORT}:8025'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8025/readyz']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [tbe]
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  kafka-data:
+  minio-data:
+
+networks:
+  tbe:
+    name: tbe
