@@ -86,8 +86,28 @@ feat: add shared-kernel package
 - [ ] Field sensitif teredaksi di log — buktikan dengan test
 - [ ] Graceful shutdown menutup sumber daya dengan urutan benar — buktikan dengan test
 - [ ] Package tidak bergantung pada pustaka infrastruktur apa pun
+- [ ] Cache Turborepo terbukti bekerja — butir tertunda dari Step 01
 - [ ] Commit terbuat
 
 ## Catatan
 
 Graceful shutdown terlihat sepele sampai Step 19. Saga yang terpotong di tengah karena container dimatikan tanpa urutan yang benar menghasilkan pemesanan menggantung — persis yang dilarang NFR-06.
+
+### Temuan saat mengerjakan step ini
+
+**1. Pada Express 5, `req.query` adalah getter dan tidak dapat ditulis.** Pola lama yang menimpa `req.query` dengan hasil validasi akan melempar saat berjalan. Hasil validasi disimpan di `res.locals`, yang sekaligus membuat jelas mana data mentah dan mana yang sudah tervalidasi.
+
+**2. Pengakses bertipe generik bebas adalah type assertion yang menyamar.** Rancangan awal `validated<T>(res, source)` membiarkan pemanggil menyatakan tipe apa pun, dan akan diam saja ketika skemanya berubah. `validate()` sekarang mengembalikan middleware yang **membawa pengakses bertipe**, sehingga tipenya selalu berasal dari skema yang sama dengan yang memvalidasi:
+
+```ts
+const searchQuery = validate(searchSchema, 'query')
+app.get('/search', searchQuery, (_req, res) => {
+  const { city, guests } = searchQuery.value(res) // tipe dari skema, bukan klaim pemanggil
+})
+```
+
+**3. Berkas uji harus masuk salah satu project TypeScript.** Tanpa itu ESLint type-aware melewatinya dengan galat parsing, sehingga seluruh aturan tidak berlaku pada kode uji. Susunannya: `tsconfig.json` mencakup semuanya untuk editor dan lint, `tsconfig.build.json` mengecualikan uji untuk kompilasi.
+
+**4. Build menemukan cacat tipe yang test tidak bisa lihat.** Menurunkan tipe opsi dari `Parameters<typeof pino>[0]` membuat Pino menyimpulkan adanya level kustom, sehingga `Logger` yang dihasilkan tidak dapat ditugaskan ke `Logger`. Vitest tidak mengompilasi tipe, jadi hanya `tsc` yang menangkapnya. Pasang `noEmitOnError` agar build yang gagal tidak sempat menghasilkan `dist` yang menyesatkan.
+
+**5. Keluarga aturan `no-unsafe-*` dilonggarkan khusus berkas uji.** `response.body` dari supertest bertipe `any`, dan menuliskan tipe untuk setiap bentuk JSON yang diperiksa hanya menambah pekerjaan tanpa menambah keyakinan. `no-explicit-any` tetap berlaku.
