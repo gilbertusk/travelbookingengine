@@ -10,6 +10,9 @@ export default [
       '**/.turbo/**',
       '**/coverage/**',
       '**/prisma/generated/**',
+      // Klien Prisma tergenerate: ribuan baris, sudah membawa ts-nocheck
+      // sendiri, dan bukan kode yang kita tulis.
+      '**/src/generated/**',
       'apps/__boundary_check__/**',
     ],
   },

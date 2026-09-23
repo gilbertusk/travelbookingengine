@@ -78,9 +78,40 @@ Commit: feat: add auth service
 - [ ] Argon2id dipakai, parameter tercatat sebagai konstanta bernama
 - [ ] Pesan galat login tidak membedakan penyebab — dibuktikan dengan test
 - [ ] Tidak ada rahasia dengan nilai bawaan di `config.ts`
-- [ ] `/code-review` dijalankan dan temuan CRITICAL serta HIGH ditutup
+- [ ] Migrasi dibuat dan dapat dijalankan — **tertunda**, lihat Catatan
+- [ ] `/code-review` dijalankan dan temuan CRITICAL serta HIGH ditutup — **belum dijalankan**
 - [ ] Commit terbuat
 
 ## Catatan
 
 Pemakaian ulang refresh token yang mencabut seluruh sesi adalah detail kecil yang menunjukkan kamu paham serangan pencurian token. Murah untuk dibuat, mahal nilainya saat ditanya.
+
+### Temuan saat mengerjakan step ini
+
+**1. `prisma@^7` ternyata memasang `8.0.0-rc`.** Rentang caret menarik release candidate dengan CLI yang sama sekali berbeda — berorientasi cloud (`prisma auth login`, `prisma project list`), dan `prisma generate` bahkan tidak terdaftar sebagai perintah. Versi CLI harus dipasangkan dengan versi `@prisma/client`, dan untuk Prisma sebaiknya dipin.
+
+**2. Prisma 7 melarang `url` di dalam `schema.prisma`.** URL untuk Migrate pindah ke `prisma.config.ts`, dan `PrismaClient` menerimanya lewat driver adapter (`@prisma/adapter-pg`). Ini sebenarnya perbaikan: kredensial produksi tidak pernah perlu hadir dalam bentuk apa pun di dalam berkas skema.
+
+**3. Generator berganti nama** dari `prisma-client-js` menjadi `prisma-client`, dan keluarannya berupa berkas TypeScript, bukan JavaScript siap pakai. Folder hasilnya perlu dikecualikan dari lint, Prettier, coverage, dan versi kontrol.
+
+**4. Memisahkan perangkaian HTTP dari perangkaian dependensi terbayar langsung.** `createAuthHttpApp` menerima dependensi yang sudah jadi, sehingga pengujian memakai aplikasi yang sama persis dengan produksi, hanya dengan repository dalam memori. Aplikasi uji yang dirangkai sendiri akan berbeda dari yang sesungguhnya, dan perbedaannya selalu ada di tempat yang tidak diduga.
+
+**5. Hasher dipalsukan untuk use case, tetapi diuji sungguhan secara terpisah.** Argon2 sengaja lambat; 82 test yang masing-masing menunggu seratus milidetik membuat rangkaian uji tidak layak dijalankan terus-menerus. Adapter aslinya tetap diuji di berkasnya sendiri, karena justru parameter dan opsinya yang menentukan apakah implementasinya aman.
+
+### Yang belum diverifikasi
+
+Docker Desktop tidak berjalan saat step ini dikerjakan, sehingga **belum ada satu pun migrasi Prisma yang dibuat**, dan skema belum pernah benar-benar diterapkan ke PostgreSQL. Adapter Prisma karena itu juga belum pernah dieksekusi terhadap database sungguhan — ia dikecualikan dari coverage dan baru akan teruji pada Step 20.
+
+Yang sudah terbukti: seluruh aturan domain, seluruh use case, seluruh rute HTTP, dan adapter Argon2 serta JWT yang sesungguhnya — 82 test, cakupan 94%.
+
+Jalankan ini setelah Docker menyala:
+
+```bash
+pnpm infra:up
+cp apps/auth-service/.env.example apps/auth-service/.env
+pnpm --filter @tbe/auth-service db:migrate
+```
+
+Lalu jalankan service-nya dan cobalah alur daftar → masuk → refresh → keluar dengan `curl` sesuai contoh di README service.
+
+**`/code-review` juga belum dijalankan.** Untuk kode autentikasi, tinjauan keamanan terpisah layak dilakukan sebelum melanjutkan.

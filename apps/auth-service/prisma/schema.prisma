@@ -1,0 +1,62 @@
+// Skema auth-service.
+//
+// Database terpisah per service — lihat CONVENTIONS.md bagian 1. Tidak ada
+// relasi ke tabel milik service lain, dan tidak akan pernah ada: begitu satu
+// join lintas service ditulis, batas kepemilikan data hilang.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7 tidak lagi menerima url di sini. URL untuk Migrate ada di
+// prisma.config.ts, dan PrismaClient menerimanya lewat driver adapter.
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  /// UUID v7 — terurut menurut waktu, sehingga indeks tidak terfragmentasi
+  /// seperti pada v4 yang acak sepenuhnya.
+  id           String   @id @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions RefreshSession[]
+
+  @@map("users")
+}
+
+/// Satu baris per refresh token yang pernah diterbitkan.
+///
+/// Token disimpan sebagai hash, bukan nilai aslinya: basis data yang bocor
+/// tidak boleh langsung memberi penyerang sesi yang masih hidup.
+model RefreshSession {
+  id        String @id @db.Uuid
+  userId    String @map("user_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+
+  /// Seluruh token yang lahir dari satu kali login berbagi familyId yang sama.
+  /// Ketika token lama dipakai ulang, seluruh keluarga dicabut sekaligus —
+  /// itulah yang membuat pencurian token terdeteksi, bukan hanya diperlambat.
+  familyId String @map("family_id") @db.Uuid
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+
+  /// Token pengganti yang diterbitkan saat token ini dirotasi.
+  replacedById String? @map("replaced_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}

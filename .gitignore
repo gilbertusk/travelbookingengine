@@ -46,3 +46,4 @@ infra/k6/results/*
 
 # Volume lokal
 infra/data/
+**/src/generated/

@@ -1,10 +1,23 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Skrip build dependensi yang diizinkan berjalan saat instalasi. pnpm memblokir
+# semuanya secara bawaan; setiap izin di bawah diberikan dengan alasan tertulis.
 allowBuilds:
-  # Biner native untuk eslint-import-resolver-typescript. Dibutuhkan agar
-  # aturan boundary dapat memetakan impor gaya NodeNext (.js) ke berkas .ts.
-  # protobufjs hanya menyusun binding protobuf saat instalasi; tidak menjalankan
-  # apa pun saat aplikasi berjalan.
+  # Wajib — biner native yang benar-benar dipakai saat berjalan.
+  argon2: true # fungsi hash kata sandi
+  '@prisma/client': true # mesin kueri Prisma
+  prisma: true # CLI migrasi
+  '@prisma/engines': true # unduh mesin kueri Prisma
+  unrs-resolver: true # resolver TypeScript untuk aturan boundary ESLint
+  esbuild: true # dipakai Vitest untuk transformasi
+
+  # Hanya menyusun saat instalasi, tidak menjalankan apa pun saat aplikasi hidup.
   protobufjs: true
-  unrs-resolver: true
+
+  # Akselerasi opsional. Menolaknya hanya membuat pustakanya memakai
+  # implementasi JavaScript murni yang lebih lambat, dan tidak satu pun berada
+  # di jalur kritis kita.
+  msgpackr-extract: false
+  workerd: false
