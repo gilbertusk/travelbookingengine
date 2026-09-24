@@ -1,0 +1,218 @@
+{
+  "properties": [
+    {
+      "property_code": "nova-345515035",
+      "property_name": "PADMA BALI BOUTIQUE HOTEL",
+      "star_rating": 3,
+      "location": {
+        "latitude": -8.5612,
+        "longitude": 115.2736
+      },
+      "room_options": [
+        {
+          "option_code": "novar79253552109",
+          "option_name": "Superior — Refundable with Breakfast",
+          "max_occupancy": 2,
+          "nightly_rate": {
+            "value": "133.98",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "267.83",
+            "currency_code": "USD"
+          },
+          "is_refundable": true,
+          "includes_breakfast": true,
+          "units_remaining": 8
+        },
+        {
+          "option_code": "novar79644186492",
+          "option_name": "Superior — Non-refundable Room Only",
+          "max_occupancy": 2,
+          "nightly_rate": {
+            "value": "121.59",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "243.30",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": false,
+          "units_remaining": 1
+        },
+        {
+          "option_code": "novar43255730532",
+          "option_name": "Deluxe — Non-refundable Room Only",
+          "max_occupancy": 3,
+          "nightly_rate": {
+            "value": "166.13",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "332.07",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": false,
+          "units_remaining": 6
+        },
+        {
+          "option_code": "novar24740100139",
+          "option_name": "Executive — Refundable with Breakfast",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "114.09",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "228.08",
+            "currency_code": "USD"
+          },
+          "is_refundable": true,
+          "includes_breakfast": true,
+          "units_remaining": 3
+        },
+        {
+          "option_code": "novar25130734522",
+          "option_name": "Executive — Non-refundable Room Only",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "100.41",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "200.89",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": false,
+          "units_remaining": 3
+        },
+        {
+          "option_code": "novar23958831373",
+          "option_name": "Executive — Non-refundable with Breakfast",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "107.46",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "214.84",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": true,
+          "units_remaining": 7
+        },
+        {
+          "option_code": "novar76485187606",
+          "option_name": "Suite — Non-refundable Room Only",
+          "max_occupancy": 2,
+          "nightly_rate": {
+            "value": "55.78",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "111.49",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": false,
+          "units_remaining": 1
+        }
+      ]
+    },
+    {
+      "property_code": "nova-341608691",
+      "property_name": "INDIRA BALI HOTEL",
+      "star_rating": 3,
+      "location": {
+        "latitude": -8.6152,
+        "longitude": 115.264
+      },
+      "room_options": [
+        {
+          "option_code": "novar73505238513",
+          "option_name": "Superior — Refundable with Breakfast",
+          "max_occupancy": 2,
+          "nightly_rate": {
+            "value": "184.41",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "368.96",
+            "currency_code": "USD"
+          },
+          "is_refundable": true,
+          "includes_breakfast": true,
+          "units_remaining": 6
+        },
+        {
+          "option_code": "novar74286507279",
+          "option_name": "Superior — Non-refundable with Breakfast",
+          "max_occupancy": 2,
+          "nightly_rate": {
+            "value": "140.76",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "281.66",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": true,
+          "units_remaining": 3
+        },
+        {
+          "option_code": "novar21369516663",
+          "option_name": "Deluxe — Refundable with Breakfast",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "149.88",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "299.61",
+            "currency_code": "USD"
+          },
+          "is_refundable": true,
+          "includes_breakfast": true,
+          "units_remaining": 2
+        },
+        {
+          "option_code": "novar21760151046",
+          "option_name": "Deluxe — Non-refundable Room Only",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "118.01",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "236.14",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": false,
+          "units_remaining": 5
+        },
+        {
+          "option_code": "novar22150785429",
+          "option_name": "Deluxe — Non-refundable with Breakfast",
+          "max_occupancy": 4,
+          "nightly_rate": {
+            "value": "120.74",
+            "currency_code": "USD"
+          },
+          "total_rate": {
+            "value": "241.34",
+            "currency_code": "USD"
+          },
+          "is_refundable": false,
+          "includes_breakfast": true,
+          "units_remaining": 5
+        }
+      ]
+    }
+  ]
+}

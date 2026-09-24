@@ -1,0 +1,270 @@
+{
+  "results": [
+    {
+      "hotelId": "sky-120804930",
+      "hotelName": "Padma Bali Boutique Hotel",
+      "address": "Jalan Kenanga No. 143",
+      "city": "Bali",
+      "stars": 3,
+      "latitude": -8.5612,
+      "longitude": 115.2736,
+      "amenities": [
+        "airport_shuttle",
+        "bar",
+        "family_rooms",
+        "pet_friendly",
+        "restaurant",
+        "spa",
+        "wifi"
+      ],
+      "rooms": [
+        {
+          "roomId": "rmt_bali_000_0",
+          "roomName": "Superior",
+          "maxGuests": 2,
+          "rates": [
+            {
+              "rateId": "skyr69150729221",
+              "rateName": "Refundable with Breakfast",
+              "price": {
+                "amount": 3755700,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1878800,
+                "currency": "IDR"
+              },
+              "refundable": true,
+              "breakfast": true,
+              "freeCancellationDays": 7,
+              "unitsLeft": 8
+            },
+            {
+              "rateId": "skyr68760094838",
+              "rateName": "Non-refundable Room Only",
+              "price": {
+                "amount": 3406100,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1702300,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": false,
+              "freeCancellationDays": 0,
+              "unitsLeft": 1
+            }
+          ]
+        },
+        {
+          "roomId": "rmt_bali_000_1",
+          "roomName": "Deluxe",
+          "maxGuests": 3,
+          "rates": [
+            {
+              "rateId": "skyr17405641754",
+              "rateName": "Non-refundable Room Only",
+              "price": {
+                "amount": 4495000,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 2248700,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": false,
+              "freeCancellationDays": 0,
+              "unitsLeft": 6
+            }
+          ]
+        },
+        {
+          "roomId": "rmt_bali_000_2",
+          "roomName": "Executive",
+          "maxGuests": 4,
+          "rates": [
+            {
+              "rateId": "skyr35921272146",
+              "rateName": "Refundable with Breakfast",
+              "price": {
+                "amount": 3700800,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1851200,
+                "currency": "IDR"
+              },
+              "refundable": true,
+              "breakfast": true,
+              "freeCancellationDays": 6,
+              "unitsLeft": 3
+            },
+            {
+              "rateId": "skyr35530637763",
+              "rateName": "Non-refundable Room Only",
+              "price": {
+                "amount": 3254500,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1626600,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": false,
+              "freeCancellationDays": 0,
+              "unitsLeft": 3
+            },
+            {
+              "rateId": "skyr36702540912",
+              "rateName": "Non-refundable with Breakfast",
+              "price": {
+                "amount": 3496800,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1749100,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": true,
+              "freeCancellationDays": 0,
+              "unitsLeft": 7
+            }
+          ]
+        },
+        {
+          "roomId": "rmt_bali_000_3",
+          "roomName": "Suite",
+          "maxGuests": 2,
+          "rates": [
+            {
+              "rateId": "skyr71919093723",
+              "rateName": "Non-refundable Room Only",
+              "price": {
+                "amount": 1751600,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 876200,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": false,
+              "freeCancellationDays": 0,
+              "unitsLeft": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hotelId": "sky-124711274",
+      "hotelName": "Indira Bali Hotel",
+      "address": "Jalan Anggrek No. 103",
+      "city": "Bali",
+      "stars": 3,
+      "latitude": -8.6152,
+      "longitude": 115.264,
+      "amenities": ["gym", "parking", "pool", "wifi"],
+      "rooms": [
+        {
+          "roomId": "rmt_bali_001_0",
+          "roomName": "Superior",
+          "maxGuests": 2,
+          "rates": [
+            {
+              "rateId": "skyr44942561211",
+              "rateName": "Refundable with Breakfast",
+              "price": {
+                "amount": 5574400,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 2786100,
+                "currency": "IDR"
+              },
+              "refundable": true,
+              "breakfast": true,
+              "freeCancellationDays": 3,
+              "unitsLeft": 6
+            },
+            {
+              "rateId": "skyr44161292444",
+              "rateName": "Non-refundable with Breakfast",
+              "price": {
+                "amount": 4241300,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 2119600,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": true,
+              "freeCancellationDays": 0,
+              "unitsLeft": 3
+            }
+          ]
+        },
+        {
+          "roomId": "rmt_bali_001_1",
+          "roomName": "Deluxe",
+          "maxGuests": 4,
+          "rates": [
+            {
+              "rateId": "skyr09819390554",
+              "rateName": "Refundable with Breakfast",
+              "price": {
+                "amount": 4697200,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 2349700,
+                "currency": "IDR"
+              },
+              "refundable": true,
+              "breakfast": true,
+              "freeCancellationDays": 3,
+              "unitsLeft": 2
+            },
+            {
+              "rateId": "skyr09428756171",
+              "rateName": "Non-refundable Room Only",
+              "price": {
+                "amount": 3696600,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1847400,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": false,
+              "freeCancellationDays": 0,
+              "unitsLeft": 5
+            },
+            {
+              "rateId": "skyr09038121788",
+              "rateName": "Non-refundable with Breakfast",
+              "price": {
+                "amount": 3772300,
+                "currency": "IDR"
+              },
+              "nightlyPrice": {
+                "amount": 1887100,
+                "currency": "IDR"
+              },
+              "refundable": false,
+              "breakfast": true,
+              "freeCancellationDays": 0,
+              "unitsLeft": 5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

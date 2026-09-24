@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8"?><Envelope><Body><BookResponse><BookingCode>bkg_64f0fc4feb1f46e0a3e8</BookingCode><Status>CONFIRMED</Status><Amount Currency="IDR">2893400</Amount><FromDate>10/11/2026</FromDate><ToDate>12/11/2026</ToDate><Replayed>N</Replayed></BookResponse></Body></Envelope>

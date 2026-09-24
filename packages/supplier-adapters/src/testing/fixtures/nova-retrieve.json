@@ -1,0 +1,10 @@
+{
+  "reservation_code": "bkg_de3a7389bfc448b7b09b",
+  "reservation_status": "confirmed",
+  "total_rate": {
+    "value": "267.83",
+    "currency_code": "USD"
+  },
+  "arrival_date": "2026-11-10T00:00:00Z",
+  "departure_date": "2026-11-12T00:00:00Z"
+}

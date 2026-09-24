@@ -1,0 +1,9 @@
+{
+  "status": "ok",
+  "payload": {
+    "hold_ref": "hld_f1038f84bfb04919a05c",
+    "expires_at": "2026-09-24T00:34:07.193Z",
+    "price": "262.37",
+    "currency": "USD"
+  }
+}

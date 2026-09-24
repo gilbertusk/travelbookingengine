@@ -1,0 +1,11 @@
+{
+  "bookingId": "bkg_4b8a3b629fe3471ab6d5",
+  "status": "CONFIRMED",
+  "price": {
+    "amount": 3755700,
+    "currency": "IDR"
+  },
+  "checkIn": "2026-11-10",
+  "checkOut": "2026-11-12",
+  "guestName": "Budi Santoso"
+}

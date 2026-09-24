@@ -1,0 +1,6 @@
+{
+  "extends": "@tbe/tsconfig/node.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

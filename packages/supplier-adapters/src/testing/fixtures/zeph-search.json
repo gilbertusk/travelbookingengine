@@ -1,0 +1,165 @@
+{
+  "status": "ok",
+  "payload": {
+    "hotels": [
+      {
+        "ref": "zeph-470134641",
+        "name": "Padma Bali Boutique Htl.",
+        "rating": "3",
+        "rooms": [
+          {
+            "ref": "rmt_bali_000_0",
+            "name": "Superior",
+            "offers": [
+              {
+                "ref": "zephr27547233761",
+                "price": "262.37",
+                "nightly": "131.25",
+                "currency": "USD",
+                "cancellable": true,
+                "breakfast": true,
+                "remaining": "8"
+              },
+              {
+                "ref": "zephr27156599378",
+                "price": "237.97",
+                "nightly": "118.93",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": false,
+                "remaining": "1"
+              }
+            ]
+          },
+          {
+            "ref": "rmt_bali_000_1",
+            "name": "Deluxe",
+            "offers": [
+              {
+                "ref": "zephr26528171100",
+                "price": "282.68",
+                "nightly": "141.41",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": false,
+                "remaining": "6"
+              }
+            ]
+          },
+          {
+            "ref": "rmt_bali_000_2",
+            "name": "Executive",
+            "offers": [
+              {
+                "ref": "zephr44075768417",
+                "price": "238.08",
+                "nightly": "119.09",
+                "currency": "USD",
+                "cancellable": true,
+                "breakfast": true,
+                "remaining": "3"
+              },
+              {
+                "ref": "zephr43685134034",
+                "price": "209.38",
+                "nightly": "104.64",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": false,
+                "remaining": "3"
+              },
+              {
+                "ref": "zephr44857037183",
+                "price": "224.95",
+                "nightly": "112.52",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": true,
+                "remaining": "7"
+              }
+            ]
+          },
+          {
+            "ref": "rmt_bali_000_3",
+            "name": "Suite",
+            "offers": [
+              {
+                "ref": "zephr42331881984",
+                "price": "122.18",
+                "nightly": "61.12",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": false,
+                "remaining": "1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ref": "zeph-474040985",
+        "name": "Indira Bali Htl.",
+        "rating": "3",
+        "rooms": [
+          {
+            "ref": "rmt_bali_001_0",
+            "name": "Superior",
+            "offers": [
+              {
+                "ref": "zephr32811530819",
+                "price": "362.42",
+                "nightly": "181.13",
+                "currency": "USD",
+                "cancellable": true,
+                "breakfast": true,
+                "remaining": "6"
+              },
+              {
+                "ref": "zephr32030262053",
+                "price": "275.76",
+                "nightly": "137.82",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": true,
+                "remaining": "3"
+              }
+            ]
+          },
+          {
+            "ref": "rmt_bali_001_1",
+            "name": "Deluxe",
+            "offers": [
+              {
+                "ref": "zephr97447552927",
+                "price": "246.16",
+                "nightly": "123.14",
+                "currency": "USD",
+                "cancellable": true,
+                "breakfast": true,
+                "remaining": "2"
+              },
+              {
+                "ref": "zephr97056918544",
+                "price": "193.69",
+                "nightly": "96.79",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": false,
+                "remaining": "5"
+              },
+              {
+                "ref": "zephr96666284161",
+                "price": "197.63",
+                "nightly": "98.87",
+                "currency": "USD",
+                "cancellable": false,
+                "breakfast": true,
+                "remaining": "5"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

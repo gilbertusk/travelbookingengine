@@ -1,0 +1,287 @@
+{
+  "ok": true,
+  "data": {
+    "items": [
+      {
+        "hid": "luna-338221784",
+        "hname": "Hotel Wijaya Bali Grand Hotel",
+        "st": 2,
+        "rt": [
+          {
+            "rid": "rmt_bali_010_0",
+            "rname": "Superior",
+            "mx": 4,
+            "rp": [
+              {
+                "pid": "lunar91548646916",
+                "pname": "Refundable with Breakfast",
+                "amt": 2675400,
+                "namt": 1337000,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 8
+              },
+              {
+                "pid": "lunar91158012533",
+                "pname": "Non-refundable Room Only",
+                "amt": 2364100,
+                "namt": 1182600,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 4
+              },
+              {
+                "pid": "lunar90767378150",
+                "pname": "Non-refundable with Breakfast",
+                "amt": 2630600,
+                "namt": 1314700,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 1,
+                "left": 5
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_010_1",
+            "rname": "Deluxe",
+            "mx": 2,
+            "rp": [
+              {
+                "pid": "lunar77154633076",
+                "pname": "Refundable with Breakfast",
+                "amt": 3353600,
+                "namt": 1677700,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 8
+              },
+              {
+                "pid": "lunar77545267459",
+                "pname": "Non-refundable Room Only",
+                "amt": 2792300,
+                "namt": 1395400,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 1
+              },
+              {
+                "pid": "lunar76373364310",
+                "pname": "Non-refundable with Breakfast",
+                "amt": 3232400,
+                "namt": 1617000,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 1,
+                "left": 8
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_010_2",
+            "rname": "Executive",
+            "mx": 3,
+            "rp": [
+              {
+                "pid": "lunar96060897852",
+                "pname": "Refundable with Breakfast",
+                "amt": 2259700,
+                "namt": 1129300,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 4
+              },
+              {
+                "pid": "lunar95670263469",
+                "pname": "Non-refundable Room Only",
+                "amt": 2218400,
+                "namt": 1109600,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 3
+              },
+              {
+                "pid": "lunar96842166618",
+                "pname": "Non-refundable with Breakfast",
+                "amt": 2367300,
+                "namt": 1183200,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 1,
+                "left": 6
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_010_3",
+            "rname": "Suite",
+            "mx": 4,
+            "rp": [
+              {
+                "pid": "lunar43684368766",
+                "pname": "Refundable with Breakfast",
+                "amt": 6227400,
+                "namt": 3115100,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 5
+              },
+              {
+                "pid": "lunar44075003149",
+                "pname": "Non-refundable Room Only",
+                "amt": 4985100,
+                "namt": 2491400,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 8
+              },
+              {
+                "pid": "lunar44465637532",
+                "pname": "Non-refundable with Breakfast",
+                "amt": 5431400,
+                "namt": 2716900,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 1,
+                "left": 2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hid": "luna-342128128",
+        "hname": "Hotel Tirta Bali Resort",
+        "st": 5,
+        "rt": [
+          {
+            "rid": "rmt_bali_011_0",
+            "rname": "Superior",
+            "mx": 2,
+            "rp": [
+              {
+                "pid": "lunar01996287563",
+                "pname": "Refundable with Breakfast",
+                "amt": 6877300,
+                "namt": 3440300,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 5
+              },
+              {
+                "pid": "lunar02386921946",
+                "pname": "Non-refundable Room Only",
+                "amt": 6220100,
+                "namt": 3108600,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 7
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_011_1",
+            "rname": "Deluxe",
+            "mx": 2,
+            "rp": [
+              {
+                "pid": "lunar04374017682",
+                "pname": "Refundable with Breakfast",
+                "amt": 2887100,
+                "namt": 1442900,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 3
+              },
+              {
+                "pid": "lunar03983383299",
+                "pname": "Non-refundable Room Only",
+                "amt": 2127300,
+                "namt": 1064200,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 1
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_011_2",
+            "rname": "Executive",
+            "mx": 4,
+            "rp": [
+              {
+                "pid": "lunar06267731264",
+                "pname": "Refundable with Breakfast",
+                "amt": 2628700,
+                "namt": 1315000,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 1
+              },
+              {
+                "pid": "lunar06658365647",
+                "pname": "Non-refundable Room Only",
+                "amt": 2374700,
+                "namt": 1186800,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 8
+              }
+            ]
+          },
+          {
+            "rid": "rmt_bali_011_3",
+            "rname": "Suite",
+            "mx": 2,
+            "rp": [
+              {
+                "pid": "lunar20902552339",
+                "pname": "Refundable with Breakfast",
+                "amt": 979200,
+                "namt": 489400,
+                "cur": "IDR",
+                "ref": 1,
+                "bf": 1,
+                "left": 5
+              },
+              {
+                "pid": "lunar20511917956",
+                "pname": "Non-refundable Room Only",
+                "amt": 695600,
+                "namt": 348000,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 0,
+                "left": 2
+              },
+              {
+                "pid": "lunar21683821105",
+                "pname": "Non-refundable with Breakfast",
+                "amt": 742000,
+                "namt": 370800,
+                "cur": "IDR",
+                "ref": 0,
+                "bf": 1,
+                "left": 4
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

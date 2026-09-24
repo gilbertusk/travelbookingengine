@@ -1,0 +1,32 @@
+{
+  "name": "@tbe/supplier-adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "fixtures:capture": "node src/testing/capture-fixtures.mjs"
+  },
+  "dependencies": {
+    "@tbe/shared-kernel": "workspace:*",
+    "fast-xml-parser": "^5.11.1",
+    "undici": "^8.11.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tbe/tsconfig": "workspace:*",
+    "@vitest/coverage-v8": "^5.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

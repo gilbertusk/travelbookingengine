@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "payload": {
+    "ref": "bkg_26b09b122ef14d2893ac",
+    "state": "cancelled",
+    "price": "262.37",
+    "currency": "USD",
+    "dates": {
+      "from": "2026-11-10",
+      "to": "2026-11-12"
+    }
+  }
+}
