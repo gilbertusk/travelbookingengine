@@ -9,7 +9,10 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import { createCatalogRouter } from '../http/catalog-routes.js'
-import type { CatalogDeps } from '../application/ports.js'
+import { createSearchRouter } from '../http/search-routes.js'
+import type { CatalogDeps, SearchDeps } from '../application/ports.js'
+import type { DeadlineFactory } from '../application/fan-out.js'
+import type { SightingBuffer } from '../application/resolve-properties.js'
 import type { SnapshotHolder } from './snapshot-holder.js'
 
 /**
@@ -18,6 +21,10 @@ import type { SnapshotHolder } from './snapshot-holder.js'
  */
 export interface SearchHttpOptions {
   readonly deps: CatalogDeps
+  readonly search: SearchDeps
+  readonly deadline: DeadlineFactory
+  readonly sightings: SightingBuffer
+  readonly onLateError: (supplier: string, error: unknown) => void
   readonly holder: SnapshotHolder
   readonly logger: Logger
   readonly serviceName: string
@@ -44,6 +51,16 @@ export function createSearchHttpApp(options: SearchHttpOptions): {
       [...(options.extraChecks ?? []), catalogCheck(options.holder)],
       options.logger,
     ),
+  )
+
+  app.use(
+    createSearchRouter({
+      deps: options.search,
+      snapshot: () => options.holder.current(),
+      deadline: options.deadline,
+      sightings: options.sightings,
+      onLateError: options.onLateError,
+    }),
   )
 
   app.use(

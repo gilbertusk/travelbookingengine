@@ -255,6 +255,12 @@ importers:
       '@prisma/client':
         specifier: ^7.10.0
         version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2))(typescript@7.0.2)
+      '@tbe/event-contracts':
+        specifier: workspace:*
+        version: link:../../packages/event-contracts
+      '@tbe/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@tbe/money':
         specifier: workspace:*
         version: link:../../packages/money
@@ -273,6 +279,9 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      undici:
+        specifier: ^7.17.0
+        version: 7.29.1
       uuid:
         specifier: ^14.0.2
         version: 14.0.2
@@ -6282,6 +6291,10 @@ packages:
 
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
+    engines: {node: '>=20.18.1'}
 
   undici@8.11.0:
     resolution: {integrity: sha512-AdzuGcAkzhbha3GgCSoUBx2P0quwym6qdFNCQz/fDGZc8w9XJ741wHUbt2kTmfPz+ZIOMkySFkiY7RXmiDDC8w==}
@@ -12466,6 +12479,8 @@ snapshots:
       which-boxed-primitive: 1.1.1
 
   undici-types@7.18.2: {}
+
+  undici@7.29.1: {}
 
   undici@8.11.0: {}
 

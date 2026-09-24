@@ -86,6 +86,17 @@ export const ROUTES: readonly RouteDefinition[] = [
     timeoutMs: TIMEOUT.search,
   },
   {
+    // Autocomplete dan halaman properti dari katalog (Step 12b). Dilayani
+    // snapshot di memori search-service, jadi anggaran waktunya jauh lebih
+    // longgar daripada yang dibutuhkan — tetapi tetap dibatasi seperti
+    // pencarian, karena kotak pencarian memanggilnya pada setiap ketikan.
+    prefix: '/catalog',
+    service: 'search',
+    requiresAuth: false,
+    rateLimit: 'search',
+    timeoutMs: TIMEOUT.search,
+  },
+  {
     // Harus berada SEBELUM /bookings: pencocokan mengambil awalan terpanjang,
     // tetapi urutan tetap ditulis eksplisit agar terbaca manusia.
     prefix: '/bookings/stream',

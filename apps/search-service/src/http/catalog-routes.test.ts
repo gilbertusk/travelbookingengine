@@ -4,6 +4,8 @@ import { describe, expect, test } from 'vitest'
 import { createSearchHttpApp } from '../composition/app.js'
 import { createSnapshotHolder } from '../composition/snapshot-holder.js'
 import { harness, mapping, property, sourceOf } from '../testing/fakes.js'
+import { manualDeadline, searchHarness } from '../testing/search-fakes.js'
+import { createSightingBuffer } from '../application/resolve-properties.js'
 import type { UnmappedProperty } from '../domain/property.js'
 
 /**
@@ -63,6 +65,12 @@ async function appWith(
 
   const { app } = createSearchHttpApp({
     deps: world.deps,
+    // Jalur pencarian tidak disentuh berkas uji ini; yang diuji di sini
+    // adalah rute katalog. Perangkaiannya tetap yang sama dengan produksi.
+    search: searchHarness().deps,
+    deadline: manualDeadline().factory,
+    sightings: createSightingBuffer(),
+    onLateError: () => undefined,
     holder,
     logger,
     serviceName: 'search-service',

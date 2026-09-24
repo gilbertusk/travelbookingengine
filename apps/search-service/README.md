@@ -1,10 +1,86 @@
 # search-service
 
-Katalog properti dan pemetaan supplier. Fan-out pencarian menyusul pada Step 13.
+Jantung produk: orkestrator pencarian teragregasi, katalog properti, dan pemetaan supplier.
 
-Memenuhi FR-04, FR-08, dan FR-30. Konsekuensi langsung [ADR-0001](../../docs/adr/0001-identitas-properti-lintas-supplier.md).
+Memenuhi FR-01 sampai FR-05, FR-08, FR-10, NFR-01, dan NFR-03. Konsekuensi langsung [ADR-0001](../../docs/adr/0001-identitas-properti-lintas-supplier.md).
 
-## Batas yang tidak boleh dilanggar
+## Anggaran waktu, dan apa yang terjadi setelahnya
+
+**Masalah nomor 1 di PRD: latensi supplier tidak seragam.** LUNA menjawab sekitar tiga detik. Menunggunya berarti seluruh pencarian menunggu tiga detik, dan pengguna sudah pergi jauh sebelum itu.
+
+Fan-out berjalan dengan anggaran waktu — 1200ms sebagai titik awal. Setelah anggaran habis, hasil dari supplier yang sudah menjawab dikembalikan apa adanya.
+
+**Supplier yang melewati anggaran TIDAK dibatalkan.**
+
+```
+t=0     ┌── SKY   ──► 200ms  ✓ masuk hasil
+        ├── NOVA  ──► 600ms  ✓ masuk hasil
+        └── LUNA  ──────────────────────► 3000ms
+t=1200  hasil dikembalikan (SKY, NOVA)          │
+                                                ▼
+                                    disimpan ke cache lapis 2
+                                    pencarian berikutnya dapat LUNA
+                                    tanpa menunggu sedetik pun
+```
+
+Inilah butir terakhir US-01, dan detail yang membedakan implementasi serius dari yang asal jalan. Tanpa ini LUNA tidak pernah berkontribusi sama sekali: ia selalu terlambat, jadi inventarisnya hilang **selamanya** dari hasil pencarian — bukan karena tidak ada, melainkan karena tidak pernah sempat.
+
+Dibuktikan tanpa satu milidetik pun benar-benar berlalu. Anggaran diwakili port `Deadline` yang dihabiskan tangan oleh pengujian, dan supplier yang menggantung dilepas ketika pengujian memutuskannya. Uji yang benar-benar menunggu 1200ms akan lambat; uji yang menunggu 50ms akan lulus di mesin cepat dan gagal di CI yang sibuk. Keduanya menguji penjadwal sistem operasi, bukan kode ini.
+
+## Cache berlapis
+
+|         | Isinya                       | Kunci                          | TTL    |
+| ------- | ---------------------------- | ------------------------------ | ------ |
+| Lapis 1 | hasil gabungan berharga jual | seluruh kriteria + penyaring   | 5 mnt  |
+| Lapis 2 | jawaban mentah satu supplier | supplier + kota, tanggal, tamu | 10 mnt |
+
+Pembagiannya bukan optimasi bertingkat. Lapis kedua punya satu tugas yang tidak dapat dilakukan lapis pertama: **memanen jawaban yang datang setelah anggaran habis.** Ia juga alasan pemulihan satu supplier tidak membatalkan seluruh cache — yang kedaluwarsa hanya entri supplier itu.
+
+Kunci lapis kedua sengaja **tidak memuat penyaring maupun urutan**: keduanya diterapkan pada hasil, bukan pada permintaan ke supplier. Menyertakannya akan memecah entri cache per kombinasi penyaring sementara jawaban supplier-nya sama persis.
+
+### Normalisasi menentukan apakah cache bekerja
+
+Huruf besar-kecil kota, spasi berlebih, dan urutan daftar fasilitas semuanya adalah pencarian yang sama bagi pengguna. Kalau kuncinya berbeda, setiap variasi memicu fan-out sendiri dan tingkat kena cache runtuh **tanpa satu pun galat yang terlihat**.
+
+Sebaliknya, kriteria yang benar-benar berbeda tidak boleh bertabrakan: hasil untuk dua tamu yang disajikan kepada pemesan empat tamu adalah kesalahan yang baru ketahuan saat pemesanannya ditolak. Kedua sifat itu diuji terpisah — menguji hanya yang pertama akan lulus dengan kunci konstan.
+
+### Cache stampede
+
+Seratus permintaan serentak untuk kunci yang sama hanya memicu **satu** fan-out:
+
+```ts
+const responses = await Promise.all(Array.from({ length: 100 }, () => run(world)))
+
+expect(world.suppliers.searched.get('SKY')).toBe(1)
+expect(world.pricing.calls.count).toBe(1)
+expect(responses.every((item) => item.properties.length === 1)).toBe(true)
+```
+
+Baris terakhir penting: menghitung panggilan saja dapat lulus dengan kode yang mengembalikan hasil kosong untuk sembilan puluh sembilan di antaranya.
+
+Penguncian dua lapis — dalam proses, lalu di Redis. Yang kalah mengambil kunci **menjalankan pekerjaannya sendiri**, bukan menunggu pemegang kunci: menunggu mengubah kegagalan satu pemegang kunci menjadi kegagalan seratus permintaan sekaligus.
+
+## Hasil parsial
+
+Setiap respons membawa metadata yang menyebut siapa menjawab, siapa kehabisan waktu, dan siapa sedang tidak tersedia. Komponen `PartialResultNotice` di DESIGN-SYSTEM.md memakainya.
+
+Respons dari cache **menandai dirinya beserta umurnya**. Klien yang tidak tahu datanya berumur empat menit tidak dapat memutuskan apa pun tentangnya.
+
+Supplier dengan pemutus sirkuit terbuka **dilewati tanpa dipanggil** — bukan dipanggil lalu ditolak cepat. Keadaan pemutusnya dibaca dari daftar supplier yang diterbitkan supplier-service; itulah sebabnya Step 13 menambahkan bidang `circuit.state` di sana.
+
+## Penetapan harga
+
+Seluruh tawaran dilewatkan ke pricing-service dalam **satu panggilan**, bukan satu per rate plan. Bentuk port-nya yang menjaganya: tidak ada metode yang menerima satu tawaran, jadi tidak ada cara memanggilnya per rate plan bahkan kalau seseorang ingin.
+
+Harga yang dikembalikan ke klien **selalu harga jual**. `supplierTotal` tidak ada di bentuk yang dikirim keluar — bidang yang tidak ada tidak dapat bocor tanpa sengaja. Tawaran yang gagal dihitung harganya **dibuang**, bukan dikembalikan dengan harga supplier: menampilkan harga supplier berarti menjual tanpa markup.
+
+Penyaring harga karena itu berjalan **setelah** penetapan harga — ia bekerja pada harga jual. Menyaring pada harga supplier akan membuang tawaran yang sebenarnya masuk anggaran pengguna, dan menyisakan yang setelah markup justru melewatinya.
+
+## Katalog properti dan pemetaan supplier
+
+Bagian di bawah ini dibangun pada Step 12b.
+
+### Batas yang tidak boleh dilanggar
 
 **Katalog menyimpan data statis saja. Harga dan ketersediaan tidak pernah disimpan.**
 
@@ -18,7 +94,7 @@ pnpm verify:catalog
 
 Ia memeriksa ketiga model katalog untuk kolom bernama harga atau ketersediaan, dan menolak berjalan kalau modelnya sudah berganti nama — skrip yang memeriksa model yang tidak ada lagi akan lulus karena buta, bukan karena bersih.
 
-## Deduplikasi adalah pencarian di tabel
+### Deduplikasi adalah pencarian di tabel
 
 Satu hotel fisik dijual beberapa supplier dengan pengenal, ejaan nama, dan harga berbeda:
 
@@ -33,7 +109,7 @@ Ketiganya diselesaikan lewat **tabel pemetaan**, bukan pencocokan nama saat berj
 
 Pemetaannya dibangun dari **kebenaran dasar**, bukan dari tebakan. mock-supplier memakai seed tetap dan mengendalikan properti mana muncul di supplier mana, jadi jawabannya sudah dipegang — dan `GET /admin/catalog` pada mock-supplier menerbitkannya. Mencocokkan nama saat seed akan membekukan kesalahan pencocokan ke dalam basis data **sebagai kebenaran**, dan seluruh pengujian sesudahnya akan mengukur kesalahan itu alih-alih menemukannya.
 
-## Jalur pencarian tidak menyentuh basis data
+### Jalur pencarian tidak menyentuh basis data
 
 Tiga lapis, dan pembagiannya disengaja:
 
@@ -61,7 +137,7 @@ Pengukuran waktu akan lulus pada mesin cepat meski setiap pemetaan menembak Post
 
 Pencatatan properti belum terpetakan juga tidak ditunggu: kemunculan dikumpulkan di memori — digabung lebih dulu, karena satu pencarian dapat memunculkan properti yang sama dari lima supplier — lalu disiram berkala.
 
-## Properti belum terpetakan tetap ditampilkan
+### Properti belum terpetakan tetap ditampilkan
 
 **Tidak disembunyikan.** Menyembunyikannya berarti kehilangan inventaris, dan agregator yang membuang inventaris karena pemetaannya belum ada sedang merugikan dirinya sendiri demi kerapian basis data.
 
@@ -77,7 +153,7 @@ Union, bukan satu bentuk dengan slug opsional. Slug opsional akan menggoda peman
 
 Setiap kemunculan menaikkan penghitung. Antrian operator diurutkan menurut penghitung itu: properti yang sering muncul merugikan paling banyak pencarian, dan memetakannya memberi hasil terbesar per menit kerja operator.
 
-## Slug bersifat permanen
+### Slug bersifat permanen
 
 Nama properti berubah — hotel berganti merek, supplier memperbaiki ejaan, operator merapikan kapitalisasi. **Slug tidak ikut berubah.**
 
@@ -87,7 +163,7 @@ Ditegakkan di dua tempat: `buildSeedPlan` memakai slug lama untuk properti yang 
 
 Pembedanya angka berurutan, bukan potongan UUID. Dua hotel bernama sama di kota yang sama memang ada, dan `ibis-bandung-2` masih terbaca manusia, masih dapat diketik, dan masih masuk akal ketika muncul di hasil mesin pencari.
 
-## Autocomplete (FR-08)
+### Autocomplete (FR-08)
 
 Full-text PostgreSQL, bukan Elasticsearch. Katalog ini ratusan baris dan jarang berubah; menambah satu sistem pencarian lagi berarti menambah satu sumber kegagalan dan satu salinan data yang harus dijaga tetap sinkron — untuk tabel yang muat di memori. Lihat PRD Bab 12.
 
@@ -112,6 +188,11 @@ pnpm infra:up
 pnpm --filter @tbe/search-service db:migrate
 pnpm --filter @tbe/mock-supplier dev
 pnpm --filter @tbe/search-service db:seed
+
+# Pencarian memanggil keduanya; tanpa mereka, hasilnya selalu kosong
+pnpm --filter @tbe/supplier-service dev
+pnpm --filter @tbe/pricing-service dev
+
 pnpm --filter @tbe/search-service dev
 ```
 
@@ -139,4 +220,6 @@ Zona waktu **wajib** saat membuat properti, bukan opsional dengan bawaan. Bawaan
 pnpm --filter @tbe/search-service test
 ```
 
-118 test, cakupan 99,5% pernyataan. Uji HTTP dirangkai lewat factory yang sama dengan produksi — hanya port-nya yang dipalsukan.
+258 test, cakupan 94,7% pernyataan. Uji HTTP dirangkai lewat factory yang sama dengan produksi — hanya port-nya yang dipalsukan.
+
+Tidak satu pun uji di service ini mengukur waktu atau memanggil `setTimeout`. Anggaran waktu, supplier lambat, dan seratus permintaan serentak semuanya dikendalikan tangan lewat port — uji yang bergantung pada jam mesin menguji jamnya, bukan kodenya.

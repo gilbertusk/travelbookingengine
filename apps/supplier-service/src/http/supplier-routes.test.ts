@@ -1,8 +1,17 @@
 import { createLogger } from '@tbe/shared-kernel'
+import { DEFAULT_CIRCUIT_POLICY } from '../domain/circuit.js'
 import request from 'supertest'
 import { describe, expect, test } from 'vitest'
 import { createSupplierHttpApp } from '../composition/app.js'
-import { booking, err, failure, harness, memoryDirectory, ok } from '../testing/fakes.js'
+import {
+  booking,
+  err,
+  failure,
+  harness,
+  memoryCircuitStore,
+  memoryDirectory,
+  ok,
+} from '../testing/fakes.js'
 
 /**
  * Antarmuka internal.
@@ -188,6 +197,45 @@ describe('konfigurasi supplier', () => {
       .send({ isActive: false })
 
     expect(response.status).toBe(404)
+  })
+
+  test('daftar supplier membawa keadaan pemutusnya saat ini', async () => {
+    // search-service memakainya untuk MELEWATI supplier yang sudah terbukti
+    // tumbang tanpa memanggilnya. Tanpa bidang ini, satu-satunya cara
+    // mengetahui pemutus terbuka adalah memanggil lalu ditolak — satu
+    // perjalanan jaringan per supplier per pencarian untuk jawaban yang
+    // sudah diketahui.
+    const directory = memoryDirectory()
+    await directory.update('SKY', { isActive: true })
+    const world = harness({ directory })
+
+    const response = await request(appWith(world)).get('/internal/suppliers')
+
+    expect(response.body.data[0].circuit.state).toBe('closed')
+  })
+
+  test('pemutus yang terbuka dilaporkan terbuka', async () => {
+    const policy = { ...DEFAULT_CIRCUIT_POLICY, failureThreshold: 1 }
+    const directory = memoryDirectory({ SKY: { circuit: policy } })
+    await directory.update('SKY', { isActive: true })
+
+    const circuits = memoryCircuitStore()
+    const world = harness({ directory, circuits })
+
+    // Satu kegagalan sudah cukup membuka pemutusnya pada ambang ini, dan
+    // dicatat pada waktu jam palsu yang sama dengan yang dibaca handler —
+    // pemutus yang dibuka "jauh di masa lalu" akan dilaporkan setengah
+    // terbuka, bukan terbuka.
+    await circuits.record(
+      { supplier: 'SKY', operation: 'search' },
+      'failure',
+      policy,
+      world.clock.now(),
+    )
+
+    const response = await request(appWith(world)).get('/internal/suppliers')
+
+    expect(response.body.data[0].circuit.state).toBe('open')
   })
 
   test('ambang pemutus dapat diubah saat berjalan', async () => {

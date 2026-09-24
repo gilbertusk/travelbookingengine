@@ -189,11 +189,47 @@ function cancelHandler(deps: ResilienceDeps): RequestHandler {
   }
 }
 
+/**
+ * Daftar supplier beserta KEADAAN PEMUTUSNYA saat ini.
+ *
+ * Keadaan pemutus disertakan karena search-service membutuhkannya untuk
+ * melewati supplier yang sudah terbukti tumbang TANPA MEMANGGILNYA. Tanpa
+ * bidang ini, satu-satunya cara mengetahui pemutus terbuka adalah memanggil
+ * lalu ditolak — dan meski penolakannya cepat, ia tetap satu perjalanan
+ * jaringan per supplier per pencarian untuk jawaban yang sudah diketahui.
+ *
+ * Yang dilaporkan adalah keadaan pemutus operasi `search`, bukan gabungan
+ * seluruh operasi: pemutusnya memang satu per supplier per operasi, dan
+ * pencarian yang tumbang tidak berarti pemesanan ikut tumbang.
+ *
+ * `decide` dipakai, bukan pembacaan mentah, supaya pemutus yang sudah
+ * melewati durasinya dilaporkan sebagai setengah terbuka — bukan terbuka.
+ * Melaporkannya terbuka berarti search-service melewatinya terus dan
+ * percobaan pemulihannya tidak pernah terjadi.
+ */
 function listHandler(deps: ResilienceDeps): RequestHandler {
   return (_req, res, next) => {
-    void deps.directory.list().then((settings) => {
-      res.json(success(settings))
-    }, next)
+    const now = deps.clock.now()
+
+    void deps.directory
+      .list()
+      .then(
+        async (settings) =>
+          await Promise.all(
+            settings.map(async (supplier) => {
+              const decision = await deps.circuits.decide(
+                { supplier: supplier.code, operation: 'search' },
+                supplier.circuit,
+                now,
+              )
+
+              return { ...supplier, circuit: { ...supplier.circuit, state: decision.state } }
+            }),
+          ),
+      )
+      .then((rows) => {
+        res.json(success(rows))
+      }, next)
   }
 }
 

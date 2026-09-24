@@ -1,7 +1,19 @@
 // Harus paling pertama — lihat catatan pada telemetry.ts.
 import { tracingSdk } from './telemetry.js'
 
-import { createApp, createLogger, tracingResource, type ManagedResource } from '@tbe/shared-kernel'
+import {
+  createApp,
+  createLogger,
+  createMetrics,
+  tracingResource,
+  type ManagedResource,
+} from '@tbe/shared-kernel'
+import {
+  createEventPublisher,
+  createKafkaClient,
+  producerResource,
+  toProducerPort,
+} from '@tbe/messaging'
 import { Redis } from 'ioredis'
 import { v7 as uuidv7 } from 'uuid'
 import { createSearchHttpApp } from './composition/app.js'
@@ -21,6 +33,18 @@ import {
   createRedisSuggestionCache,
   invalidateSuggestions,
 } from './infrastructure/redis-suggestions.js'
+import {
+  createHttpPricingGateway,
+  createHttpSupplierGateway,
+} from './infrastructure/http-gateways.js'
+import {
+  createRedisResultCache,
+  createRedisSingleFlight,
+  createRedisSupplierCache,
+} from './infrastructure/redis-search-cache.js'
+import { createKafkaSearchEvents } from './infrastructure/kafka-search-events.js'
+import { createSearchMetrics } from './infrastructure/prom-metrics.js'
+import { systemClock, systemDeadline } from './infrastructure/system.js'
 
 /** Composition root. Satu-satunya tempat wiring terjadi. */
 
@@ -76,8 +100,60 @@ const deps = {
  */
 const sightings = createSightingBuffer()
 
+const kafka = createKafkaClient({ clientId: config.SERVICE_NAME, brokers: [config.KAFKA_BROKERS] })
+const producer = kafka.producer()
+
+const metrics = createMetrics({ serviceName: config.SERVICE_NAME })
+
+const onCacheError = (error: unknown): void => {
+  logger.warn({ error }, 'cache pencarian tidak dapat diakses, melanjutkan tanpa cache')
+}
+
+const searchDeps = {
+  catalog: () => holder.current(),
+  suppliers: createHttpSupplierGateway({
+    baseUrl: config.SUPPLIER_SERVICE_URL,
+    timeoutMs: config.SUPPLIER_TIMEOUT_MS,
+  }),
+  pricing: createHttpPricingGateway({
+    baseUrl: config.PRICING_SERVICE_URL,
+    timeoutMs: config.PRICING_TIMEOUT_MS,
+  }),
+  results: createRedisResultCache(redis, {
+    resultTtlSeconds: config.SEARCH_RESULT_TTL_SECONDS,
+    supplierTtlSeconds: config.SEARCH_SUPPLIER_TTL_SECONDS,
+    onCacheError,
+  }),
+  supplierResults: createRedisSupplierCache(redis, {
+    resultTtlSeconds: config.SEARCH_RESULT_TTL_SECONDS,
+    supplierTtlSeconds: config.SEARCH_SUPPLIER_TTL_SECONDS,
+    onCacheError,
+  }),
+  singleFlight: createRedisSingleFlight(redis, {
+    lockTtlSeconds: config.SEARCH_LOCK_TTL_SECONDS,
+    onCacheError,
+  }),
+  events: createKafkaSearchEvents(createEventPublisher(toProducerPort(producer))),
+  metrics: createSearchMetrics(metrics),
+  clock: systemClock,
+  settings: {
+    budgetMs: config.SEARCH_BUDGET_MS,
+    // Tanggal kalender hari ini, untuk menolak pencarian di masa lampau.
+    // Dibaca ulang setiap permintaan, bukan sekali saat startup — proses yang
+    // hidup berhari-hari akan menolak seluruh pencarian hari ini kalau
+    // "hari ini" dibekukan saat startup.
+    today: () => new Date().toISOString().slice(0, 10),
+  },
+}
+
 const { app } = createSearchHttpApp({
   deps,
+  search: searchDeps,
+  deadline: systemDeadline,
+  sightings,
+  onLateError: (supplier, error) => {
+    logger.warn({ supplier, error }, 'jawaban supplier yang terlambat gagal disimpan')
+  },
   holder,
   logger,
   serviceName: config.SERVICE_NAME,
@@ -185,6 +261,7 @@ const managed = createApp({
     tracingResource(tracingSdk),
     prismaResource(prisma),
     redisResource,
+    producerResource(producer),
     catalogResource,
     everySeconds('penyegaran katalog', config.CATALOG_REFRESH_SECONDS, async () => {
       await holder.refresh()
