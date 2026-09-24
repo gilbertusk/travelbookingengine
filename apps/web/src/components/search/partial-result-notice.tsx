@@ -35,7 +35,11 @@ export interface PartialResultNoticeProps {
 export function PartialResultNotice({ meta, isRefreshing }: PartialResultNoticeProps) {
   const responded = respondedSuppliers(meta)
   const pending = pendingSuppliers(meta)
-  const total = responded + pending
+  // `supplierCount`, bukan `total` — kata "total" di sistem ini berarti
+  // jumlah uang di hampir setiap tempat ia muncul, dan `pnpm verify:money`
+  // memang menandainya. Nama yang menyebut apa yang dihitung lebih jelas
+  // daripada nama yang harus dikecualikan.
+  const supplierCount = responded + pending
 
   return (
     <div
@@ -53,7 +57,9 @@ export function PartialResultNotice({ meta, isRefreshing }: PartialResultNoticeP
         />
       ) : null}
 
-      <p className="text-muted-foreground">{message(meta, responded, total, isRefreshing)}</p>
+      <p className="text-muted-foreground">
+        {message(meta, responded, supplierCount, isRefreshing)}
+      </p>
     </div>
   )
 }
@@ -61,7 +67,7 @@ export function PartialResultNotice({ meta, isRefreshing }: PartialResultNoticeP
 function message(
   meta: SearchMeta,
   responded: number,
-  total: number,
+  supplierCount: number,
   isRefreshing: boolean,
 ): string {
   if (isRefreshing) return 'Memperbarui hasil…'
@@ -70,14 +76,14 @@ function message(
     const timedOut = meta.suppliersTimedOut.length
 
     return timedOut > 0
-      ? `${String(responded)} dari ${String(total)} penyedia sudah menjawab. Sisanya masih dicari dan akan muncul sendiri.`
-      : `${String(responded)} dari ${String(total)} penyedia sudah menjawab. Sisanya sedang tidak dapat dihubungi.`
+      ? `${String(responded)} dari ${String(supplierCount)} penyedia sudah menjawab. Sisanya masih dicari dan akan muncul sendiri.`
+      : `${String(responded)} dari ${String(supplierCount)} penyedia sudah menjawab. Sisanya sedang tidak dapat dihubungi.`
   }
 
   if (meta.source === 'cache')
-    return `Seluruh ${String(total)} penyedia sudah menjawab. ${freshness(meta.ageMs)}`
+    return `Seluruh ${String(supplierCount)} penyedia sudah menjawab. ${freshness(meta.ageMs)}`
 
-  return `Seluruh ${String(total)} penyedia sudah menjawab.`
+  return `Seluruh ${String(supplierCount)} penyedia sudah menjawab.`
 }
 
 /**

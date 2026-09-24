@@ -33,6 +33,27 @@ export default [
   },
   ...node.map(exceptWeb),
   ...react19.map(onlyWeb),
+
+  /**
+   * Skenario k6.
+   *
+   * k6 bukan Node: ia menyuntikkan `__VU`, `__ITER`, dan `__ENV` sebagai
+   * global, dan mengimpor modul bawaannya lewat penentu `k6/*` yang tidak
+   * dapat diselesaikan penyelesai Node mana pun. Dideklarasikan di sini
+   * alih-alih dibungkam satu per satu dengan komentar — tiga global yang
+   * dipakai di empat berkas akan menjadi selusin komentar yang tidak
+   * menjelaskan apa-apa.
+   *
+   * Aturannya sengaja TIDAK dilonggarkan lebih jauh. Skenario uji beban
+   * adalah kode yang hasilnya dikutip sebagai bukti, dan kode seperti itu
+   * layak dijaga sama ketatnya dengan kode yang dijalankan pengguna.
+   */
+  {
+    files: ['infra/k6/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: { __VU: 'readonly', __ITER: 'readonly', __ENV: 'readonly' },
+    },
+  },
 ]
 
 /**

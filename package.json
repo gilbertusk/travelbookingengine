@@ -22,6 +22,7 @@
     "verify:contrast": "node scripts/verify-contrast.mjs",
     "verify:money": "node scripts/verify-money.mjs",
     "verify:catalog": "node scripts/verify-catalog.mjs",
+    "verify:loadtest": "node scripts/verify-loadtest.mjs",
     "infra:up": "pnpm infra:_up && pnpm infra:_init",
     "infra:_up": "docker compose --env-file infra/.env -f infra/docker-compose.yml up -d --wait",
     "infra:_init": "docker compose --env-file infra/.env -f infra/docker-compose.yml run --rm --quiet-pull minio-init",
@@ -30,7 +31,10 @@
     "infra:logs": "docker compose --env-file infra/.env -f infra/docker-compose.yml logs -f",
     "infra:ps": "docker compose --env-file infra/.env -f infra/docker-compose.yml ps",
     "prepare": "husky",
-    "topics:create": "pnpm --filter @tbe/messaging build && pnpm --filter @tbe/messaging topics:create"
+    "topics:create": "pnpm --filter @tbe/messaging build && pnpm --filter @tbe/messaging topics:create",
+    "loadtest:search": "node infra/k6/run.mjs baseline",
+    "loadtest:search:degraded": "node infra/k6/run.mjs degraded",
+    "loadtest:cache": "node infra/k6/run.mjs cache"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",
