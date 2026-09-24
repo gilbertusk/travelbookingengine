@@ -20,6 +20,7 @@
     "verify:boundaries": "node scripts/verify-boundaries.mjs",
     "verify:tokens": "node scripts/verify-design-tokens.mjs",
     "verify:contrast": "node scripts/verify-contrast.mjs",
+    "verify:money": "node scripts/verify-money.mjs",
     "infra:up": "pnpm infra:_up && pnpm infra:_init",
     "infra:_up": "docker compose --env-file infra/.env -f infra/docker-compose.yml up -d --wait",
     "infra:_init": "docker compose --env-file infra/.env -f infra/docker-compose.yml run --rm --quiet-pull minio-init",

@@ -86,16 +86,65 @@ Commit: feat: add money package and pricing service
 
 ## Definisi Selesai
 
-- [ ] Tidak ada satu pun nilai uang bertipe `number` di seluruh repo
-- [ ] Tidak ada kolom `float` atau `double` di skema Prisma mana pun
-- [ ] Penjumlahan berulang tidak menghasilkan galat pembulatan — dibuktikan dengan test
-- [ ] Operasi lintas mata uang ditolak
-- [ ] Urutan perhitungan dinyatakan eksplisit dan diuji terhadap contoh manual
-- [ ] Rincian harga dikembalikan lengkap, bukan hanya total
-- [ ] Memproses 500 rate plan tidak menghasilkan query per item
-- [ ] Keputusan Q2 tercatat
-- [ ] Commit terbuat
+- [x] Tidak ada satu pun nilai uang bertipe `number` di seluruh repo — ditegakkan `pnpm verify:money`
+- [x] Tidak ada kolom `float` atau `double` di skema Prisma mana pun — skrip yang sama
+- [x] Penjumlahan berulang tidak menghasilkan galat pembulatan — dibuktikan dengan test
+- [x] Operasi lintas mata uang ditolak — saat kompilasi lewat `NoInfer`, saat jalan bila tipenya melebur
+- [x] Urutan perhitungan dinyatakan eksplisit dan diuji terhadap contoh manual — 19 test domain
+- [x] Rincian harga dikembalikan lengkap, bukan hanya total
+- [x] Memproses 500 rate plan tidak menghasilkan query per item — dibuktikan dengan menghitung pembacaan
+- [x] Keputusan Q2 tercatat — ADR-0002
+- [ ] Migrasi dan seed berjalan terhadap Postgres sungguhan — **belum diverifikasi**, Docker mati
+- [x] Cakupan test: money 98.6%, pricing-service 100%
+- [x] Commit terbuat
 
 ## Catatan
 
-Uji sederhana yang membuktikan penanganan uang benar: jumlahkan `0.1` seratus kali. Dengan `number` hasilnya bukan `10`. Simpan test ini — ia menjelaskan keputusan desain lebih cepat daripada paragraf mana pun.
+Uji yang menjumlahkan `0.1` seratus kali disimpan di `packages/money/src/money.test.ts`. Ia menjelaskan keputusan desainnya lebih cepat daripada seluruh ADR-0002.
+
+### Temuan saat mengerjakan step ini
+
+**1. Eksponen IDR diputuskan 0, menyimpang dari ISO 4217.** dinero.js memberi IDR eksponen 2 mengikuti standar. Memakainya berarti setiap angka rupiah di seluruh sistem menjadi ambigu — `2893400` bisa berarti Rp 2.893.400 atau Rp 28.934,00, dan tidak ada apa pun dalam tipe yang membedakannya. `packages/money` karena itu memelihara tabel eksponennya sendiri. Dicatat di ADR-0002.
+
+**2. Rincian harga tidak dapat dibulatkan per komponen.** Membulatkan `base`, `markup`, dan `tax` masing-masing menghasilkan jumlah yang meleset satu satuan dari total yang dibulatkan sekali. Yang dipakai: `base` dan `markup` dibulatkan, lalu `tax` diturunkan sebagai `total − base − markup`. Rinciannya dengan begitu selalu menjumlah tepat, dan totalnya tetap hasil pembulatan sekali di akhir.
+
+**3. Syarat "tanpa query per item" hanya dapat dibuktikan dengan menghitung pembacaan.** Versi yang mengukur waktu akan lulus pada mesin cepat meski kuerinya berulang lima ratus kali. Penyimpanan uji karena itu menghitung dirinya dibaca. Ditambah satu uji pendamping yang memastikan kelima ratus hasilnya berbeda satu sama lain — tanpa itu, kode yang mengembalikan hasil yang sama untuk semua item akan lulus hitungan pembacaan.
+
+**4. Prioritas aturan saja tidak cukup untuk determinisme.** Dua aturan berprioritas sama akan dipilih menurut urutan baris dari basis data, dan urutan baris berubah setiap kali ada yang diedit. Pemutusnya: kekhususan cakupan, lalu pengenal. Yang terakhir bukan karena pengenal punya arti, melainkan supaya hasilnya tidak berubah antar pemanggilan.
+
+**5. Aturan markup yang rusak diperlakukan sebagai "tanpa markup", bukan "nol persen".** Perbedaannya terlihat di rincian: tanpa markup tidak menyebut aturan mana pun. Tetapi jalur pembuatannya menolak aturan seperti itu lebih dulu — aturan yang tersimpan tetapi tidak pernah berlaku adalah aturan yang operatornya yakin sedang berjalan.
+
+**6. `verify-money.mjs` menemukan empat kecocokan, tiga di antaranya salah tangkap — dan menyisirnya justru memperbaiki kode.** `PaginationMeta.total` di shared-kernel adalah cacah baris, bukan uang; diganti menjadi `totalItems`, yang memang lebih jelas. `priceDriftRate` di mock-supplier adalah pecahan, bukan uang; polanya diperbaiki supaya akhiran `Rate`, `Ratio`, `Factor`, dan `Percent` tidak lagi tertangkap. Yang keempat, bentuk kawat SKY, dikecualikan dengan alasan tertulis: mock-supplier memang bertugas memancarkan bentuk asing.
+
+**7. Skripnya diuji dengan sengaja dilanggar.** Sebuah `totalPrice: number` dan sebuah kolom `price Float` ditanam sementara, dan keduanya tertangkap dengan nomor baris. Skrip verifikasi yang belum pernah gagal tidak membuktikan apa pun tentang kode — ia hanya membuktikan dirinya tidak berjalan.
+
+**8. Kurs terbaru dipilih menurut tanggalnya, bukan urutan barisnya.** Uji awal kebetulan menyusun kurs berurutan naik, sehingga cabang "baris ini lebih lama" tidak pernah dijalankan. Cakupan cabang yang kurang satu itu yang menunjukkannya; ditambah uji dengan urutan terbalik.
+
+**9. Factory penyimpanan Prisma melewati batas 50 baris.** Dipecah menjadi satu fungsi per operasi dengan factory yang hanya merangkai — bentuk yang sama dengan kelima adapter di Step 10.
+
+### Yang belum diverifikasi
+
+**Postgres belum pernah menyala bersama service ini.** Docker masih mati.
+
+Yang sudah terbukti lewat 114 test (38 money + 76 pricing-service): seluruh keputusan perhitungan — urutan, pembulatan sekali di akhir, perbedaan pembulatan IDR dan USD, prioritas aturan markup, kegagalan per item, jatuh kembali saat Redis tumbang, dan penolakan di batas HTTP.
+
+Yang belum terbukti: migrasi Prisma belum pernah diterapkan, seed belum pernah dijalankan, dan cache kurs belum pernah menyentuh Redis sungguhan — yang terakhir diuji lewat Redis palsu yang memaksa kegagalan baca dan tulis.
+
+Jalankan ini setelah Docker menyala:
+
+```bash
+pnpm infra:up
+cp apps/pricing-service/.env.example apps/pricing-service/.env
+pnpm --filter @tbe/pricing-service db:migrate
+pnpm --filter @tbe/pricing-service db:seed
+pnpm --filter @tbe/pricing-service dev
+```
+
+Lalu buktikan kesiapan dan satu perhitungan menyeluruh:
+
+```bash
+curl -s localhost:4005/health/ready
+curl -s -X POST localhost:4005/internal/pricing/rate-plans   -H 'content-type: application/json'   -d '{"items":[{"ref":"a","supplier":"SKY","city":"Bali","supplierTotal":{"amountMinor":1000000,"currency":"IDR"}}]}'
+```
+
+Markup seed 12% dan PPN 11% menghasilkan total Rp 1.243.200. Angka lain berarti seed atau konfigurasinya berbeda dari yang diharapkan.

@@ -7,7 +7,7 @@
  */
 
 export interface PaginationMeta {
-  readonly total: number
+  readonly totalItems: number
   readonly page: number
   readonly limit: number
 }

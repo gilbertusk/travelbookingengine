@@ -1,0 +1,6 @@
+{
+  "extends": "@tbe/tsconfig/node.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "dist", "noEmitOnError": true },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/testing/**"]
+}

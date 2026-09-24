@@ -1,5 +1,5 @@
 {
-  "name": "@tbe/supplier-adapters",
+  "name": "@tbe/money",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,14 +14,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --coverage",
-    "fixtures:capture": "node src/testing/capture-fixtures.mjs"
+    "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@tbe/money": "workspace:*",
-    "@tbe/shared-kernel": "workspace:*",
-    "fast-xml-parser": "^5.11.1",
-    "undici": "^8.11.0",
+    "dinero.js": "^2.0.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {

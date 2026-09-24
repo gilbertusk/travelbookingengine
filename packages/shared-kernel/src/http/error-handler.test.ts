@@ -77,7 +77,7 @@ describe('envelope', () => {
   })
 
   test('menyertakan meta ketika hasilnya dipaginasi', () => {
-    const meta = { total: 120, page: 2, limit: 20 }
+    const meta = { totalItems: 120, page: 2, limit: 20 }
 
     expect(success([{ id: 1 }], meta)).toEqual({ data: [{ id: 1 }], error: null, meta })
   })

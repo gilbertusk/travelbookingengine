@@ -1,0 +1,76 @@
+// Skema pricing-service.
+//
+// Tidak ada satu pun kolom Float atau Double — NFR-08. Nilai uang disimpan
+// sebagai bilangan bulat satuan terkecil ditambah kolom mata uangnya sendiri.
+// `Float` kehilangan presisi diam-diam, dan `Decimal` kembali sebagai objek
+// pustaka yang harus diurai lagi di setiap tempat yang membacanya.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MarkupKind {
+  percentage
+  fixed
+
+  @@map("markup_kind")
+}
+
+model MarkupRule {
+  id       String @id @db.Uuid
+  name     String
+  /// Angka lebih besar menang. Pemutus berikutnya adalah kekhususan cakupan.
+  priority Int    @default(0)
+
+  /// Kosong berarti berlaku untuk seluruh supplier.
+  supplier String?
+  /// Kosong berarti berlaku untuk seluruh kota. Dicocokkan tanpa huruf besar-kecil.
+  city     String?
+
+  kind MarkupKind
+
+  /// Basis poin: 1250 berarti 12,5%. Bilangan bulat, bukan pecahan.
+  percentageBasisPoints Int? @map("percentage_basis_points")
+
+  /// Nominal tetap, dua kolom. Tidak pernah satu kolom Float.
+  fixedAmountMinor Int?    @map("fixed_amount_minor")
+  fixedCurrency    String? @map("fixed_currency")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([isActive, priority])
+  @@map("markup_rules")
+}
+
+model ExchangeRate {
+  id           String @id @db.Uuid
+  fromCurrency String @map("from_currency")
+  toCurrency   String @map("to_currency")
+
+  /// Kurs sebagai bilangan bulat berskala: 16.235,75 disimpan sebagai
+  /// rate=1623575 dan scale=2. Alasannya sama dengan uang — pecahan biner
+  /// tidak dapat mewakili sebagian besar kurs dengan tepat.
+  rate  Int
+  scale Int @default(0)
+
+  /// Sejak kapan kurs ini berlaku. Baris lama TIDAK dihapus: harga pemesanan
+  /// yang sudah terjadi harus tetap dapat dijelaskan dengan kurs saat itu.
+  effectiveFrom DateTime @map("effective_from") @db.Timestamptz(3)
+
+  /// Dari mana kurs ini datang. Statis untuk MVP.
+  source String @default("static")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([fromCurrency, toCurrency, effectiveFrom])
+  @@index([fromCurrency, toCurrency, effectiveFrom])
+  @@map("exchange_rates")
+}

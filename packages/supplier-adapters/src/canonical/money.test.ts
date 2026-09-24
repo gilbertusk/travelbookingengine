@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { formatDecimalAmount, money, parseDecimalAmount } from './money.js'
+import { money, parseDecimalAmount, toDecimalString } from './money.js'
 
 /**
  * Uang.
@@ -57,21 +57,26 @@ describe('penguraian harga desimal', () => {
   })
 })
 
+/**
+ * Penulisan kembali sekarang milik `@tbe/money`; diuji di sana secara
+ * menyeluruh. Yang tersisa di sini hanya memastikan bolak-baliknya utuh
+ * untuk nilai yang benar-benar dikirim supplier.
+ */
 describe('penulisan kembali ke desimal', () => {
   test('bolak-balik menghasilkan nilai yang sama', () => {
     for (const value of ['0.05', '267.83', '1000.00']) {
       const minor = parseDecimalAmount(value, 'USD')
       expect(minor).toBeDefined()
-      expect(formatDecimalAmount(money(minor ?? 0, 'USD'))).toBe(value)
+      expect(toDecimalString(money(minor ?? 0, 'USD'))).toBe(value)
     }
   })
 
   test('IDR ditulis tanpa pecahan', () => {
-    expect(formatDecimalAmount(money(2_675_400, 'IDR'))).toBe('2675400')
+    expect(toDecimalString(money(2_675_400, 'IDR'))).toBe('2675400')
   })
 
   test('nilai di bawah satu tetap punya angka nol di depan koma', () => {
-    expect(formatDecimalAmount(money(5, 'USD'))).toBe('0.05')
-    expect(formatDecimalAmount(money(-5, 'USD'))).toBe('-0.05')
+    expect(toDecimalString(money(5, 'USD'))).toBe('0.05')
+    expect(toDecimalString(money(-5, 'USD'))).toBe('-0.05')
   })
 })

@@ -1,41 +1,23 @@
-import { z } from 'zod'
+import { CURRENCIES, EXPONENT, money, type Currency, type Money } from '@tbe/money'
 
 /**
- * Uang.
+ * Uang, dari `@tbe/money`.
  *
- * SEMENTARA: akan digantikan packages/money pada Step 12. Yang didefinisikan
- * di sini hanya yang dibutuhkan lapisan adapter — satuan terkecil dan kode
- * mata uang. Konversi antar mata uang BUKAN tanggung jawab lapisan ini;
- * adapter hanya menandai mata uang yang dipakai supplier apa adanya.
+ * Sampai Step 12 berkas ini memuat definisinya sendiri sebagai penampung
+ * sementara. Definisi itu sudah digantikan: `Money` sekarang datang dari satu
+ * tempat untuk seluruh sistem, dan seluruh aritmetikanya berjalan di sana.
  *
- * Nilai disimpan sebagai bilangan bulat dalam satuan terkecil, tidak pernah
- * sebagai pecahan. CONVENTIONS.md bagian 10: harga 267.83 yang disimpan
- * sebagai `number` akan menjadi 267.82999999999998 pada penjumlahan tertentu,
- * dan selisih satu sen per pemesanan menjadi selisih nyata pada rekonsiliasi.
+ * Yang tersisa di berkas ini hanya satu hal yang memang milik lapisan adapter:
+ * membaca harga desimal yang dikirim supplier. Itu bukan aritmetika uang —
+ * itu penguraian format, dan formatnya berbeda pada setiap supplier.
  */
 
-export const CURRENCIES = ['IDR', 'USD'] as const
-export type Currency = (typeof CURRENCIES)[number]
-
-/** Banyak angka desimal pada satuan terkecil tiap mata uang. */
-const EXPONENT: Readonly<Record<Currency, number>> = { IDR: 0, USD: 2 }
-
-export const currencySchema = z.enum(CURRENCIES)
-
-export const moneySchema = z.object({
-  /** Selalu bilangan bulat. Untuk USD berarti sen, untuk IDR berarti rupiah. */
-  amountMinor: z.number().int(),
-  currency: currencySchema,
-})
-
-export type Money = z.infer<typeof moneySchema>
-
-export function money(amountMinor: number, currency: Currency): Money {
-  return { amountMinor, currency }
-}
+export { CURRENCIES, EXPONENT, money }
+export type { Currency, Money }
+export { currencySchema, moneySchema, toDecimalString } from '@tbe/money'
 
 /**
- * Bentuk desimal yang diterima.
+ * Bentuk desimal yang diterima dari supplier.
  *
  * Pemisah ribuan diizinkan karena supplier memang mengirimkannya: `Number()`
  * atas "1,250.00" menghasilkan NaN, dan itulah jebakan yang ditanam di ZEPH.
@@ -71,15 +53,4 @@ export function parseDecimalAmount(value: string, currency: Currency): number | 
   const amount = Number(digits)
 
   return Number.isSafeInteger(amount) ? (sign === '-' ? -amount : amount) : undefined
-}
-
-/** Kebalikannya, untuk menyusun permintaan ke supplier yang memakai desimal. */
-export function formatDecimalAmount(amount: Money): string {
-  const exponent = EXPONENT[amount.currency]
-  if (exponent === 0) return String(amount.amountMinor)
-
-  const sign = amount.amountMinor < 0 ? '-' : ''
-  const digits = String(Math.abs(amount.amountMinor)).padStart(exponent + 1, '0')
-
-  return `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`
 }

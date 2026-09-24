@@ -24,14 +24,17 @@ Infrastruktur lokal dan service menyusul pada Step 02 dan seterusnya.
 
 ## Perintah
 
-| Perintah                 | Kegunaan                                                 |
-| ------------------------ | -------------------------------------------------------- |
-| `pnpm lint`              | ESLint untuk seluruh repo                                |
-| `pnpm typecheck`         | Pemeriksaan tipe per workspace                           |
-| `pnpm test`              | Uji unit                                                 |
-| `pnpm test:integration`  | Uji integrasi dengan Testcontainers                      |
-| `pnpm format`            | Prettier                                                 |
-| `pnpm verify:boundaries` | Membuktikan aturan arah ketergantungan benar-benar aktif |
+| Perintah                 | Kegunaan                                                               |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `pnpm lint`              | ESLint untuk seluruh repo                                              |
+| `pnpm typecheck`         | Pemeriksaan tipe per workspace                                         |
+| `pnpm test`              | Uji unit                                                               |
+| `pnpm test:integration`  | Uji integrasi dengan Testcontainers                                    |
+| `pnpm format`            | Prettier                                                               |
+| `pnpm verify:boundaries` | Membuktikan aturan arah ketergantungan benar-benar aktif               |
+| `pnpm verify:money`      | Membuktikan tidak ada nilai uang bertipe `number` maupun kolom pecahan |
+| `pnpm verify:tokens`     | Membuktikan komponen hanya memakai token desain                        |
+| `pnpm verify:contrast`   | Membuktikan setiap pasangan warna memenuhi WCAG AA                     |
 
 ## Struktur
 
