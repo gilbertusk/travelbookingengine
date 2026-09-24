@@ -1,0 +1,140 @@
+// Skema search-service: katalog properti dan pemetaan supplier.
+//
+// BATAS YANG TIDAK BOLEH DILANGGAR: tidak ada satu pun kolom harga atau
+// ketersediaan di berkas ini. Katalog menyimpan data STATIS — nama, alamat,
+// koordinat, zona waktu, fasilitas. Harga dan ketersediaan milik supplier,
+// selalu bersumber dari supplier pada setiap pencarian, dan tidak pernah
+// disimpan.
+//
+// Melanggar batas ini tidak akan menggagalkan apa pun hari itu juga. Yang
+// terjadi adalah harga tersimpan menjadi basi dalam hitungan menit, pengguna
+// melihat angka yang tidak ada lagi, lalu pemesanannya ditolak saat
+// pembayaran. Itu kegagalan produk yang paling merusak kepercayaan, dan
+// asalnya dari satu kolom yang terasa praktis saat ditambahkan.
+//
+// Ditegakkan `pnpm verify:catalog`, bukan hanya oleh komentar ini.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Satu hotel sebagai entitas fisik, milik sistem kita.
+///
+/// Pengenalnya stabil dan tidak berasal dari supplier mana pun. Itulah yang
+/// membuat satu hotel yang dijual tiga supplier dapat ditampilkan sebagai satu
+/// entri, dan yang membuat URL-nya dapat diindeks mesin pencari.
+model Property {
+  id String @id @db.Uuid
+
+  /// Bagian URL yang dapat diindeks. PERMANEN: nama properti boleh berubah,
+  /// slug tidak. URL yang sudah terindeks tidak boleh rusak.
+  slug String @unique
+
+  name String
+
+  /// Nama yang sudah dinormalkan — huruf kecil, tanpa tanda baca, tanpa kata
+  /// sandang. Dipakai untuk pencocokan manual di antrian properti belum
+  /// terpetakan, BUKAN untuk pemetaan otomatis.
+  normalizedName String @map("normalized_name")
+
+  address     String
+  city        String
+  countryCode String @map("country_code") @db.Char(2)
+
+  latitude  Float
+  longitude Float
+
+  /// Zona waktu IANA properti, misalnya `Asia/Makassar`.
+  ///
+  /// Dibutuhkan Step 25 untuk menghitung tenggat pembatalan. "Bebas batal
+  /// sampai 3 hari sebelum menginap" dihitung dengan zona waktu HOTEL-nya,
+  /// bukan zona waktu peramban pemesan — dan selisihnya dapat berarti satu
+  /// pengembalian dana yang seharusnya tidak terjadi.
+  timezone String
+
+  starRating  Int      @map("star_rating")
+  amenities   String[]
+  description String?
+  photos      String[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  mappings SupplierPropertyMapping[]
+
+  @@index([city])
+  @@map("properties")
+}
+
+/// Pengenal properti versi supplier, dipetakan ke properti internal.
+///
+/// Inilah yang menggantikan pencocokan kabur saat berjalan. Pencocokan
+/// dilakukan SEKALI, hasilnya disimpan, dan jalur pencarian hanya membacanya.
+model SupplierPropertyMapping {
+  id String @id @db.Uuid
+
+  supplierId         String @map("supplier_id")
+  supplierPropertyId String @map("supplier_property_id")
+
+  propertyId String   @map("property_id") @db.Uuid
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  /// Seberapa yakin pemetaan ini benar, dalam basis poin: 10000 berarti pasti.
+  /// Pemetaan dari data seed pasti; pemetaan manual operator juga pasti;
+  /// pemetaan yang disarankan sistem tidak.
+  confidence Int @default(10000)
+
+  mappedAt DateTime @default(now()) @map("mapped_at") @db.Timestamptz(3)
+  /// `seed`, `operator`, atau pengenal operator yang memetakannya.
+  mappedBy String   @map("mapped_by")
+
+  /// Satu pengenal supplier hanya boleh menunjuk satu properti. Tanpa batasan
+  /// ini, dua pemetaan yang bertentangan dapat hidup berdampingan dan hasil
+  /// pencarian berubah menurut baris mana yang terbaca lebih dulu.
+  @@unique([supplierId, supplierPropertyId])
+  @@index([propertyId])
+  @@map("supplier_property_mappings")
+}
+
+/// Properti yang dikembalikan supplier tetapi belum dikenali.
+///
+/// TIDAK disembunyikan dari hasil pencarian. Menyembunyikannya berarti
+/// kehilangan inventaris, dan agregator yang membuang inventaris karena
+/// pemetaannya belum ada sedang merugikan dirinya sendiri untuk kerapian
+/// basis data.
+model UnmappedProperty {
+  id String @id @db.Uuid
+
+  supplierId         String @map("supplier_id")
+  supplierPropertyId String @map("supplier_property_id")
+
+  /// Data mentah apa adanya dari supplier. Inilah yang ditampilkan kepada
+  /// pengguna sementara pemetaannya belum ada, dan yang dipakai operator
+  /// untuk memutuskan properti mana yang dimaksud.
+  rawName    String  @map("raw_name")
+  rawAddress String? @map("raw_address")
+  rawCity    String? @map("raw_city")
+  latitude   Float?
+  longitude  Float?
+
+  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+
+  /// Berapa kali properti ini muncul di hasil supplier tanpa pemetaan.
+  /// Penghitung inilah yang mengurutkan antrian operator: properti yang
+  /// sering muncul merugikan lebih banyak pencarian.
+  occurrences Int @default(1)
+
+  /// Sudah diselesaikan operator — dipetakan atau ditolak. Baris tidak
+  /// dihapus supaya penghitung kemunculannya tetap dapat dibaca.
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+
+  @@unique([supplierId, supplierPropertyId])
+  @@index([resolvedAt, occurrences])
+  @@map("unmapped_properties")
+}

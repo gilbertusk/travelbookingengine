@@ -65,6 +65,18 @@ curl -X POST localhost:4000/admin/inventory/reset
 curl localhost:4000/admin/state
 ```
 
+### Kebenaran dasar katalog
+
+```bash
+curl localhost:4000/admin/catalog
+```
+
+Menerbitkan properti kanonik beserta daftar supplier yang menjualnya dan pengenal versi masing-masing — sesuatu yang **tidak pernah diterbitkan supplier sungguhan**. Supplier sungguhan tidak tahu apa-apa tentang supplier lain, dan justru ketidaktahuan itulah yang membuat tabel pemetaan di Step 12b perlu ada.
+
+Endpoint ini tetap dibuat karena seed katalog harus membangun pemetaan dari data seed, bukan dari tebakan. Mencocokkan nama pada tahap seed akan membekukan kesalahan pencocokan ke dalam basis data sebagai kebenaran, dan seluruh pengujian sesudahnya akan mengukur kesalahan itu alih-alih menemukannya.
+
+Batasnya ketat: tidak satu pun kode yang berjalan pada jalur pencarian boleh memanggilnya. Ia berada di bawah `/admin` supaya batas itu terlihat dari URL-nya.
+
 ### Mode kegagalan
 
 | Mode               | Perilaku                              | Kenapa perlu diuji terpisah                 |

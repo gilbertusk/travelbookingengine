@@ -17,6 +17,11 @@
  * 2. Skema Prisma tidak boleh memuat `Float` atau `Decimal`. Uang disimpan
  *    sebagai bilangan bulat satuan terkecil ditambah kolom mata uang.
  *
+ *    Larangan ini berlaku menyeluruh, bukan hanya untuk kolom yang namanya
+ *    menyebut uang — kolom uang tidak selalu bernama uang. Pengecualiannya
+ *    didaftar satu per satu di [ALLOWED_FLOAT_COLUMNS], sehingga setiap
+ *    pengecualian adalah keputusan yang tertulis, bukan celah dalam pola.
+ *
  * Yang DIIZINKAN bertipe number, dan sengaja: `amountMinor` di dalam package
  * money itu sendiri, basis poin, eksponen, dan skala. Semuanya bukan nilai
  * uang — melainkan bilangan bulat yang menyusunnya.
@@ -86,11 +91,22 @@ const TYPESCRIPT_RULES = [
   },
 ]
 
+/**
+ * Kolom pecahan yang BUKAN uang, dan karena itu diizinkan.
+ *
+ * Koordinat geografis adalah pecahan sungguhan: tidak ada satuan terkecil
+ * yang masuk akal, tidak ada yang direkonsiliasi dengannya, dan presisi lima
+ * desimal sudah setara sekitar satu meter. Menyimpannya sebagai bilangan
+ * bulat berskala hanya menambah konversi di setiap tempat yang membacanya.
+ */
+const ALLOWED_FLOAT_COLUMNS = new Set(['latitude', 'longitude'])
+
 const PRISMA_RULES = [
   {
     name: 'kolom pecahan biner',
-    pattern: /^\s*\w+\s+(Float|Decimal)\b.*$/gm,
-    why: 'Float dan Decimal menyimpan uang sebagai pecahan. Uang disimpan sebagai bilangan bulat satuan terkecil (Int atau BigInt) ditambah kolom mata uang.',
+    pattern: /^\s*(\w+)\s+(Float|Decimal)\b.*$/gm,
+    allow: (match) => ALLOWED_FLOAT_COLUMNS.has(match[1] ?? ''),
+    why: 'Float dan Decimal menyimpan uang sebagai pecahan. Uang disimpan sebagai bilangan bulat satuan terkecil (Int atau BigInt) ditambah kolom mata uang. Kolom pecahan yang bukan uang didaftar di ALLOWED_FLOAT_COLUMNS beserta alasannya.',
   },
 ]
 
@@ -103,13 +119,15 @@ function scan(glob, rules) {
 
 function inspect(file, source, rules) {
   return rules.flatMap((rule) =>
-    [...source.matchAll(rule.pattern)].map((match) => ({
-      file,
-      line: lineNumber(source, match.index),
-      rule: rule.name,
-      text: match[0].trim(),
-      why: rule.why,
-    })),
+    [...source.matchAll(rule.pattern)]
+      .filter((match) => rule.allow?.(match) !== true)
+      .map((match) => ({
+        file,
+        line: lineNumber(source, match.index),
+        rule: rule.name,
+        text: match[0].trim(),
+        why: rule.why,
+      })),
   )
 }
 

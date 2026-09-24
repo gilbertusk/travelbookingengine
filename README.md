@@ -33,6 +33,7 @@ Infrastruktur lokal dan service menyusul pada Step 02 dan seterusnya.
 | `pnpm format`            | Prettier                                                               |
 | `pnpm verify:boundaries` | Membuktikan aturan arah ketergantungan benar-benar aktif               |
 | `pnpm verify:money`      | Membuktikan tidak ada nilai uang bertipe `number` maupun kolom pecahan |
+| `pnpm verify:catalog`    | Membuktikan katalog tidak menyimpan harga maupun ketersediaan          |
 | `pnpm verify:tokens`     | Membuktikan komponen hanya memakai token desain                        |
 | `pnpm verify:contrast`   | Membuktikan setiap pasangan warna memenuhi WCAG AA                     |
 

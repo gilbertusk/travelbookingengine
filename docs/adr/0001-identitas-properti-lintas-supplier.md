@@ -2,6 +2,8 @@
 
 **Status:** Diterima · **Tanggal:** 2026-09-24 · **Menjawab:** Q5 pada PRD Bab 14
 
+> Dilengkapi pada Step 12b dengan alternatif pass-through yang ditolak, pembedaan katalog dan inventaris, serta alasan kepemilikan katalog. Keputusannya tidak berubah.
+
 ## Konteks
 
 Satu hotel fisik yang sama ditawarkan oleh beberapa supplier sekaligus, dan setiap supplier menyebutnya dengan pengenal, nama, dan harga yang berbeda. Pada mock-supplier, properti yang sama muncul sebagai:
@@ -26,7 +28,17 @@ Ditolak. Pencocokan berbasis nama rapuh terhadap variasi penulisan yang justru s
 
 Ditolak. Ini membatalkan premis sistem: inventaris bukan milik kita. Harga dan ketersediaan yang disimpan akan basi dalam hitungan menit, dan menampilkan harga basi lalu menolaknya saat pembayaran adalah kegagalan produk yang paling merusak kepercayaan.
 
-**3. Katalog internal untuk data statis saja, dengan tabel pemetaan.** ← **dipilih**
+**3. Pass-through murni.** Tidak ada katalog sama sekali. Setiap properti yang dikembalikan supplier ditampilkan apa adanya, dengan pengenal supplier sebagai identitasnya.
+
+Ditolak, dan ini alternatif yang paling menggoda karena paling sedikit kodenya. Tiga akibatnya:
+
+Pertama, hotel yang sama muncul sebanyak supplier yang menjualnya. Pengguna melihat "Padma Bali Boutique Hotel", "PADMA BALI BOUTIQUE HOTEL", dan "Hotel Padma Bali Boutique Hotel" sebagai tiga hotel berbeda dengan tiga harga berbeda, dan tidak ada cara mengetahui bahwa ketiganya satu kamar yang sama. Membandingkan harga adalah seluruh alasan produk ini ada.
+
+Kedua, tidak ada URL yang stabil. Identitas properti menjadi milik supplier, yang berarti URL halaman properti berubah begitu supplier mengubah pengenalnya — dan hilang sepenuhnya begitu supplier berhenti menjual properti itu. PRD Bab 12 mewajibkan halaman properti dapat diindeks mesin pencari, dan halaman yang URL-nya tidak dapat dijanjikan tidak dapat diindeks dengan berguna.
+
+Ketiga, autocomplete menjadi mustahil tanpa memanggil kelima supplier pada setiap ketikan.
+
+**4. Katalog internal untuk data statis saja, dengan tabel pemetaan.** ← **dipilih**
 
 ## Keputusan
 
@@ -34,7 +46,30 @@ Ada katalog properti internal yang memuat **hanya data statis**: nama kanonik, a
 
 **Harga dan ketersediaan tidak pernah masuk katalog.** Keduanya selalu bersumber dari supplier pada setiap pencarian.
 
-Katalog dimiliki search-service, dan dibangun pada Step 12b.
+### Katalog dan inventaris adalah dua hal yang berbeda
+
+Pembedaan ini yang menjaga premis dasar project tetap utuh, dan ia layak dinyatakan terpisah karena mudah kabur dalam praktik:
+
+|            | Katalog                                              | Inventaris                                        |
+| ---------- | ---------------------------------------------------- | ------------------------------------------------- |
+| Isinya     | nama, alamat, koordinat, zona waktu, fasilitas, foto | harga, ketersediaan, rate plan, syarat pembatalan |
+| Pemiliknya | kita                                                 | supplier                                          |
+| Umurnya    | berbulan-bulan                                       | hitungan menit                                    |
+| Disimpan?  | ya                                                   | **tidak pernah**                                  |
+
+Batasnya kabur secara bertahap, bukan sekaligus. Yang pertama masuk biasanya bukan "harga", melainkan sesuatu yang terasa netral: `lowestPriceSeen` untuk pengurutan, atau `hasAvailability` untuk menyaring hasil kosong. Keduanya menghemat panggilan, membuat halaman terasa lebih cepat, dan tidak menggagalkan satu pun uji.
+
+Yang terjadi kemudian selalu sama: angka itu basi, pengguna melihat harga yang tidak ada lagi, dan pemesanannya ditolak saat pembayaran — kegagalan produk yang paling merusak kepercayaan, dan yang paling sulit dilacak kembali ke kolom yang menyebabkannya.
+
+Karena itu batas ini tidak dijaga oleh komentar melainkan oleh skrip: `pnpm verify:catalog` menolak kolom bernama harga atau ketersediaan di ketiga model katalog, dan menolak berjalan kalau modelnya sudah berganti nama.
+
+### Katalog dimiliki search-service
+
+Bukan service tersendiri. Alasannya PRAKTIS, dan lebih baik mengakuinya daripada mengarang pembenaran arsitektural: search adalah satu-satunya konsumennya, dan memisahkannya hanya menambah satu lompatan jaringan di jalur yang paling sensitif terhadap waktu — untuk tabel yang muat di memori.
+
+Kalau nanti ada konsumen kedua di luar search, pemisahan menjadi service tersendiri baru punya alasan. Sampai saat itu, ia adalah modul di dalam search-service dengan batasnya sendiri.
+
+Dibangun pada Step 12b.
 
 ### Konsekuensi bagi lapisan adapter (Step 10)
 

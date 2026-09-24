@@ -15,6 +15,7 @@ import { createMemoryStore } from '../infrastructure/memory-store.js'
 import { createRefIndex } from '../infrastructure/ref-index.js'
 import { newRef, systemClock, systemRandom } from '../infrastructure/runtime.js'
 import { createAdminRouter } from '../http/admin.js'
+import { createCatalogRouter } from '../http/catalog.js'
 import { createChaosMiddleware } from '../http/chaos-middleware.js'
 import type { SupplierContext } from '../http/context.js'
 import { createLunaRouter } from '../http/suppliers/luna.js'
@@ -79,6 +80,7 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
   })
 
   app.use('/admin', createAdminRouter(chaos, store))
+  app.use('/admin', createCatalogRouter(catalog))
 
   for (const code of SUPPLIER_CODES) {
     const path = `/${code.toLowerCase()}`
