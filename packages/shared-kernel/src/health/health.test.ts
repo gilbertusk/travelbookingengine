@@ -91,24 +91,36 @@ describe('health', () => {
   })
 
   test('runChecks menjalankan seluruh pemeriksaan secara paralel', async () => {
-    // Arrange — tiga pemeriksaan masing-masing 60ms; berurutan akan >180ms
-    const lambat = (name: string): HealthCheck => ({
+    // Arrange — dibuktikan dari urutan kejadian, bukan dari lama waktunya.
+    //
+    // Pengukuran waktu membuat pengujian ini gagal pada mesin yang sedang
+    // sibuk meski kodenya benar, dan pengujian yang gagal karena beban adalah
+    // pengujian yang mengajari orang mengabaikan hasil uji.
+    //
+    // Ketiga pemeriksaan ditahan sampai semuanya sudah dimulai. Kalau
+    // dijalankan berurutan, yang pertama tidak akan pernah selesai — dan
+    // pengujiannya habis waktu alih-alih lulus secara kebetulan.
+    const started: string[] = []
+    let releaseAll = (): void => undefined
+    const allStarted = new Promise<void>((resolve) => {
+      releaseAll = resolve
+    })
+
+    const menunggu = (name: string): HealthCheck => ({
       name,
-      check: async () =>
-        new Promise<boolean>((resolve) => {
-          setTimeout(() => {
-            resolve(true)
-          }, 60)
-        }),
+      check: async () => {
+        started.push(name)
+        if (started.length === 3) releaseAll()
+        await allStarted
+        return true
+      },
     })
 
     // Act
-    const mulai = Date.now()
-    const hasil = await runChecks([lambat('a'), lambat('b'), lambat('c')], silentLogger())
-    const durasi = Date.now() - mulai
+    const hasil = await runChecks([menunggu('a'), menunggu('b'), menunggu('c')], silentLogger())
 
     // Assert
     expect(hasil).toHaveLength(3)
-    expect(durasi).toBeLessThan(150)
+    expect(started).toEqual(['a', 'b', 'c'])
   })
 })

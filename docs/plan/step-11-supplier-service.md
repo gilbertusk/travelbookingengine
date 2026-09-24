@@ -82,17 +82,75 @@ Commit: feat: add supplier service with resilience layer
 
 ## Definisi Selesai
 
-- [ ] Pemutus sirkuit bekerja per supplier dan keadaannya dibagikan lewat Redis
-- [ ] Kebijakan percobaan ulang berbeda sesuai jenis galat — dibuktikan dengan test
-- [ ] Timeout pada `book` memicu `getBooking`, bukan pengulangan buta — dibuktikan dengan test
-- [ ] Pemesanan yang sudah terbentuk diadopsi tanpa membuat ganda
-- [ ] Peristiwa `supplier.degraded` dan `supplier.recovered` terbit ke Kafka
-- [ ] Seluruh permintaan tercatat dengan payload teredaksi
-- [ ] Kredensial supplier tidak tersimpan di database
-- [ ] Metrik muncul di Prometheus dan grafiknya terlihat di Grafana
-- [ ] Cakupan test ≥ 85%
-- [ ] Commit terbuat
+- [x] Pemutus sirkuit bekerja per supplier dan keadaannya dibagikan lewat Redis
+- [x] Kebijakan percobaan ulang berbeda sesuai jenis galat — dibuktikan dengan test
+- [x] Timeout pada `book` memicu `getBooking`, bukan pengulangan buta — dibuktikan dengan test
+- [x] Pemesanan yang sudah terbentuk diadopsi tanpa membuat ganda
+- [x] Peristiwa `supplier.degraded` dan `supplier.recovered` terbit ke Kafka
+- [x] Seluruh permintaan tercatat dengan payload teredaksi
+- [x] Kredensial supplier tidak tersimpan di database
+- [ ] Metrik muncul di Prometheus dan grafiknya terlihat di Grafana — **belum diverifikasi**, Docker mati
+- [x] Cakupan test ≥ 85% — 95.5% pernyataan
+- [x] Commit terbuat
 
 ## Catatan
 
 Test "timeout pada book memicu getBooking" adalah satu-satunya test di project ini yang secara langsung mencegah kerugian uang sungguhan. Tulis dengan serius, dan sebut secara khusus di README nanti.
+
+### Penyimpangan dari prompt, dan alasannya
+
+**Pemutus sirkuit tidak memakai opossum.** Prompt menyebut opossum, tetapi juga mewajibkan keadaan pemutus dibagikan antar instance lewat Redis dan dibuktikan dengan test. Kedua syarat itu bertabrakan: state opossum hidup di dalam proses, jadi ia tidak dapat berbagi hitungan kegagalan antar instance — yang dapat dibagikan hanya penanda "sudah terbuka", sementara penghitungannya tetap per-proses.
+
+Syarat berbagi state ada di Definisi Selesai dan karena itu didahulukan. Yang dibuat: mesin keadaan murni di `domain/circuit.ts` di belakang port `CircuitStore`, dengan implementasi Redis (baca-lalu-tulis bersyarat lewat Lua) dan implementasi dalam memori untuk pengujian. Keduanya memakai fungsi transisi yang sama persis — kalau masing-masing menghitung sendiri, pengujian akan membuktikan perilaku yang tidak pernah benar-benar berjalan.
+
+Dikonfirmasi ke pengguna sebelum dikerjakan.
+
+### Temuan saat mengerjakan step ini
+
+**1. Kamar habis tidak boleh dihitung pemutus sirkuit.** Jawaban `sold_out` datang dari supplier yang sehat. Menghitungnya akan membuka pemutus tepat pada saat permintaan sedang tinggi — yaitu saat supplier paling dibutuhkan. Hal yang sama berlaku untuk `rate_limited`: supplier sedang melindungi dirinya, dan yang harus menyesuaikan adalah pembatas laju keluar kita.
+
+**2. Pemutus yang terbuka tidak boleh langsung tertutup.** Setelah durasinya lewat ia menjadi setengah terbuka, dan butuh dua keberhasilan berturut-turut untuk menutup penuh. Supplier yang baru pulih kerap berhasil sekali lalu gagal lagi; menutup setelah satu keberhasilan mengirim seluruh trafik kembali dan pemutusnya membuka lagi seketika.
+
+**3. Keadaan setengah terbuka tidak disimpan.** Ia dihitung dari cap waktu pembukaan. Menyimpannya berarti satu penulisan ke Redis setiap kali waktu berjalan melewati ambang — penulisan untuk sesuatu yang dapat dihitung.
+
+**4. `invalid_response` dianggap tidak pasti pada `book`, bukan hanya `timeout`.** Respons yang tidak dapat diurai bisa saja merupakan konfirmasi yang bentuknya berubah. Memperlakukannya sebagai kegagalan biasa berarti mengulang `book` atas pemesanan yang mungkin sudah ada.
+
+**5. Kegagalan saat bertanya dilaporkan dengan galat ASLI-nya.** Ketika `book` timeout lalu `findBookingByIdempotencyKey` juga gagal, yang dikembalikan adalah galat `book`, bukan galat saat bertanya — karena yang pertama itulah yang menjelaskan kenapa statusnya tidak pasti.
+
+**6. Penangan RabbitMQ tidak melempar untuk status `uncertain`.** Melempar berarti perintahnya dikirim ulang, dan pengiriman ulang `book` dalam keadaan tidak pasti adalah persis yang dicegah seluruh mekanisme ini. Yang dilempar hanya jawaban sah yang butuh kompensasi saga.
+
+**7. Batas 4 parameter memaksa bentuk yang lebih baik.** `priceCheck` dan `hold` awalnya menerima lima dan enam argumen posisional; keduanya kini menerima satu objek, dan rute HTTP dapat meneruskan badan permintaannya apa adanya.
+
+**8. Label `operation` ditambahkan ke `supplier_circuit_state`.** Pemutusnya memang satu per supplier per operasi; satu pengukur berlabel supplier saja akan saling menimpa antar operasi. Legenda dasbor Grafana ikut disesuaikan.
+
+**9. Satu pengujian lama di shared-kernel ternyata rapuh.** `runChecks menjalankan seluruh pemeriksaan secara paralel` mengukur lama waktu, dan gagal saat seluruh paket berjalan bersamaan meski kodenya benar. Diubah menjadi pembuktian lewat urutan kejadian: ketiga pemeriksaan saling menahan sampai semuanya dimulai, sehingga eksekusi berurutan akan menggantung alih-alih lulus secara kebetulan.
+
+### Yang belum diverifikasi
+
+**Redis, Kafka, dan RabbitMQ belum pernah menyala bersama service ini.** Docker masih mati.
+
+Yang sudah terbukti lewat 97 test: seluruh keputusan ketahanan — pembukaan dan pemulihan pemutus, pembedaan kebijakan percobaan ulang, pemulihan aman `book`, penolakan oleh pembatas laju, redaksi payload, dan pemetaan kegagalan ke status HTTP.
+
+Yang belum terbukti: skrip Lua untuk pemutus dan token bucket belum pernah dijalankan Redis sungguhan, peristiwa `supplier.degraded` belum pernah sampai ke Kafka, dan migrasi Prisma belum pernah diterapkan. Berbagi keadaan antar instance dibuktikan lewat penyimpanan dalam memori yang dipakai bersama dua instance — memakai fungsi transisi yang sama dengan implementasi Redis — tetapi bukan lewat Redis itu sendiri.
+
+Jalankan ini setelah Docker menyala:
+
+```bash
+pnpm infra:up
+cp apps/supplier-service/.env.example apps/supplier-service/.env
+pnpm --filter @tbe/supplier-service db:migrate
+pnpm --filter @tbe/supplier-service db:seed
+pnpm --filter @tbe/mock-supplier dev
+pnpm --filter @tbe/supplier-service dev
+```
+
+Lalu buktikan pemutusnya dengan mematikan satu supplier dan menembaknya berulang:
+
+```bash
+curl -X POST localhost:4000/admin/luna/down
+for i in $(seq 1 8); do
+  curl -s -o /dev/null -w "%{http_code} " -X POST localhost:4004/internal/suppliers/search     -H 'content-type: application/json'     -d '{"supplier":"LUNA","city":"Bali","checkIn":"2026-11-10","checkOut":"2026-11-12","guests":2}'
+done
+```
+
+Status harus berubah dari 503 yang lambat menjadi 503 yang seketika begitu pemutusnya terbuka. Periksa `supplier_circuit_state` di `localhost:9090` dan grafiknya di `localhost:3001`.

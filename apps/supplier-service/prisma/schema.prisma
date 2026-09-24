@@ -1,0 +1,100 @@
+// Skema supplier-service.
+//
+// Dua tabel dengan tujuan yang sangat berbeda: satu menyimpan konfigurasi
+// supplier, satu lagi mencatat setiap percobaan panggilan. Yang kedua adalah
+// yang membuat rekonsiliasi pada Step 28 mungkin — tanpa catatan percobaan,
+// pemesanan yang statusnya tidak pasti tidak dapat ditelusuri sama sekali.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SupplierOperation {
+  search
+  priceCheck
+  hold
+  book
+  cancel
+  getBooking
+
+  @@map("supplier_operation")
+}
+
+enum RequestOutcome {
+  success
+  failure
+
+  @@map("request_outcome")
+}
+
+model Supplier {
+  code     String  @id
+  name     String
+  /// Kode adapter di packages/supplier-adapters. Berbeda dari `code` supaya
+  /// dua supplier dapat memakai adapter yang sama.
+  adapter  String
+  baseUrl  String  @map("base_url")
+  isActive Boolean @default(true) @map("is_active")
+
+  /// NAMA variabel env yang memuat kredensial, bukan kredensialnya.
+  /// Kredensial supplier tidak pernah disimpan di database: basis data yang
+  /// bocor tidak boleh sekaligus menjadi bocornya akses ke seluruh supplier.
+  credentialRef String? @map("credential_ref")
+
+  /// Batas waktu per operasi, dalam milidetik. JSON karena daftar operasinya
+  /// dapat bertambah tanpa migrasi.
+  timeouts Json @default("{}")
+
+  circuitFailureThreshold Int @default(5) @map("circuit_failure_threshold")
+  circuitWindowSeconds    Int @default(60) @map("circuit_window_seconds")
+  circuitOpenSeconds      Int @default(30) @map("circuit_open_seconds")
+
+  /// Token bucket keluar: berapa permintaan per detik yang boleh kita kirim.
+  rateLimitPerSecond Int @default(20) @map("rate_limit_per_second")
+  rateLimitBurst     Int @default(40) @map("rate_limit_burst")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  requests SupplierRequest[]
+
+  @@map("suppliers")
+}
+
+model SupplierRequest {
+  id           String            @id @db.Uuid
+  supplierCode String            @map("supplier_code")
+  operation    SupplierOperation
+  outcome      RequestOutcome
+  /// Jenis SupplierError bila gagal; null bila berhasil.
+  errorKind    String?           @map("error_kind")
+
+  /// Dimulai dari 1. Percobaan kedua dan seterusnya punya baris sendiri,
+  /// bukan memperbarui baris pertama — riwayat percobaan itulah yang dibaca
+  /// saat menelusuri pemesanan yang statusnya tidak pasti.
+  attemptNumber Int @map("attempt_number")
+
+  /// Payload sudah diredaksi dari kredensial sebelum sampai ke sini.
+  requestPayload  Json?  @map("request_payload")
+  responsePayload Json?  @map("response_payload")
+  latencyMs       Int    @map("latency_ms")
+
+  /// Ada hanya pada operasi yang mengubah keadaan. Inilah kunci yang
+  /// dipakai untuk menanyakan status sebenarnya setelah timeout.
+  idempotencyKey String? @map("idempotency_key")
+  correlationId  String? @map("correlation_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  supplier Supplier @relation(fields: [supplierCode], references: [code], onDelete: Cascade)
+
+  /// Rekonsiliasi Step 28 mencari berdasarkan kunci idempotensi.
+  @@index([idempotencyKey])
+  @@index([supplierCode, createdAt])
+  @@map("supplier_requests")
+}

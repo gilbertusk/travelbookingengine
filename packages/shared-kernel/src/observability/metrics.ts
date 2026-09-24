@@ -17,8 +17,14 @@ export interface MetricsOptions {
 export interface DomainMetrics {
   /** Latensi permintaan ke supplier. Dasar seluruh klaim performa di Step 15. */
   readonly supplierRequestDuration: Histogram<'supplier' | 'operation' | 'outcome'>
-  /** 0 tertutup, 1 setengah terbuka, 2 terbuka. */
-  readonly supplierCircuitState: Gauge<'supplier'>
+  /**
+   * 0 tertutup, 1 setengah terbuka, 2 terbuka.
+   *
+   * Berlabel operasi juga, karena pemutusnya memang satu per supplier per
+   * operasi: pencarian yang tumbang tidak berarti pemesanan ikut tumbang,
+   * dan satu pengukur untuk keduanya akan saling menimpa.
+   */
+  readonly supplierCircuitState: Gauge<'supplier' | 'operation'>
   readonly supplierRetries: Counter<'supplier' | 'operation'>
   readonly searchCacheHits: Counter<'layer'>
   readonly searchCacheMisses: Counter<'layer'>
@@ -57,7 +63,7 @@ function createDomainMetrics(registers: Registry): DomainMetrics {
     supplierCircuitState: new Gauge({
       name: 'supplier_circuit_state',
       help: 'Keadaan pemutus sirkuit: 0 tertutup, 1 setengah terbuka, 2 terbuka',
-      labelNames: ['supplier'],
+      labelNames: ['supplier', 'operation'],
       registers: [registers],
     }),
 
