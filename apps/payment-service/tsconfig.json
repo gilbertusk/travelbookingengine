@@ -1,0 +1,9 @@
+{
+  "extends": "@tbe/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*", "prisma/**/*.ts", "vitest.config.ts", "prisma.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

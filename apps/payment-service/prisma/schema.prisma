@@ -1,0 +1,194 @@
+// Skema payment-service.
+//
+// Empat tabel, dan satu di antaranya ada semata-mata demi idempotensi:
+// `webhook_events`. Batasan UNIK pada `provider_event_id` di tabel itulah yang
+// menegakkan NFR-07 — bukan pemeriksaan di aplikasi. Perbedaannya bukan soal
+// selera: dua proses yang sama-sama memeriksa "sudah ada?" akan sama-sama
+// menjawab "belum", dan keduanya lanjut memproses. Yang memutuskan pemenang
+// harus basis data, karena hanya ia yang melihat kedua permintaan itu sekaligus.
+//
+// Tidak ada kolom Float maupun Decimal di sini. Uang disimpan sebagai bilangan
+// bulat satuan terkecil (`amount_minor`) ditambah kolom mata uangnya — NFR-08,
+// dan pola yang sama dengan pricing-service.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  PARTIALLY_REFUNDED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+
+  @@map("refund_status")
+}
+
+/// Sama dengan enum `reason` pada perintah payment.refund di
+/// packages/event-contracts. Disalin, bukan dibagi: kontrak pesan dan skema
+/// basis data berubah pada irama yang berbeda, dan menyatukannya membuat
+/// perubahan kontrak menuntut migrasi.
+enum RefundReason {
+  supplier_failed
+  user_cancelled
+  manual
+
+  @@map("refund_reason")
+}
+
+/// Hasil pemrosesan satu notifikasi penyedia.
+///
+/// `ignored_out_of_order` bukan kegagalan: notifikasi sukses yang tiba setelah
+/// notifikasi gagal adalah perilaku normal penyedia, dan yang benar adalah
+/// mengabaikannya sambil MENCATAT bahwa ia pernah tiba. Tanpa catatan itu,
+/// pertanyaan "kenapa pembayaran ini gagal padahal penyedia bilang berhasil"
+/// tidak dapat dijawab.
+enum WebhookOutcome {
+  applied
+  ignored_duplicate_status
+  ignored_out_of_order
+  rejected_unknown_payment
+  rejected_amount_mismatch
+
+  @@map("webhook_outcome")
+}
+
+model Payment {
+  id        String        @id @db.Uuid
+  bookingId String        @map("booking_id") @db.Uuid
+  status    PaymentStatus
+
+  amountMinor Int    @map("amount_minor")
+  currency    String
+
+  /// Pengenal transaksi di sisi penyedia. Null selama PENDING — belum ada
+  /// transaksi yang dapat dirujuk. Keadaan SUCCEEDED WAJIB memilikinya, dan
+  /// domain menegakkan itu lewat union diskriminan; kolom nullable di sini
+  /// hanyalah konsekuensi bahwa satu tabel menyimpan seluruh keadaan.
+  gatewayRef String? @map("gateway_ref")
+
+  /// Alasan kegagalan, apa adanya dari penyedia. Ditampilkan ke pengguna
+  /// setelah diterjemahkan, tidak langsung.
+  failureReason String? @map("failure_reason")
+
+  /// Kunci idempotensi permintaan pembuatan maksud pembayaran (FR-18).
+  /// Berbeda dari idempotensi webhook: yang ini menjaga agar satu pemesanan
+  /// tidak memperoleh dua maksud pembayaran ketika pengguna menekan tombol
+  /// dua kali.
+  idempotencyKey String @unique @map("idempotency_key")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refunds Refund[]
+
+  /// Satu pemesanan pada praktiknya punya satu pembayaran, tetapi TIDAK
+  /// dijadikan unik: pembayaran yang gagal boleh disusul maksud pembayaran
+  /// baru untuk pemesanan yang sama. Batasan unik di sini akan membuat
+  /// percobaan bayar kedua mustahil setelah kartu pertama ditolak.
+  @@index([bookingId])
+  @@map("payments")
+}
+
+model Refund {
+  id        String       @id @db.Uuid
+  paymentId String       @map("payment_id") @db.Uuid
+  status    RefundStatus
+  reason    RefundReason
+
+  amountMinor Int    @map("amount_minor")
+  currency    String
+
+  gatewayRef String? @map("gateway_ref")
+
+  /// Pengenal permintaan refund, dari perintah payment.refund. UNIK — inilah
+  /// yang membuat perintah yang dikirim ulang RabbitMQ setelah kegagalan tidak
+  /// mengembalikan dana dua kali. Sama seperti webhook: yang memutuskan
+  /// pemenang adalah basis data, bukan pemeriksaan di aplikasi.
+  requestId String @unique @map("request_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@map("refunds")
+}
+
+model WebhookEvent {
+  id String @id @db.Uuid
+
+  /// `transaction_id` dari Midtrans. UNIK, dan itulah seluruh mekanisme
+  /// idempotensi webhook. Baris ini ditulis SEBELUM notifikasi diproses:
+  /// menulisnya sesudah berarti dua notifikasi serentak sama-sama lolos.
+  providerEventId String @unique @map("provider_event_id")
+
+  /// Payload yang SUDAH diredaksi — lihat domain/redaction.ts. Notifikasi
+  /// Midtrans tidak memuat nomor kartu, tetapi memuat `signature_key`, dan
+  /// signature_key yang tercatat adalah bahan untuk memalsukan notifikasi.
+  payload Json
+
+  /// Null berarti baris sudah diklaim tetapi pemrosesannya belum selesai —
+  /// proses mati di tengah, atau notifikasi kedua tiba saat yang pertama masih
+  /// berjalan. Notifikasi yang menemukan keadaan ini TIDAK dianggap duplikat
+  /// yang sudah selesai; ia ditolak agar penyedia mengirimnya lagi.
+  processedAt DateTime?       @map("processed_at") @db.Timestamptz(3)
+  outcome     WebhookOutcome?
+
+  /// Pembayaran yang terpengaruh. Nullable karena notifikasi dapat menyebut
+  /// order_id yang tidak kita kenal, dan notifikasi seperti itu tetap harus
+  /// tercatat — justru itu jejak percobaan penyalahgunaan.
+  paymentId String? @map("payment_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([paymentId])
+  @@map("webhook_events")
+}
+
+/// Nilai yang boleh ditagih untuk sebuah pemesanan.
+///
+/// Diturunkan dari peristiwa Kafka `booking.created` dan
+/// `booking.price_changed`, BUKAN dari permintaan pembuatan pembayaran. G2
+/// menuntut pengguna tidak pernah dibebani nilai selain yang terakhir
+/// disetujuinya, dan itu mustahil dijamin kalau nilainya datang dari pemanggil
+/// yang sama dengan yang meminta pembayaran.
+///
+/// Service ini TIDAK memanggil booking-service untuk menanyakannya — Step 18
+/// mewajibkan komunikasi lewat peristiwa.
+model PayableAmount {
+  bookingId String @id @map("booking_id") @db.Uuid
+
+  amountMinor Int    @map("amount_minor")
+  currency    String
+
+  /// Peristiwa yang menetapkan nilai ini. `price_changed` menang atas
+  /// `created` karena harga yang disetujui pengguna adalah yang terakhir, bukan
+  /// yang pertama.
+  source String
+
+  /// occurredAt dari peristiwanya, bukan waktu tulis. Peristiwa yang tiba
+  /// terlambat tidak boleh menimpa peristiwa yang lebih baru — Kafka menjamin
+  /// urutan per partisi, tetapi tidak menjamin apa pun setelah consumer
+  /// digandakan dan satu di antaranya tersendat.
+  observedAt DateTime @map("observed_at") @db.Timestamptz(3)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("payable_amounts")
+}
