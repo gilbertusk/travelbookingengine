@@ -36,6 +36,7 @@ export interface BookingIdentityColumns {
   readonly userId: string
   readonly supplierId: string
   readonly propertyId: string
+  readonly city: string
   readonly ratePlanRef: string
   readonly checkIn: Date
   readonly checkOut: Date
@@ -93,6 +94,11 @@ export interface BookingDb {
     findFirst(args: {
       where: { userId: string; idempotencyKey: string }
     }): Promise<BookingRow | null>
+    findMany(args: {
+      where: { status: 'HELD'; heldUntil: { lte: Date } }
+      orderBy: { heldUntil: 'asc' }
+      take: number
+    }): Promise<BookingRow[]>
   }
   $transaction<T>(fn: (tx: BookingTx) => Promise<T>): Promise<T>
 }

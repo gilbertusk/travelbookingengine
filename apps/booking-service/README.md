@@ -1,8 +1,8 @@
 # booking-service
 
-Siklus hidup pemesanan sebagai state machine eksplisit. Step 16 memodelkan **domainnya saja**: keadaan, transisi, peristiwa, dan penyimpanannya. Belum ada HTTP, Redis, broker, maupun panggilan ke supplier — hold dan price check jatah Step 17, saga jatah Step 19.
+Siklus hidup pemesanan sebagai state machine eksplisit (Step 16), ditambah price check dan hold dua lapis (Step 17). Belum ada broker: saga, outbox, dan penerbitan peristiwa Kafka jatah Step 19.
 
-Port 4006. Memenuhi fondasi NFR-06, NFR-09, NFR-10, dan G2.
+Port 4006. Memenuhi FR-13 sampai FR-16, FR-18, US-02, US-04, NFR-06, NFR-09, NFR-10, dan G2.
 
 ## Yang paling penting di sini
 
@@ -123,7 +123,60 @@ UNIK `(user_id, idempotency_key)`, bukan `idempotency_key` global. Kunci dikirim
 
 ### Append only
 
-Port tidak punya operasi ubah atau hapus peristiwa. Migrasi menambahkan trigger yang menolak `UPDATE`, `DELETE`, dan `TRUNCATE` pada booking_events — mengikat semua penulis, bukan hanya kode kita. **Belum pernah dijalankan terhadap Postgres.**
+Port tidak punya operasi ubah atau hapus peristiwa. Migrasi menambahkan trigger yang menolak `UPDATE`, `DELETE`, dan `TRUNCATE` pada booking_events — mengikat semua penulis, bukan hanya kode kita. **Terbukti terhadap Postgres 16 sungguhan** sejak Step 17 (lihat [Uji integrasi](#uji-integrasi)).
+
+## Price check (FR-13, FR-14, US-02)
+
+`POST /bookings/price-check` membuat pemesanan bila kunci idempotensinya belum dikenal, lalu **selalu** memverifikasi harga langsung ke supplier. Permintaan ulang dengan kunci yang sama tidak membuat pemesanan kedua; ia memverifikasi ulang pemesanan yang sama.
+
+**Tidak ada cache di jalur ini, dan tidak ada port untuknya.** Uji membuktikan setiap price check adalah satu panggilan ke supplier, termasuk yang diulang untuk pemesanan yang sama dalam detik yang sama. Suntikan H1 — menyimpan hasil per pemesanan — menggagalkan uji itu.
+
+### Harga supplier bukan harga jual
+
+Supplier mengembalikan harga SUPPLIER; pengguna menyetujui harga JUAL (FR-05), setelah markup dan pajak dari pricing-service. Membandingkan keduanya langsung akan melaporkan "harga berubah" pada setiap pemesanan. Karena itu setiap harga supplier dihitung ulang lewat pricing-service — dengan kota pemesanan sebagai cakupan aturan markup — sebelum dibandingkan ([`domain/sell-price.ts`](src/domain/sell-price.ts)). Total dari pricing-service tidak dipercaya begitu saja: baris-barisnya harus menjumlah tepat ke total itu.
+
+| Hasil                             | Keadaan pemesanan                 | HTTP                                  |
+| --------------------------------- | --------------------------------- | ------------------------------------- |
+| Harga sama                        | `PRICE_CHECKED` / `verified`      | 200, `priceCheck.outcome = unchanged` |
+| Harga berbeda                     | `PRICE_CHECKED` / `changed`       | 200, harga lama, baru, dan selisihnya |
+| Rate plan habis / tidak ada       | `CANCELLED` (`supplier_rejected`) | 409 `RATE_UNAVAILABLE`                |
+| Supplier / pricing belum menjawab | tidak berubah                     | 503 — pengguna boleh mencoba lagi     |
+| Kunci sama, pemesanan lain        | tidak berubah                     | 409 `IDEMPOTENCY_KEY_REUSED`          |
+
+Harga berubah dijawab **200**, bukan 409: glosarium PRD menyatakan Rate Change kondisi normal. `POST /bookings/price-check/accept` menyetujui harga baru lalu menjalankan price check **ulang** dalam permintaan yang sama; domain menolak hold sampai verifikasi ulang itu berhasil.
+
+## Hold dua lapis (FR-15, US-04)
+
+`POST /bookings/hold` — [`application/place-hold.ts`](src/application/place-hold.ts). Urutannya adalah keputusannya, dan setiap langkah punya kompensasi:
+
+1. **Periksa domain tanpa efek.** Perintah hold dicoba terhadap domain dengan nilai sementara; kalau ditolak, tidak ada yang disentuh.
+2. **Lokal (Redis, skrip Lua).** Pemeriksaan dan pengambilan kursi dalam satu skrip atomik. Permintaan yang pasti tidak kebagian tidak pernah sampai ke supplier.
+3. **Supplier.** Gagal → kursi lokal dilepas.
+4. **Harga saat hold.** Total dari supplier dihitung ulang menjadi harga jual dan dibandingkan dengan harga yang disetujui. Berbeda → kursi dilepas, 409 `PRICE_CHANGED`.
+5. **Simpan.** Batas waktu = yang lebih awal antara lokal dan supplier; kunci waktu lokal dimajukan ke sana.
+
+### Kursi sebagai anggota set, bukan angka yang dikurangi
+
+[`infrastructure/redis-hold-store.ts`](src/infrastructure/redis-hold-store.ts). Kursi yang terpakai adalah anggota `SET`. Angka yang dikurangi harus dikembalikan tepat sekali, dan "tepat sekali" di antara dua jalur pelepasan adalah persis masalah yang ingin dihindari; dengan set, pelepasan kedua adalah `SREM` yang tidak menghapus apa-apa.
+
+Kapasitas slot diambil dari `unitsLeft` hasil pencarian dan **ditetapkan sekali**: permintaan berikutnya tidak dapat menaikkannya. Angka itu datang dari klien dan menua, jadi lapis lokal mencegah perebutan, bukan menggantikan inventaris — lapis supplier tetap otoritas terakhir.
+
+### Hold di supplier tidak dapat dilepaskan
+
+Tidak ada operasi pelepasan hold di mana pun — tidak di `SupplierGateway`, supplier-service, maupun kelima supplier simulasi. Hold supplier kedaluwarsa sendiri. Setiap kompensasi setelah langkah 3 meninggalkan hold supplier yang habis sendiri, paling lambat bersamaan dengan hold lokal karena `heldUntil` yang lebih awal.
+
+## Pelepasan otomatis (FR-16)
+
+Dua jalur, satu use case ([`application/expire-hold.ts`](src/application/expire-hold.ts)):
+
+- **Keyspace notification** — cepat, tidak dapat diandalkan. Redis tidak mengantrikan notifikasi untuk pelanggan yang sedang terputus.
+- **Penyapu berkala** ([`application/sweep-holds.ts`](src/application/sweep-holds.ts)) — jaring pengaman, dari dua sumber: pemesanan HELD yang lewat di basis data, dan kursi di Redis yang kunci waktunya hilang (proses mati di antara hold lokal dan penyimpanan — kursi yang tidak pernah dikenal basis data).
+
+Keduanya aman berjalan bersamaan: perpindahan ke EXPIRED dijaga kunci versi, dan pelepasan kursi idempoten. Basis data dulu, Redis sesudahnya — kebalikannya membuka jendela di mana kursi sudah kembali sementara pemesanan masih HELD.
+
+Notifikasi yang tiba sebelum `heldUntil` menurut jam kita — jam Redis dan jam mesin tidak persis sama — **tidak** melepas apa pun. Kedaluwarsa lebih awal membuat pengguna yang sedang membayar kehilangan kamarnya; penyapu akan kembali.
+
+Service memeriksa `notify-keyspace-events` saat startup dan mencatat peringatan bila tidak memuat `Ex`.
 
 ## Skema
 
@@ -132,13 +185,36 @@ Port tidak punya operasi ubah atau hapus peristiwa. Migrasi menambahkan trigger 
 | `bookings`       | Keadaan sekarang. Kolom khas keadaan nullable; batasan CHECK per keadaan di migrasi. |
 | `booking_events` | Jejak audit, hanya bertambah. `sequence` = versi pemesanan sesudah transisi.         |
 
-Migrasi [`20260927000000_init`](prisma/migrations/20260927000000_init/migration.sql) dihasilkan offline dengan `prisma migrate diff --from-empty --to-schema`. Bagian di bawah garis penanda ditulis tangan: tujuh batasan CHECK dan trigger append-only.
+Migrasi [`20260927000000_init`](prisma/migrations/20260927000000_init/migration.sql) dihasilkan offline dengan `prisma migrate diff --from-empty --to-schema`. Bagian di bawah garis penanda ditulis tangan: tujuh batasan CHECK dan trigger append-only. Migrasi [`20260928000000_add_city`](prisma/migrations/20260928000000_add_city/migration.sql) (Step 17) menambahkan kota properti — cakupan aturan markup. Keduanya diterapkan ke Postgres 16 sungguhan, dan `prisma migrate diff` terhadap basis data hasilnya kosong: Prisma tidak menganggap CHECK dan trigger tulisan tangan sebagai drift.
 
 Rincian harga disimpan di **satu** kolom JSON non-null `price_lines` (`{ agreed, quoted }`), bukan dua kolom yang salah satunya nullable: kolom `Json?` Prisma tidak menerima `null` biasa, dan menuntut sentinel `Prisma.DbNull` membuat port tidak lagi dapat dipenuhi palsuan dan klien sungguhan dengan tipe yang sama.
 
 ## Bukti suntikan
 
 Aturan sejak Step 03: setiap penjagaan diuji terhadap pelanggaran yang sengaja disuntikkan. Seluruhnya dipulihkan, dan pemulihannya diperiksa dengan membandingkan berkas terhadap cadangan.
+
+### Step 17
+
+| #   | Pelanggaran yang disuntikkan                                               | Diperiksa terhadap     | Hasil        | Uji gagal |
+| --- | -------------------------------------------------------------------------- | ---------------------- | ------------ | --------- |
+| H1  | Price check dilayani dari cache                                            | unit                   | GAGAL (baik) | 19        |
+| H2  | Harga berubah tidak menghentikan alur (harga supplier diabaikan)           | unit                   | GAGAL (baik) | 14        |
+| H3  | Hold memakai harga supplier saat hold, bukan harga yang disetujui          | unit                   | GAGAL (baik) | 2         |
+| H4  | Skrip Lua diganti baca-lalu-tulis dari klien                               | **Redis sungguhan**    | GAGAL (baik) | 4         |
+| H5  | Palsuan hold store atomik diganti pola periksa-lalu-tulis                  | unit                   | GAGAL (baik) | 2         |
+| H6  | Pendengar keyspace tidak meneruskan kedaluwarsa                            | **Redis sungguhan**    | GAGAL (baik) | 3         |
+| H7  | Penyapu tidak mencari kursi yatim di Redis                                 | unit                   | GAGAL (baik) | 1         |
+| H8  | Kueri penyapu memakai `lt` alih-alih `lte`                                 | **Postgres sungguhan** | GAGAL (baik) | 1         |
+| H9  | Kedaluwarsa melepas kursi walau belum waktunya menurut domain              | unit                   | GAGAL (baik) | 1         |
+| H10 | Hold yang sedang diproses permintaan lain dilanjutkan ke supplier          | unit                   | GAGAL (baik) | 2         |
+| H11 | Kunci idempotensi yang sama untuk pemesanan lain dijawab pemesanan pertama | unit                   | GAGAL (baik) | 2         |
+| H12 | Batasan UNIK `(user_id, idempotency_key)` dihapus dari migrasi             | **Postgres sungguhan** | GAGAL (baik) | 1         |
+| H13 | Batas waktu hold memakai yang LEBIH AKHIR antara lokal dan supplier        | unit                   | GAGAL (baik) | 13        |
+| H14 | bookings dan booking_events ditulis di transaksi terpisah                  | **Postgres sungguhan** | GAGAL (baik) | 1         |
+
+H1 ditangkap langsung oleh uji "setiap price check adalah satu panggilan ke supplier, termasuk yang diulang" — bukan hanya oleh efek sampingnya di uji lain.
+
+### Step 16
 
 | #    | Pelanggaran yang disuntikkan                                                  | Diperiksa | Hasil        | Yang gagal |
 | ---- | ----------------------------------------------------------------------------- | --------- | ------------ | ---------- |
@@ -181,34 +257,66 @@ S13b adalah satu-satunya yang ditangkap **hanya** oleh uji penjaga: tanpa zona n
 pnpm --filter @tbe/booking-service test
 ```
 
-329 uji, tanpa Docker dan tanpa jaringan. Cakupan: **100% pernyataan, cabang, fungsi, dan baris**. Ambang domain 95%, ambang service 85%.
+449 uji unit, tanpa Redis, Postgres, maupun jaringan. Cakupan: **99,67% pernyataan, 99,43% cabang, 100% fungsi, 100% baris**. Ambang domain 95%, ambang service 85%. Suite unit juga dijalankan dengan urutan acak (`--sequence.shuffle`) dan tetap hijau.
 
-Angka 100% dicapai dengan memperbaiki desain, bukan menambah uji semata — tiga cabang yang tidak tersentuh ternyata cacat. Lihat bagian Temuan di [docs/plan/step-16-booking-domain.md](../../docs/plan/step-16-booking-domain.md).
+Dua pernyataan yang tidak tersentuh, keduanya penjaga cacat perangkaian, bukan keadaan sah: lemparan di `price-check.ts` bila `isCheckable` dan tabel transisi tidak lagi sepakat, dan lemparan di `booking-routes.ts` bila middleware identitas tidak terpasang pada rute.
 
-`prisma-client.ts` (pembuatan koneksi) dan `config.ts` dikecualikan dari cakupan. Repository Prisma **tidak** dikecualikan: ia diuji terhadap palsuan yang meniru transaksi.
+Dikecualikan dari cakupan unit: `index.ts`, `telemetry.ts`, `config.ts`, `prisma-client.ts`, `system.ts`, dan adapter Redis (`redis-hold-store.ts`, `keyspace-expiry.ts`) — yang terakhir diuji terhadap Redis sungguhan, di bawah.
+
+### Uji integrasi
+
+```bash
+export INTEGRATION_DATABASE_URL=postgresql://tbe@localhost:5440/booking_it
+export INTEGRATION_REDIS_URL=redis://localhost:6390/5
+pnpm test:integration
+```
+
+39 uji terhadap **Redis 7.0.15 dan PostgreSQL 16.13 sungguhan**, di [`tests/integration`](tests/integration). Basis data uji dibangun ulang dari migrasi setiap kali — trigger append-only menolak pembersihan tabel, dan memang harus. Uji GAGAL keras bila salah satu env tidak ada; tidak dilewati diam-diam.
+
+Docker masih mati, tetapi kontainer pengembangan Step 17 ternyata sudah membawa `redis-server` dan PostgreSQL 16 terpasang langsung. CONVENTIONS.md meminta Testcontainers; tanpa Docker, infrastrukturnya diberikan lewat env.
+
+Dijalankan di zona `Asia/Jakarta` dan `America/Los_Angeles`, masing-masing tiga kali dengan urutan acak. Yang dibuktikan:
+
+| Klaim                                                                         | Sebelumnya (Step 16)       |
+| ----------------------------------------------------------------------------- | -------------------------- |
+| Skrip Lua: 100 pengambilan serentak untuk kapasitas 10 → tepat 10             | —                          |
+| Logika yang sama tanpa Lua, Redis yang sama → lebih dari 10                   | —                          |
+| 100 hold serentak ujung ke ujung → tepat 10 HELD di Postgres                  | —                          |
+| Keyspace notification → EXPIRED di Postgres, kursi kembali di Redis           | —                          |
+| Penyapu dan keyspace serentak → satu `HoldExpired`, satu pelepasan            | —                          |
+| Kegagalan tulisan peristiwa membatalkan baris pemesanan                       | hanya terhadap palsuan     |
+| 10 `create` serentak, kunci sama → 1 baris, 9 `duplicate` (P2002 nyata)       | hanya terhadap palsuan     |
+| 2 `save` serentak dari versi sama → satu `saved`, satu `stale`                | hanya terhadap palsuan     |
+| `check_in`/`check_out` tersimpan `2026-11-10` lewat adapter-pg                | hanya fungsi pemetaan kita |
+| Trigger menolak UPDATE, DELETE, TRUNCATE pada booking_events                  | belum dijalankan           |
+| Enam dari tujuh CHECK menolak pelanggarannya (`version_positive` tidak diuji) | belum dijalankan           |
+| Setiap keadaan pulang-pergi melewati Postgres tanpa perubahan                 | hanya terhadap palsuan     |
 
 ## Menjalankan
-
-Step 16 belum punya proses yang berjalan — tidak ada `index.ts`, tidak ada HTTP. Yang dapat dijalankan adalah migrasinya:
 
 ```bash
 cp apps/booking-service/.env.example apps/booking-service/.env
 pnpm infra:up
 pnpm --filter @tbe/booking-service db:deploy
+pnpm --filter @tbe/booking-service build && pnpm --filter @tbe/booking-service start
 ```
+
+## Antarmuka
+
+Seluruhnya lewat api-gateway, yang mewajibkan autentikasi untuk `/bookings` dan meneruskan identitas sebagai `x-tbe-user-id`. Tanpa header itu — atau bukan UUID — dijawab 401, sebelum isi permintaan diperiksa. Pemesanan milik pengguna lain dijawab 404, sama dengan pemesanan yang tidak ada.
+
+| Rute                                | Guna                                                       |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `POST /bookings/price-check`        | Buat bila belum ada (idempoten), lalu price check langsung |
+| `POST /bookings/price-check/accept` | Setujui harga baru, lalu price check ulang                 |
+| `POST /bookings/hold`               | Hold lokal lalu supplier                                   |
+| `GET /bookings/:id`                 | Keadaan pemesanan milik sendiri                            |
 
 ## Perintah verifikasi yang BELUM dijalankan
 
-Docker Desktop mati sejak Step 05. Tidak ada Postgres, jadi perintah di bawah **belum pernah dijalankan** dan tidak ada klaim yang dibuat tentang hasilnya.
-
-| Perintah / pemeriksaan                                              | Yang diharapkan                                                                                                                                                                                                                |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm --filter @tbe/booking-service db:deploy`                      | Migrasi `20260927000000_init` berlaku bersih pada basis data kosong, **termasuk bagian yang ditulis tangan**: tujuh CHECK dan fungsi plpgsql beserta dua trigger. Bagian itu belum pernah diurai Postgres.                     |
-| `pnpm --filter @tbe/booking-service db:migrate` setelah deploy      | Prisma tidak melaporkan drift atas CHECK dan trigger yang tidak dikenalnya. Belum dipastikan.                                                                                                                                  |
-| `\d bookings` di psql                                               | `check_in` dan `check_out` bertipe `date`; `held_until`, `created_at`, `updated_at` bertipe `timestamp(3) with time zone`. Yang terbukti sekarang hanya teks migrasinya.                                                       |
-| Pulang-pergi tanggal lewat `@prisma/adapter-pg`                     | `2026-11-10` ditulis dan dibaca kembali sebagai `2026-11-10` dengan proses Node ber-`TZ=Asia/Jakarta` dan `TZ=America/Los_Angeles`. Yang terbukti sekarang hanya fungsi pemetaan kita, bukan perilaku adapter terhadap `DATE`. |
-| `UPDATE booking_events SET payload = '{}'` dan `DELETE`, `TRUNCATE` | Ketiganya ditolak dengan `booking_events hanya bertambah`.                                                                                                                                                                     |
-| Uji atomisitas terhadap Postgres                                    | Kegagalan penulisan peristiwa membatalkan baris pemesanan. Terbukti terhadap palsuan; BELUM terhadap Postgres.                                                                                                                 |
-| Sepuluh `create` serentak dengan kunci idempotensi sama             | Satu baris, sembilan `duplicate`. Mengandalkan Prisma 7 + adapter-pg melaporkan pelanggaran UNIK sebagai `P2002`; itu belum pernah diamati langsung.                                                                           |
-| Dua `save` serentak dari versi yang sama                            | Satu `saved`, satu `stale` — penulis kedua menunggu kunci baris lalu melihat versi yang sudah naik (READ COMMITTED).                                                                                                           |
-| INSERT yang melanggar tiap CHECK                                    | Ditolak: CONFIRMED tanpa `supplier_ref`, DRAFT dengan `hold_ref`, HELD tanpa `held_until`, `check_out <= check_in`.                                                                                                            |
+| Pemeriksaan                                                               | Yang diharapkan                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Alur lewat supplier-service dan pricing-service yang berjalan             | Price check dan hold terhadap mock-supplier sungguhan. Yang terbukti sekarang: penerjemahan jawaban HTTP (unit) dan use case terhadap supplier/pricing palsuan (unit dan integrasi). |
+| `pnpm --filter @tbe/booking-service start` dengan infra lengkap           | Startup, pemeriksaan `notify-keyspace-events`, penyapu terjadwal, dan penutupan berurutan. `index.ts` belum pernah dijalankan.                                                       |
+| Lewat api-gateway                                                         | `x-tbe-user-id` diteruskan dan header kiriman klien dibuang. Diuji di api-gateway sendiri (Step 07), belum ujung ke ujung dengan service ini.                                        |
+| Konsumsi `booking.created` / `booking.price_changed` oleh payment-service | Belum ada yang menerbitkannya — outbox Step 19. Sampai itu, `POST /internal/payments` tetap menolak `amount_unknown`.                                                                |

@@ -115,6 +115,12 @@ export interface BookingBase {
   readonly userId: string
   readonly supplier: SupplierCode
   readonly propertyId: string
+  /**
+   * Kota properti. Ditambahkan Step 17: aturan markup pricing-service dicakup
+   * per kota, dan price check ulang — setelah persetujuan harga dan saat hold —
+   * harus menghitung harga jual dengan aturan yang sama dengan pencarian.
+   */
+  readonly city: string
   readonly ratePlanRef: string
   readonly stay: StayDates
   readonly guests: GuestDetails
@@ -188,6 +194,7 @@ export function baseOf(booking: Booking): BookingBase {
     userId: booking.userId,
     supplier: booking.supplier,
     propertyId: booking.propertyId,
+    city: booking.city,
     ratePlanRef: booking.ratePlanRef,
     stay: booking.stay,
     guests: booking.guests,

@@ -76,6 +76,7 @@ export function draftChange(
       userId: overrides.userId ?? USER_ID,
       supplier: 'SKY',
       propertyId: 'prop-bali-001',
+      city: 'Denpasar',
       ratePlanRef: 'SKY:RP-DLX-BB',
       stay: sampleStay(),
       guests: sampleGuests(),

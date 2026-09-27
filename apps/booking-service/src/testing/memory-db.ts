@@ -125,6 +125,17 @@ function insertEvent(tables: Tables, data: EventWriteColumns): void {
   tables.events.push({ id: randomUUID(), ...structuredClone(data) })
 }
 
+/** Baris HELD yang batas waktunya sudah lewat, meniru kueri penyapu. */
+function dueRows(tables: Tables, now: Date, take: number): BookingRow[] {
+  return [...tables.bookings.values()]
+    .filter(
+      (row) =>
+        row.status === 'HELD' && row.heldUntil !== null && row.heldUntil.getTime() <= now.getTime(),
+    )
+    .sort((a, b) => (a.heldUntil?.getTime() ?? 0) - (b.heldUntil?.getTime() ?? 0))
+    .slice(0, take)
+}
+
 interface Options {
   /** false meniru basis data TANPA rollback: setiap tulisan langsung permanen. */
   readonly atomic: boolean
@@ -162,6 +173,10 @@ function build(options: Options): MemoryBookingDb {
       findUnique: async ({ where }) => {
         await Promise.resolve()
         return structuredClone(committed.bookings.get(where.id)) ?? null
+      },
+      findMany: async ({ where, take }) => {
+        await Promise.resolve()
+        return structuredClone(dueRows(committed, where.heldUntil.lte, take))
       },
       findFirst: async ({ where }) => {
         await Promise.resolve()

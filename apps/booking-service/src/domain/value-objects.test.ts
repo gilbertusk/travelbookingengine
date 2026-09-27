@@ -192,7 +192,7 @@ describe('pembuatan pemesanan', () => {
     })
   })
 
-  test.each(['id', 'userId', 'propertyId', 'ratePlanRef'] as const)(
+  test.each(['id', 'userId', 'propertyId', 'city', 'ratePlanRef'] as const)(
     '%s kosong ditolak',
     (field) => {
       const { booking } = draftChange()
@@ -202,6 +202,7 @@ describe('pembuatan pemesanan', () => {
         userId: booking.userId,
         supplier: booking.supplier,
         propertyId: booking.propertyId,
+        city: booking.city,
         ratePlanRef: booking.ratePlanRef,
         stay: sampleStay(),
         guests: sampleGuests(),

@@ -1,6 +1,9 @@
-import type { Booking, DraftBooking } from '../domain/booking.js'
+import type { Money } from '@tbe/money'
+import type { Logger } from '@tbe/shared-kernel'
+import type { Booking, DraftBooking, SupplierCode } from '../domain/booking.js'
 import type { BookingChange } from '../domain/events.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
+import type { SellQuote } from '../domain/sell-price.js'
 
 /**
  * Port yang dipenuhi infrastructure.
@@ -56,4 +59,131 @@ export interface BookingRepository {
    * versi yang tersimpan masih versi sebelum transisi ini.
    */
   save(change: BookingChange): Promise<SaveOutcome>
+
+  /**
+   * Pemesanan HELD yang batas waktunya sudah lewat, yang paling lama lebih
+   * dulu. Dibaca penyapu hold (Step 17) lewat indeks `(status, held_until)`.
+   */
+  findExpiredHolds(now: Date, limit: number): Promise<readonly Booking[]>
+}
+
+/**
+ * Jawaban supplier-service, sudah dipetakan ke keputusan booking-service.
+ *
+ * Bentuknya dipilih dari apa yang dapat DILAKUKAN pemanggil, bukan dari status
+ * HTTP: `rejected` berarti supplier menjawab dan jawabannya tidak — kamar habis
+ * atau rate plan tidak ada — dan mengulanginya tidak akan mengubah apa pun;
+ * `unreachable` berarti belum ada jawaban — timeout, pemutus terbuka, galat
+ * 5xx — dan pengguna boleh mencoba lagi. Menyatukan keduanya akan membatalkan
+ * pemesanan karena supplier sedang lambat sesaat.
+ */
+export type SupplierAnswer<T> =
+  | { readonly kind: 'ok'; readonly value: T }
+  | { readonly kind: 'rejected'; readonly reason: 'sold_out' | 'not_found' }
+  | { readonly kind: 'unreachable' }
+
+export interface RatePlanStay {
+  readonly supplier: SupplierCode
+  readonly supplierRatePlanId: string
+  readonly checkIn: string
+  readonly checkOut: string
+}
+
+export interface SupplierHold {
+  readonly holdRef: string
+  readonly expiresAt: Date
+  readonly total: Money
+}
+
+/**
+ * Pintu ke supplier-service. Seluruh price check dan hold ke supplier
+ * melewatinya.
+ *
+ * TIDAK ADA operasi pelepasan hold. Bukan kelalaian port ini: tidak satu pun
+ * supplier simulasi, adapter di @tbe/supplier-adapters, maupun supplier-service
+ * menyediakannya. Hold di supplier kedaluwarsa sendiri pada `expiresAt`-nya.
+ * Lihat bagian Temuan di docs/plan/step-17-hold-price-check.md.
+ */
+export interface SupplierQuotes {
+  /** Harga supplier, langsung dari supplier. Tidak pernah dari cache (FR-13). */
+  priceCheck(request: RatePlanStay): Promise<SupplierAnswer<{ readonly total: Money }>>
+  hold(request: RatePlanStay & { readonly guests: number }): Promise<SupplierAnswer<SupplierHold>>
+}
+
+export interface PricingRequest {
+  readonly ref: string
+  readonly supplier: SupplierCode
+  readonly city: string
+  readonly supplierTotal: Money
+}
+
+/** pricing-service. `undefined` berarti harga tidak dapat dihitung. */
+export interface Pricing {
+  sellPrice(request: PricingRequest): Promise<SellQuote | undefined>
+}
+
+export type AcquireOutcome = 'held' | 'already_held' | 'sold_out'
+
+export interface HoldClaim {
+  readonly bookingId: string
+  /** Rate plan dan rentang tanggal. Satu hitungan ketersediaan per slot. */
+  readonly slot: string
+  /**
+   * Ketersediaan yang terlihat pengguna saat mencari. Dipakai HANYA untuk
+   * slot yang belum pernah dilihat; slot yang sudah ada tidak dapat dinaikkan
+   * kapasitasnya oleh permintaan berikutnya.
+   */
+  readonly capacity: number
+  readonly until: Date
+}
+
+export interface HoldEntry {
+  readonly bookingId: string
+  readonly slot: string
+}
+
+/**
+ * Hold lokal (Redis). Lapis yang menjamin US-04: M permintaan serentak untuk N
+ * ketersediaan, tepat N yang berhasil.
+ *
+ * Seperti `WebhookLedger` di payment-service, port ini sengaja tidak punya
+ * operasi "masih ada tempat?" yang berdiri sendiri. Satu-satunya jalan masuk
+ * adalah [acquire], yang memeriksa dan mengurangi dalam SATU operasi atomik.
+ * Pola baca-lalu-tulis tidak dapat ditulis terhadap port ini.
+ */
+export interface HoldStore {
+  acquire(claim: HoldClaim): Promise<AcquireOutcome>
+  /** Memajukan kedaluwarsa hold lokal ke `until` bila lebih awal. Tidak pernah memundurkan. */
+  shorten(bookingId: string, until: Date): Promise<void>
+  /** Idempoten: `true` hanya untuk pemanggil yang benar-benar melepaskannya. */
+  release(entry: HoldEntry): Promise<boolean>
+  /** Hold yang masih memegang slot tetapi kunci waktunya sudah hilang. */
+  orphans(limit: number): Promise<readonly HoldEntry[]>
+}
+
+export interface Clock {
+  now(): Date
+}
+
+export interface IdFactory {
+  next(): string
+}
+
+export interface HoldPolicy {
+  /** Durasi hold lokal. */
+  readonly durationMs: number
+  /** Banyak pemesanan yang diproses penyapu per putaran. */
+  readonly sweepBatch: number
+}
+
+/** Dependensi seluruh use case. Dirangkai di index.ts, satu-satunya tempat wiring. */
+export interface BookingDeps {
+  readonly bookings: BookingRepository
+  readonly suppliers: SupplierQuotes
+  readonly pricing: Pricing
+  readonly holds: HoldStore
+  readonly clock: Clock
+  readonly ids: IdFactory
+  readonly holdPolicy: HoldPolicy
+  readonly logger: Logger
 }

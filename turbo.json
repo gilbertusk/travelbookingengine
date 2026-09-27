@@ -27,7 +27,8 @@
     "test:integration": {
       "dependsOn": ["^build"],
       "cache": false,
-      "outputs": []
+      "outputs": [],
+      "passThroughEnv": ["INTEGRATION_*"]
     }
   }
 }

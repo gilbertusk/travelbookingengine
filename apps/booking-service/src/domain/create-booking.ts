@@ -25,6 +25,7 @@ export interface CreateBookingInput {
   readonly userId: string
   readonly supplier: SupplierCode
   readonly propertyId: string
+  readonly city: string
   readonly ratePlanRef: string
   readonly stay: StayDates
   readonly guests: GuestDetails
@@ -39,7 +40,7 @@ export const INITIAL_VERSION = 1
 export function createBooking(
   input: CreateBookingInput,
 ): Result<BookingChange<DraftBooking>, BookingRuleError> {
-  const blank = (['id', 'userId', 'propertyId', 'ratePlanRef'] as const).find(
+  const blank = (['id', 'userId', 'propertyId', 'city', 'ratePlanRef'] as const).find(
     (field) => input[field].trim().length === 0,
   )
 
