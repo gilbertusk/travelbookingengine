@@ -56,6 +56,24 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
     expect(result.value.event).toMatchObject({ type: 'PriceVerified', amount: idr(2_220_000) })
   })
 
+  test('harga yang sama mengadopsi rincian terverifikasi tanpa mengubah totalnya', () => {
+    const booking = draft()
+    const verified = priceBreakdown([
+      { kind: 'room_night', description: 'Kamar, 2 malam', amount: idr(2_000_000) },
+      { kind: 'tax', description: 'PPN 11%', amount: idr(220_000) },
+    ])
+    if (!verified.ok) throw new Error('persiapan gagal')
+
+    const next = step(booking, {
+      type: 'verifyPrice',
+      at: minutesAfter(booking.updatedAt, 1),
+      verified: verified.value,
+    })
+
+    expect(next.price).toEqual(verified.value)
+    expect(next.price.total).toEqual(booking.price.total)
+  })
+
   test('harga berubah menghentikan alur dan membawa harga lama serta baru', () => {
     const booking = priceChanged(1_100_000)
 

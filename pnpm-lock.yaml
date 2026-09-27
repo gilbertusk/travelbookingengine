@@ -163,9 +163,21 @@ importers:
       '@tbe/shared-kernel':
         specifier: workspace:*
         version: link:../../packages/shared-kernel
+      '@tbe/supplier-adapters':
+        specifier: workspace:*
+        version: link:../../packages/supplier-adapters
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      undici:
+        specifier: ^8.11.0
+        version: 8.11.0
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -173,9 +185,15 @@ importers:
       '@tbe/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      '@types/supertest':
+        specifier: ^7.2.1
+        version: 7.2.1
       '@vitest/coverage-v8':
         specifier: ^5.0.1
         version: 5.0.1(vitest@5.0.1)
@@ -185,6 +203,9 @@ importers:
       prisma:
         specifier: 7.10.0
         version: 7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)
+      supertest:
+        specifier: ^7.2.2
+        version: 7.2.2
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

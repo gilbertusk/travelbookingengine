@@ -32,9 +32,20 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/config.ts',
+        'src/index.ts',
+        'src/telemetry.ts',
         // Klien Prisma sungguhan: pembuatan koneksi saja. Kesesuaian tipenya
         // dengan port BookingDb dibuktikan compiler di berkas itu sendiri.
         'src/infrastructure/prisma-client.ts',
+        // Adapter Redis diuji terhadap Redis SUNGGUHAN di tests/integration,
+        // bukan terhadap tiruan: yang dibuktikan di sana adalah atomisitas
+        // skrip Lua dan keyspace notification, dan keduanya sifat Redis, bukan
+        // sifat kode kita. Fungsi murni di dalamnya (bookingIdOfExpiredKey,
+        // notifiesExpiry) tetap diuji unit.
+        'src/infrastructure/redis-hold-store.ts',
+        'src/infrastructure/keyspace-expiry.ts',
+        // Jembatan tipis ke Date dan crypto.randomUUID.
+        'src/infrastructure/system.ts',
         'src/generated/**',
         'src/testing/**',
       ],

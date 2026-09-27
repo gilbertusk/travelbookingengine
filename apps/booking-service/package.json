@@ -6,7 +6,10 @@
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
+    "dev": "node --watch dist/index.js",
+    "start": "node dist/index.js",
     "test": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio"
@@ -17,15 +20,22 @@
     "@tbe/event-contracts": "workspace:*",
     "@tbe/money": "workspace:*",
     "@tbe/shared-kernel": "workspace:*",
+    "@tbe/supplier-adapters": "workspace:*",
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0",
     "pg": "^8.23.0",
+    "undici": "^8.11.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tbe/tsconfig": "workspace:*",
+    "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^5.0.1",
     "dotenv": "^18.0.2",
     "prisma": "7.10.0",
+    "supertest": "^7.2.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }

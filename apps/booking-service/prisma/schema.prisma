@@ -91,6 +91,9 @@ model Booking {
   /// tetap yang dinamai, dan kode itulah yang dibawa kontrak peristiwa.
   supplierId  String @map("supplier_id")
   propertyId  String @map("property_id")
+  /// Kota properti — cakupan aturan markup di pricing-service. Ditambahkan
+  /// Step 17, lewat migrasi kedua.
+  city        String
   ratePlanRef String @map("rate_plan_ref")
 
   /// Tanggal lokal properti. DATE, bukan TIMESTAMP — lihat kepala berkas.

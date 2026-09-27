@@ -63,8 +63,19 @@ export const verifyPrice: Handler<BookingIn<'DRAFT' | 'PRICE_CHECKED'>, 'verifyP
   const agreed = booking.price.total
 
   if (isSameAmount(command.verified.total, agreed)) {
+    // Rincian yang terverifikasi MENGGANTIKAN rincian yang disetujui, karena
+    // totalnya sama: nilai yang boleh ditagih tidak berubah (G2), hanya
+    // susunannya yang kini datang dari supplier dan pricing-service. Versi
+    // Step 16 mempertahankan rincian lama, dan Step 17 menemukan akibatnya:
+    // harga yang ditampilkan hanya punya satu baris, jadi e-voucher (FR-24)
+    // akan terbit tanpa baris pajak.
     return ok({
-      booking: { ...base, status: 'PRICE_CHECKED', priceCheck: { kind: 'verified' } },
+      booking: {
+        ...base,
+        price: command.verified,
+        status: 'PRICE_CHECKED',
+        priceCheck: { kind: 'verified' },
+      },
       event: { type: 'PriceVerified', ...meta(base), amount: agreed },
     })
   }

@@ -99,5 +99,31 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
     return { kind: 'stale', current: await findById(booking.id) }
   }
 
-  return { findById, findByIdempotencyKey, create, save }
+  return {
+    findById,
+    findByIdempotencyKey,
+    create,
+    save,
+    findExpiredHolds: async (now, limit) => await expiredHolds(db, now, limit),
+  }
+}
+
+/**
+ * Pemesanan yang hold-nya sudah lewat. Dilayani indeks `(status, held_until)`;
+ * yang paling lama lebih dulu, supaya penyapu yang tertinggal jauh mengejar
+ * dari ujung yang paling merugikan: inventaris yang tertahan paling lama.
+ *
+ * `lte`, bukan `lt`: sama dengan aturan domain, yang menyatakan hold
+ * kedaluwarsa TEPAT pada batas waktunya. Versi pertama memakai `lt`, dan
+ * uji menemukan dua jalur pelepasan dengan dua definisi "kedaluwarsa" —
+ * jalur keyspace melepas di batas waktu, penyapu tidak.
+ */
+async function expiredHolds(db: BookingDb, now: Date, limit: number): Promise<readonly Booking[]> {
+  const rows = await db.booking.findMany({
+    where: { status: 'HELD', heldUntil: { lte: now } },
+    orderBy: { heldUntil: 'asc' },
+    take: limit,
+  })
+
+  return rows.map(fromRow)
 }
