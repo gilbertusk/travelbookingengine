@@ -1,0 +1,197 @@
+// Skema booking-service.
+//
+// Dua tabel: `bookings` menyimpan keadaan sekarang, `booking_events` menyimpan
+// bagaimana keadaan itu tercapai. Keduanya selalu ditulis dalam SATU transaksi
+// — lihat src/infrastructure/prisma-booking-repository.ts — karena keadaan
+// tanpa jejaknya melanggar NFR-10, dan jejak tanpa keadaannya berbohong
+// tentang apa yang pernah terjadi.
+//
+// Dua keputusan tipe kolom yang bukan detail kecil:
+//
+// - `check_in` dan `check_out` bertipe DATE, BUKAN TIMESTAMP (NFR-09,
+//   CONVENTIONS.md bagian 9). Keduanya tanggal kalender lokal properti.
+//   TIMESTAMP memaksa pemilihan zona saat menulis dan saat membaca, dan setiap
+//   pilihan yang berbeda menggeser menginap satu hari.
+// - Seluruh waktu kejadian sistem bertipe TIMESTAMPTZ.
+//
+// Tidak ada kolom pecahan biner. Uang disimpan sebagai bilangan bulat satuan
+// terkecil (`amount_minor`) berpasangan dengan kolom mata uangnya — NFR-08,
+// pola yang sama dengan payment-service.
+//
+// Beberapa aturan TIDAK dapat dinyatakan Prisma dan ditambahkan langsung di
+// migrasi: batasan CHECK per keadaan dan trigger append-only pada
+// booking_events. Lihat prisma/migrations/*_init/migration.sql.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Sama persis dengan BOOKING_STATUSES di src/domain/booking.ts. Kesepakatan
+/// keduanya diperiksa dari dua arah oleh prisma-schema.test.ts.
+enum BookingStatus {
+  DRAFT
+  PRICE_CHECKED
+  HELD
+  PAID
+  CONFIRMED
+  FAILED
+  REFUNDED
+  CANCELLED
+  EXPIRED
+  NEEDS_REVIEW
+
+  @@map("booking_status")
+}
+
+enum PriceCheckOutcome {
+  verified
+  changed
+  accepted
+
+  @@map("price_check_outcome")
+}
+
+enum CancellationReason {
+  user_request
+  payment_failed
+  supplier_rejected
+
+  @@map("cancellation_reason")
+}
+
+/// Jenis peristiwa domain. Sama persis dengan BOOKING_EVENT_TYPES.
+enum BookingEventType {
+  BookingCreated
+  PriceVerified
+  PriceChanged
+  PriceAccepted
+  BookingHeld
+  HoldExpired
+  PaymentRecorded
+  BookingConfirmed
+  BookingFailed
+  BookingRefunded
+  BookingCancelled
+  ReviewRequired
+
+  @@map("booking_event_type")
+}
+
+model Booking {
+  id     String        @id @db.Uuid
+  userId String        @map("user_id") @db.Uuid
+  status BookingStatus
+
+  /// Kode supplier (SKY, NOVA, ...), bukan UUID — supplier adalah himpunan
+  /// tetap yang dinamai, dan kode itulah yang dibawa kontrak peristiwa.
+  supplierId  String @map("supplier_id")
+  propertyId  String @map("property_id")
+  ratePlanRef String @map("rate_plan_ref")
+
+  /// Tanggal lokal properti. DATE, bukan TIMESTAMP — lihat kepala berkas.
+  checkIn  DateTime @map("check_in") @db.Date
+  checkOut DateTime @map("check_out") @db.Date
+
+  /// Jumlah tamu. Nama dan surel tamu utama di dua kolom berikutnya.
+  guests         Int
+  leadGuestName  String @map("lead_guest_name")
+  leadGuestEmail String @map("lead_guest_email")
+
+  /// Harga yang TERAKHIR disetujui pengguna, satu-satunya nilai yang boleh
+  /// ditagih (G2). Disimpan sebagai kolom skalar supaya dapat dikueri dan
+  /// dibandingkan tanpa mengurai JSON; rinciannya ada di `price_lines`.
+  amountMinor Int    @map("amount_minor")
+  currency    String
+
+  /// Hasil price check terakhir. Hanya ada pada PRICE_CHECKED.
+  priceCheck PriceCheckOutcome? @map("price_check")
+
+  /// Total harga baru yang menunggu persetujuan. Hanya ada saat
+  /// `price_check` = `changed`.
+  quotedAmountMinor Int?    @map("quoted_amount_minor")
+  quotedCurrency    String? @map("quoted_currency")
+
+  /// Rincian harga: `{ "agreed": [...], "quoted": [...] | null }`.
+  ///
+  /// SATU kolom JSON yang tidak pernah null, bukan dua kolom yang salah satunya
+  /// nullable. Kolom `Json?` di Prisma tidak menerima `null` biasa — ia menuntut
+  /// sentinel `Prisma.DbNull` dari klien tergenerate — sehingga port
+  /// repository tidak lagi dapat dipenuhi palsuan di memori dan klien sungguhan
+  /// dengan tipe yang sama. Null di DALAM JSON tidak punya masalah itu.
+  priceLines Json @map("price_lines")
+
+  /// Token hold dari supplier. Ada pada HELD dan EXPIRED — pelepasan hold di
+  /// supplier membutuhkannya setelah keadaan berpindah.
+  holdRef   String?   @map("hold_ref")
+  /// Yang lebih awal antara kedaluwarsa lokal dan kedaluwarsa supplier.
+  /// Dibaca penyapu hold Step 17.
+  heldUntil DateTime? @map("held_until") @db.Timestamptz(3)
+
+  paymentId String? @map("payment_id") @db.Uuid
+
+  /// Booking reference dari supplier — bukti pemesanan yang sah (FR-24).
+  /// Wajib pada CONFIRMED, dan batasan CHECK di migrasi menegakkannya.
+  supplierRef String? @map("supplier_ref")
+
+  refundId      String?             @map("refund_id") @db.Uuid
+  failureReason String?             @map("failure_reason")
+  cancellation  CancellationReason?
+  reviewReason  String?             @map("review_reason")
+  /// Keadaan asal peninjauan: PAID atau FAILED.
+  reviewFrom    BookingStatus?      @map("review_from")
+
+  /// Kunci idempotensi dari klien (FR-18). Unik BERSAMA user_id — lihat
+  /// @@unique di bawah.
+  idempotencyKey String @map("idempotency_key")
+
+  /// Kunci optimistik. Penyimpanan transisi hanya berhasil bila versi yang
+  /// tersimpan masih versi sebelum transisi.
+  version Int
+
+  /// Waktu kejadian, dari domain — bukan @updatedAt. Waktu ubah adalah waktu
+  /// transisi terjadi, bukan waktu baris kebetulan ditulis.
+  createdAt DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+
+  events BookingEvent[]
+
+  /// Keunikan kunci idempotensi per PENGGUNA, bukan global. Kunci dikirim
+  /// klien; dengan keunikan global, dua pengguna yang kebetulan — atau sengaja
+  /// — mengirim kunci yang sama membuat pengguna kedua menerima pemesanan
+  /// pengguna pertama. Indeks ini juga melayani pencarian menurut user_id,
+  /// karena user_id kolom terdepannya.
+  @@unique([userId, idempotencyKey])
+  /// Penyapu hold Step 17: `status = 'HELD' AND held_until < now()`. Satu indeks
+  /// gabungan melayani kueri itu dan kueri menurut status saja.
+  @@index([status, heldUntil])
+  @@map("bookings")
+}
+
+/// Jejak audit. HANYA BERTAMBAH (NFR-10).
+///
+/// Tidak ada operasi ubah atau hapus di port repository, dan trigger di
+/// migrasi menolak UPDATE dan DELETE pada tingkat basis data — termasuk dari
+/// psql, dari skrip perbaikan data, dan dari kode yang belum ditulis.
+model BookingEvent {
+  id        String @id @default(uuid()) @db.Uuid
+  bookingId String @map("booking_id") @db.Uuid
+
+  /// Versi pemesanan SETELAH transisi. Unik per pemesanan: dua penulis yang
+  /// sama-sama mengira menang tidak dapat sama-sama tercatat, dan urutan jejak
+  /// tidak bergantung pada jam mesin mana pun.
+  sequence Int
+
+  eventType  BookingEventType @map("event_type")
+  payload    Json
+  occurredAt DateTime         @map("occurred_at") @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, sequence])
+  @@map("booking_events")
+}

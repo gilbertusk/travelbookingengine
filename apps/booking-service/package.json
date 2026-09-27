@@ -1,0 +1,32 @@
+{
+  "name": "@tbe/booking-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@tbe/event-contracts": "workspace:*",
+    "@tbe/money": "workspace:*",
+    "@tbe/shared-kernel": "workspace:*",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tbe/tsconfig": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.1",
+    "dotenv": "^18.0.2",
+    "prisma": "7.10.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
