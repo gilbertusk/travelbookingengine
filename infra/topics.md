@@ -21,13 +21,14 @@ Dua hal, dan keduanya dijawab per topik di bawah:
 
 ## Daftar topik
 
-| Topik                | Partisi | Kunci partisi | Retensi | Peristiwa                                                                                                              |
-| -------------------- | ------- | ------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `tbe.booking.v1`     | 6       | `bookingId`   | 90 hari | `booking.created`, `booking.held`, `booking.price_changed`, `booking.confirmed`, `booking.failed`, `booking.cancelled` |
-| `tbe.payment.v1`     | 6       | `bookingId`   | 90 hari | `payment.succeeded`, `payment.failed`, `payment.refunded`                                                              |
-| `tbe.search.v1`      | 3       | `city`        | 7 hari  | `search.performed`                                                                                                     |
-| `tbe.supplier.v1`    | 1       | `supplier`    | 7 hari  | `supplier.degraded`, `supplier.recovered`                                                                              |
-| `tbe.dead-letter.v1` | 3       | topik asal    | 30 hari | pesan cacat dari topik mana pun                                                                                        |
+| Topik                     | Partisi | Kunci partisi | Retensi | Peristiwa                                                                                                              |
+| ------------------------- | ------- | ------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `tbe.booking.v1`          | 6       | `bookingId`   | 90 hari | `booking.created`, `booking.held`, `booking.price_changed`, `booking.confirmed`, `booking.failed`, `booking.cancelled` |
+| `tbe.payment.v1`          | 6       | `bookingId`   | 90 hari | `payment.succeeded`, `payment.failed`, `payment.refunded`                                                              |
+| `tbe.supplier-booking.v1` | 6       | `bookingId`   | 90 hari | `supplier.booking_confirmed`, `supplier.booking_rejected`, `supplier.booking_uncertain` (Step 19)                      |
+| `tbe.search.v1`           | 3       | `city`        | 7 hari  | `search.performed`                                                                                                     |
+| `tbe.supplier.v1`         | 1       | `supplier`    | 7 hari  | `supplier.degraded`, `supplier.recovered`                                                                              |
+| `tbe.dead-letter.v1`      | 3       | topik asal    | 30 hari | pesan cacat dari topik mana pun                                                                                        |
 
 ## Alasan per topik
 
@@ -36,6 +37,9 @@ Urutan per pemesanan wajib terjaga. Enam partisi memberi ruang enam consumer par
 
 **`tbe.payment.v1` — 6 partisi, kunci `bookingId`, retensi 90 hari.**
 Dikunci `bookingId`, bukan `paymentId`, agar seluruh peristiwa pembayaran satu pemesanan tiba berurutan pada consumer yang sama dengan yang menangani pemesanannya. Retensi panjang untuk audit finansial.
+
+**`tbe.supplier-booking.v1` — 6 partisi, kunci `bookingId`, retensi 90 hari.**
+Ditambahkan Step 19. Perintah `supplier.confirm` berjalan lewat RabbitMQ, dan RabbitMQ tidak punya jalan balik: consumer-nya mengerjakan, mencoba ulang, lalu diam. Topik ini adalah jalan baliknya — fakta tentang pemesanan di supplier, dibaca saga di booking-service. Dikunci `bookingId`, bukan kode supplier, karena urutan yang penting adalah urutan per pemesanan. Terpisah dari `tbe.supplier.v1` karena yang itu satu partisi dan beretensi pendek, sementara jawaban supplier atas pemesanan yang sudah dibayar adalah catatan finansial.
 
 **`tbe.search.v1` — 3 partisi, kunci `city`, retensi 7 hari.**
 Hanya dibaca analitik dan urutan antar pencarian tidak penting. Dikunci kota agar agregasi per kota terkumpul di satu partisi. Retensi pendek karena tidak ada yang perlu dibangun ulang dari sini.

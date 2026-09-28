@@ -46,6 +46,13 @@ export function createRabbitConnection(options: RabbitConnectionOptions): Rabbit
 
     consume(queue, prefetch, handler) {
       void channel.addSetup(async (ch: ConfirmChannel) => {
+        // amqp-connection-manager menjalankan seluruh setup BERSAMAAN
+        // (Promise.all), bukan berurutan. Tanpa baris ini, consume dapat
+        // mendahului deklarasi topologi di atas dan broker yang masih kosong
+        // menutup kanal dengan 404 "no queue". Ditemukan Step 19 — pertama
+        // kalinya consumer ini dijalankan terhadap RabbitMQ sungguhan.
+        // Deklarasi idempoten, jadi mengulangnya per consumer tidak merusak.
+        await declareTopology(ch, topology)
         await ch.prefetch(prefetch)
         await ch.consume(queue, (message) => {
           if (message === null) return

@@ -7,6 +7,16 @@ import type {
   EventWriteColumns,
 } from '../infrastructure/booking-db.js'
 import { UNIQUE_VIOLATION } from '../infrastructure/booking-db.js'
+import {
+  PrismaLikeError,
+  advisoryLock,
+  consumedTx,
+  outboxTx,
+  sagaTx,
+  sagasDue,
+  type SagaFailpoint,
+  type SagaTables,
+} from './memory-saga-tables.js'
 
 /**
  * Basis data palsuan untuk repository pemesanan.
@@ -30,13 +40,16 @@ import { UNIQUE_VIOLATION } from '../infrastructure/booking-db.js'
  * persis tetapi tanpa rollback. Uji atomisitas yang sama WAJIB gagal padanya —
  * itu yang membuktikan uji atomisitas tidak hampa.
  *
- * Yang TIDAK ditiru: batasan CHECK dan trigger append-only di migrasi. Keduanya
- * hanya dapat dibuktikan terhadap Postgres sungguhan (README, bagian perintah
- * yang belum dijalankan).
+ * Step 19 menambah tiga tabel — saga_states, outbox, consumed_messages — lewat
+ * memory-saga-tables.ts, dengan sifat yang sama: ikut transaksi, UNIK, dan
+ * kunci asing ke bookings.
+ *
+ * Yang TIDAK ditiru: batasan CHECK, trigger append-only, dan PERSAINGAN kunci
+ * penasihat penerbit outbox. Ketiganya dibuktikan terhadap Postgres sungguhan
+ * di tests/integration.
  */
 
-interface Tables {
-  bookings: Map<string, BookingRow>
+interface Tables extends SagaTables {
   events: StoredEvent[]
 }
 
@@ -45,7 +58,8 @@ export interface StoredEvent extends EventWriteColumns {
 }
 
 /** Tulisan yang dapat diperintah gagal, untuk menyuntikkan kegagalan di tengah transaksi. */
-export type Failpoint = 'booking.create' | 'booking.updateMany' | 'bookingEvent.create'
+export type Failpoint =
+  'booking.create' | 'booking.updateMany' | 'bookingEvent.create' | SagaFailpoint
 
 export interface MemoryBookingDb extends BookingDb {
   /** Tabel yang SUDAH di-commit. Tulisan transaksi yang dibatalkan tidak pernah terlihat di sini. */
@@ -54,25 +68,30 @@ export interface MemoryBookingDb extends BookingDb {
   failNext(point: Failpoint): void
   /** Banyak transaksi yang dimulai — penulisan di luar transaksi tidak mungkin, lihat BookingDb. */
   readonly transactions: () => number
+  /** Kunci penasihat penerbit outbox dianggap dipegang instance lain. */
+  holdOutboxLockElsewhere(held: boolean): void
 }
 
-class PrismaLikeError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
+function emptyTables(): Tables {
+  return {
+    bookings: new Map(),
+    events: [],
+    sagas: new Map(),
+    outbox: [],
+    consumed: new Map(),
+    sequence: new Map(),
   }
 }
 
 function copy(tables: Tables): Tables {
-  return {
-    bookings: new Map(structuredClone([...tables.bookings])),
-    events: structuredClone(tables.events),
-  }
+  return structuredClone(tables)
 }
 
-function txOver(tables: Tables, trip: (point: Failpoint) => void): BookingTx {
+function txOver(
+  tables: Tables,
+  trip: (point: Failpoint) => void,
+  lockedElsewhere: () => boolean,
+): BookingTx {
   return {
     booking: {
       create: async ({ data }) => {
@@ -98,6 +117,10 @@ function txOver(tables: Tables, trip: (point: Failpoint) => void): BookingTx {
         await Promise.resolve()
       },
     },
+    sagaState: sagaTx(tables, trip),
+    outboxMessage: outboxTx(tables, trip),
+    consumedMessage: consumedTx(tables, trip),
+    $queryRaw: advisoryLock(lockedElsewhere),
   }
 }
 
@@ -136,15 +159,50 @@ function dueRows(tables: Tables, now: Date, take: number): BookingRow[] {
     .slice(0, take)
 }
 
+/** Pembaca di luar transaksi: selalu melihat tabel yang SUDAH di-commit. */
+function readersOver(committed: () => Tables): Pick<BookingDb, 'booking' | 'sagaState'> {
+  return {
+    booking: {
+      findUnique: async ({ where }) => {
+        await Promise.resolve()
+        return structuredClone(committed().bookings.get(where.id)) ?? null
+      },
+      findMany: async ({ where, take }) => {
+        await Promise.resolve()
+        return structuredClone(dueRows(committed(), where.heldUntil.lte, take))
+      },
+      findFirst: async ({ where }) => {
+        await Promise.resolve()
+        const found = [...committed().bookings.values()].find(
+          (row) => row.userId === where.userId && row.idempotencyKey === where.idempotencyKey,
+        )
+        return structuredClone(found) ?? null
+      },
+    },
+    sagaState: {
+      findUnique: async ({ where }) => {
+        await Promise.resolve()
+        return structuredClone(committed().sagas.get(where.bookingId)) ?? null
+      },
+      findMany: async ({ where, take }) => {
+        await Promise.resolve()
+        return structuredClone(sagasDue(committed(), where, take))
+      },
+    },
+  }
+}
+
 interface Options {
   /** false meniru basis data TANPA rollback: setiap tulisan langsung permanen. */
   readonly atomic: boolean
 }
 
 function build(options: Options): MemoryBookingDb {
-  let committed: Tables = { bookings: new Map(), events: [] }
+  let committed: Tables = emptyTables()
   const armed = new Set<Failpoint>()
   let transactions = 0
+  let outboxLockHeld = false
+  const lockedElsewhere = (): boolean => outboxLockHeld
   let queue: Promise<unknown> = Promise.resolve()
 
   const trip = (point: Failpoint): void => {
@@ -154,10 +212,10 @@ function build(options: Options): MemoryBookingDb {
 
   async function run<T>(fn: (tx: BookingTx) => Promise<T>): Promise<T> {
     transactions += 1
-    if (!options.atomic) return await fn(txOver(committed, trip))
+    if (!options.atomic) return await fn(txOver(committed, trip, lockedElsewhere))
 
     const working = copy(committed)
-    const result = await fn(txOver(working, trip))
+    const result = await fn(txOver(working, trip, lockedElsewhere))
     committed = working
 
     return result
@@ -169,23 +227,10 @@ function build(options: Options): MemoryBookingDb {
     failNext: (point) => {
       armed.add(point)
     },
-    booking: {
-      findUnique: async ({ where }) => {
-        await Promise.resolve()
-        return structuredClone(committed.bookings.get(where.id)) ?? null
-      },
-      findMany: async ({ where, take }) => {
-        await Promise.resolve()
-        return structuredClone(dueRows(committed, where.heldUntil.lte, take))
-      },
-      findFirst: async ({ where }) => {
-        await Promise.resolve()
-        const found = [...committed.bookings.values()].find(
-          (row) => row.userId === where.userId && row.idempotencyKey === where.idempotencyKey,
-        )
-        return structuredClone(found) ?? null
-      },
+    holdOutboxLockElsewhere: (held) => {
+      outboxLockHeld = held
     },
+    ...readersOver(() => committed),
     $transaction: async <T>(fn: (tx: BookingTx) => Promise<T>): Promise<T> => {
       // Antrean: transaksi berikutnya menunggu yang sebelumnya selesai,
       // berhasil ATAU gagal.

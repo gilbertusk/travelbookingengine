@@ -1,7 +1,21 @@
 import { createLogger } from '@tbe/shared-kernel'
 import { describe, expect, test } from 'vitest'
-import { booking, err, failure, harness, ok } from '../testing/fakes.js'
-import { handleCancel, handleConfirm } from './command-handlers.js'
+import { createMessage } from '@tbe/event-contracts'
+import {
+  booking,
+  err,
+  failure,
+  harness,
+  ok,
+  recordingReplies,
+  type Script,
+} from '../testing/fakes.js'
+import {
+  SupplierConfirmRejected,
+  handleCancel,
+  handleConfirm,
+  handleConfirmDeadLetter,
+} from './command-handlers.js'
 
 /**
  * Penangan perintah RabbitMQ.
@@ -29,59 +43,164 @@ const CANCEL = {
 }
 
 describe('supplier.confirm', () => {
-  test('pemesanan berhasil tidak melempar apa pun', async () => {
-    const world = harness({ script: { book: [ok(booking('SKY', 'bkg_1'))] } })
+  function confirmWith(script: Script) {
+    const world = harness({ script })
+    const replies = recordingReplies()
+    const deps = { resilience: world.deps, logger, replies }
 
-    await expect(
-      handleConfirm({ resilience: world.deps, logger })(CONFIRM),
-    ).resolves.toBeUndefined()
+    return {
+      world,
+      replies,
+      handle: handleConfirm(deps),
+      deadLetter: handleConfirmDeadLetter(deps),
+    }
+  }
+
+  test('pemesanan berhasil diumumkan ke saga, bukan hanya dicatat', async () => {
+    // Sebelum Step 19 hasil ini hanya masuk log, dan saga tidak pernah tahu
+    // kamarnya sudah terjamin.
+    const { handle, replies } = confirmWith({ book: [ok(booking('SKY', 'bkg_1'))] })
+
+    await expect(handle(CONFIRM)).resolves.toBeUndefined()
+
+    expect(replies.published).toEqual([
+      {
+        type: 'confirmed',
+        bookingId: CONFIRM.bookingId,
+        supplier: 'SKY',
+        supplierRef: 'bkg_1',
+        adopted: false,
+      },
+    ])
   })
 
   test('kunci idempotensi datang dari perintah, tidak dibuat ulang', async () => {
     // Perintah yang dikirim ulang RabbitMQ membawa kunci yang sama, dan
     // itulah yang membuat pengiriman ulang tidak menghasilkan pemesanan kedua.
-    const world = harness({ script: { book: [ok(booking('SKY', 'bkg_1'))] } })
+    const { handle, world } = confirmWith({ book: [ok(booking('SKY', 'bkg_1'))] })
 
-    await handleConfirm({ resilience: world.deps, logger })(CONFIRM)
+    await handle(CONFIRM)
 
     expect(world.log.entries[0]?.idempotencyKey).toBe('kunci-1')
   })
 
-  test('status yang tidak pasti TIDAK dilempar', async () => {
-    // Melempar berarti RabbitMQ mengirim ulang perintahnya, dan mengirim
-    // ulang `book` dalam keadaan tidak pasti adalah yang harus dihindari.
-    // Rekonsiliasi Step 28 yang menuntaskannya.
-    const world = harness({
-      script: {
-        book: [err(failure('SKY', 'book', 'timeout'))],
-        lookup: [err(failure('SKY', 'getBooking', 'timeout'))],
-      },
+  /**
+   * Uji wajib Step 19: "Timeout pada konfirmasi: getBooking dipanggil, bukan
+   * konfirmasi ulang" (US-05). `book` yang kehabisan waktu diikuti PERTANYAAN
+   * dengan kunci yang sama, dan pemesanan yang ternyata sudah ada diadopsi.
+   */
+  test('timeout pada konfirmasi: status ditanyakan, book tidak dikirim ulang', async () => {
+    const { handle, world, replies } = confirmWith({
+      book: [err(failure('SKY', 'book', 'timeout'))],
+      lookup: [ok(booking('SKY', 'bkg_ada'))],
     })
 
-    await expect(
-      handleConfirm({ resilience: world.deps, logger })(CONFIRM),
-    ).resolves.toBeUndefined()
+    await handle(CONFIRM)
+
+    expect(world.gateway.calls).toEqual(['book', 'findByKey'])
+    expect(replies.published).toMatchObject([
+      { type: 'confirmed', supplierRef: 'bkg_ada', adopted: true },
+    ])
   })
 
-  test('pemesanan yang diadopsi juga tidak dilempar', async () => {
-    const world = harness({
-      script: {
-        book: [err(failure('SKY', 'book', 'timeout'))],
-        lookup: [ok(booking('SKY', 'bkg_ada'))],
-      },
+  test('status yang tetap tidak pasti diumumkan uncertain dan TIDAK dilempar', async () => {
+    // Melempar berarti RabbitMQ mengirim ulang perintahnya, dan mengirim ulang
+    // `book` dalam keadaan tidak pasti adalah yang harus dihindari.
+    const { handle, world, replies } = confirmWith({
+      book: [err(failure('SKY', 'book', 'timeout'))],
+      lookup: [err(failure('SKY', 'getBooking', 'timeout'))],
     })
 
-    await expect(
-      handleConfirm({ resilience: world.deps, logger })(CONFIRM),
-    ).resolves.toBeUndefined()
+    await expect(handle(CONFIRM)).resolves.toBeUndefined()
+
+    expect(world.gateway.calls.filter((call) => call === 'book')).toHaveLength(1)
+    expect(replies.published).toEqual([
+      {
+        type: 'uncertain',
+        bookingId: CONFIRM.bookingId,
+        supplier: 'SKY',
+        idempotencyKey: 'kunci-1',
+        reason: 'timeout',
+      },
+    ])
   })
 
-  test('kamar habis dilempar supaya saga menjalankan kompensasinya', async () => {
-    const world = harness({ script: { book: [err(failure('SKY', 'book', 'sold_out'))] } })
+  test('penolakan supplier dilempar supaya mengikuti jenjang percobaan, tanpa diumumkan dulu', async () => {
+    const { handle, replies } = confirmWith({ book: [err(failure('SKY', 'book', 'sold_out'))] })
 
-    await expect(handleConfirm({ resilience: world.deps, logger })(CONFIRM)).rejects.toThrow(
-      /sold_out/,
-    )
+    await expect(handle(CONFIRM)).rejects.toBeInstanceOf(SupplierConfirmRejected)
+    expect(replies.published).toEqual([])
+  })
+
+  test('jawaban yang gagal diumumkan dilempar, supaya perintahnya dicoba ulang', async () => {
+    // Menelan kegagalan ini berarti saga menunggu jawaban yang tidak akan
+    // pernah datang, untuk kamar yang SUDAH terjamin.
+    const { handle, replies } = confirmWith({ book: [ok(booking('SKY', 'bkg_1'))] })
+    replies.failNext()
+
+    await expect(handle(CONFIRM)).rejects.toThrow(/kafka/)
+  })
+
+  test('percobaan ulang setelah pengumuman gagal mengadopsi pemesanan yang sama', async () => {
+    // book idempoten terhadap kunci: percobaan kedua tidak membuat kamar kedua.
+    const { handle, replies } = confirmWith({
+      book: [ok(booking('SKY', 'bkg_1')), ok(booking('SKY', 'bkg_1'))],
+    })
+    replies.failNext()
+
+    await expect(handle(CONFIRM)).rejects.toThrow(/kafka/)
+    await handle(CONFIRM)
+
+    expect(replies.published).toMatchObject([{ type: 'confirmed', supplierRef: 'bkg_1' }])
+  })
+})
+
+describe('kabar dead letter supplier.confirm', () => {
+  function deadLetterWith(error: unknown) {
+    const replies = recordingReplies()
+    const world = harness()
+    const announce = handleConfirmDeadLetter({ resilience: world.deps, logger, replies })
+
+    return {
+      replies,
+      run: async () => {
+        await announce({
+          payload: CONFIRM,
+          message: createMessage({ eventType: 'supplier.confirm', payload: CONFIRM }),
+          error,
+          reason: 'exhausted',
+        })
+      },
+    }
+  }
+
+  test('penolakan yang percobaannya habis diumumkan rejected, dengan jenisnya', async () => {
+    const { replies, run } = deadLetterWith(new SupplierConfirmRejected('sold_out'))
+
+    await run()
+
+    expect(replies.published).toEqual([
+      { type: 'rejected', bookingId: CONFIRM.bookingId, supplier: 'SKY', reason: 'sold_out' },
+    ])
+  })
+
+  test('galat selain penolakan diumumkan uncertain, bukan rejected', async () => {
+    // Kafka yang mati SETELAH book berhasil juga berakhir di dead letter.
+    // Mengumumkannya sebagai penolakan membuat saga mengembalikan dana untuk
+    // kamar yang sudah terjamin dan tetap harus dibayar.
+    const { replies, run } = deadLetterWith(new Error('kafka tidak dapat dihubungi'))
+
+    await run()
+
+    expect(replies.published).toEqual([
+      {
+        type: 'uncertain',
+        bookingId: CONFIRM.bookingId,
+        supplier: 'SKY',
+        idempotencyKey: 'kunci-1',
+        reason: 'dead_letter:exhausted',
+      },
+    ])
   })
 })
 

@@ -157,6 +157,9 @@ importers:
       '@tbe/event-contracts':
         specifier: workspace:*
         version: link:../../packages/event-contracts
+      '@tbe/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@tbe/money':
         specifier: workspace:*
         version: link:../../packages/money

@@ -9,10 +9,16 @@ import { sweepHolds } from '../../src/application/sweep-holds.js'
 import type { Booking } from '../../src/domain/booking.js'
 import { expiryListener } from '../../src/infrastructure/keyspace-expiry.js'
 import { createPrismaBookingRepository } from '../../src/infrastructure/prisma-booking-repository.js'
+import { createPrismaSagaStore } from '../../src/infrastructure/prisma-saga-store.js'
 import { bookingDbOf, createPrismaClient } from '../../src/infrastructure/prisma-client.js'
 import { createRedisHoldStore } from '../../src/infrastructure/redis-hold-store.js'
 import { systemClock } from '../../src/infrastructure/system.js'
-import { priceCheckRequest, scriptedPricing, scriptedSuppliers } from '../../src/testing/fakes.js'
+import {
+  priceCheckRequest,
+  SAGA_POLICY,
+  scriptedPricing,
+  scriptedSuppliers,
+} from '../../src/testing/fakes.js'
 import { integrationEnv } from './env.js'
 
 /**
@@ -29,6 +35,8 @@ const logger = createLogger({ serviceName: 'it', level: 'silent' })
 function deps(holdDurationMs: number): BookingDeps {
   return {
     bookings: createPrismaBookingRepository(bookingDbOf(prisma)),
+    sagas: createPrismaSagaStore(bookingDbOf(prisma)),
+    sagaPolicy: SAGA_POLICY,
     suppliers: scriptedSuppliers(() => new Date()),
     pricing: scriptedPricing(),
     holds: createRedisHoldStore(redis),

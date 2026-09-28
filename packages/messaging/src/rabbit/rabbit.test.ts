@@ -1,7 +1,7 @@
 import { COMMAND_TYPES, createMessage, type CommandType } from '@tbe/event-contracts'
 import { UpstreamError, ValidationError, getCorrelationId } from '@tbe/shared-kernel'
 import { describe, expect, test } from 'vitest'
-import { RETRY_COUNT_HEADER, RETRY_TIERS } from '../retry.js'
+import { LAST_RETRY_TIER, RETRY_COUNT_HEADER, RETRY_TIERS } from '../retry.js'
 import { fakeRabbitPublisher, silentLogger } from '../testing.js'
 import { createCommandConsumer } from './consumer.js'
 import { createCommandSender } from './sender.js'
@@ -123,6 +123,26 @@ describe('pengirim perintah', () => {
     await createCommandSender(publisher).send(COMMAND, validPayload)
 
     expect(publisher.published[0]?.options.headers[RETRY_COUNT_HEADER]).toBe(0)
+  })
+
+  test('memakai amplop yang sudah ditetapkan outbox', async () => {
+    // Perintah outbox yang dikirim ulang harus membawa eventId yang sama.
+    const publisher = fakeRabbitPublisher()
+    const eventId = '0199f000-0000-7000-8000-00000000abcd'
+
+    await createCommandSender(publisher).send('supplier.confirm', validPayload, {
+      eventId,
+      correlationId: 'req-asal',
+      occurredAt: '2026-10-01T03:00:00.000Z',
+    })
+
+    const sent = JSON.parse(publisher.published[0]?.content ?? '{}') as Record<string, unknown>
+    expect(sent).toMatchObject({
+      eventId,
+      correlationId: 'req-asal',
+      occurredAt: '2026-10-01T03:00:00.000Z',
+    })
+    expect(publisher.published[0]?.options.messageId).toBe(eventId)
   })
 
   test('menandai pesan persisten agar selamat dari restart broker', async () => {
@@ -268,5 +288,100 @@ describe('consumer perintah', () => {
     const outcome = await consume(incoming(validPayload))
 
     expect(outcome).toBe('requeue')
+  })
+})
+
+describe('kabar dead letter (Step 19)', () => {
+  type Seen = {
+    reason: string
+    error: unknown
+    payload: unknown
+    correlationId: string | undefined
+  }
+
+  function consumerWithHook(options: { failHook?: boolean; error?: Error } = {}) {
+    const publisher = fakeRabbitPublisher()
+    const seen: Seen[] = []
+    const consume = createCommandConsumer({
+      command: COMMAND,
+      publisher,
+      logger: silentLogger(),
+      handle: async () => {
+        await Promise.resolve()
+        throw options.error ?? new UpstreamError({ upstream: 'SKY', message: 'gagal' })
+      },
+      onDeadLetter: async ({ reason, error, payload }) => {
+        await Promise.resolve()
+        seen.push({ reason, error, payload, correlationId: getCorrelationId() })
+        if (options.failHook === true) throw new Error('kafka tidak dapat dihubungi')
+      },
+    })
+
+    return { publisher, consume, seen }
+  }
+
+  const exhausted = { [RETRY_COUNT_HEADER]: RETRY_TIERS.length }
+
+  test('perintah yang percobaannya habis dikabarkan sebelum masuk dead letter', async () => {
+    // Tanpa kabar ini, pengirim perintah — saga yang menunggu hasil
+    // supplier.confirm — tidak pernah tahu perintahnya berakhir.
+    const { publisher, consume, seen } = consumerWithHook()
+
+    await consume(incoming(validPayload, exhausted))
+
+    expect(seen).toMatchObject([{ reason: 'exhausted', payload: validPayload }])
+    expect(seen[0]?.error).toBeInstanceOf(UpstreamError)
+    expect(publisher.published[0]?.exchange).toBe(DEAD_LETTER_EXCHANGE)
+  })
+
+  test('kegagalan final juga dikabarkan, dengan alasannya', async () => {
+    const { consume, seen } = consumerWithHook({ error: new ValidationError('ditolak') })
+
+    await consume(incoming(validPayload))
+
+    expect(seen.map((entry) => entry.reason)).toEqual(['not_retryable'])
+  })
+
+  test('kegagalan yang masih akan dicoba ulang TIDAK dikabarkan', async () => {
+    const { consume, seen } = consumerWithHook()
+
+    await consume(incoming(validPayload))
+
+    expect(seen).toEqual([])
+  })
+
+  test('pesan cacat tidak dikabarkan: tidak ada payload yang dapat dipercaya', async () => {
+    const { consume, seen } = consumerWithHook()
+
+    await consume(incoming('rusak'))
+
+    expect(seen).toEqual([])
+  })
+
+  test('kabar berjalan di bawah correlationId perintahnya', async () => {
+    const { consume, seen } = consumerWithHook()
+    const message = incoming(validPayload, exhausted)
+    const { correlationId } = JSON.parse(message.content.toString('utf8')) as {
+      correlationId: string
+    }
+
+    await consume(message)
+
+    expect(seen[0]?.correlationId).toBe(correlationId)
+  })
+
+  test('kabar yang gagal menunda ulang perintah di jenjang terakhir, bukan membuangnya', async () => {
+    // Dead letter tanpa kabar adalah persis kesunyian yang ingin dihapus. Pesan
+    // kembali ke jenjang tunda terakhir dengan hitungan yang TIDAK naik, dan
+    // akan tiba lagi di sini setelah tundaannya.
+    const { publisher, consume } = consumerWithHook({ failHook: true })
+
+    const outcome = await consume(incoming(validPayload, exhausted))
+
+    expect(outcome).toBe('ack')
+    expect(publisher.published).toHaveLength(1)
+    expect(publisher.published[0]?.exchange).toBe(RETRY_EXCHANGE)
+    expect(publisher.published[0]?.routingKey).toBe(`${COMMAND}.${LAST_RETRY_TIER.name}`)
+    expect(publisher.published[0]?.options.headers[RETRY_COUNT_HEADER]).toBe(RETRY_TIERS.length)
   })
 })

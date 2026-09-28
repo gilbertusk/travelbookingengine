@@ -26,6 +26,9 @@ export const EVENT_TYPES = [
   'payment.refunded',
   'supplier.degraded',
   'supplier.recovered',
+  'supplier.booking_confirmed',
+  'supplier.booking_rejected',
+  'supplier.booking_uncertain',
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]
@@ -124,6 +127,48 @@ export const supplierRecoveredPayload = z.object({
   supplier: supplierCode,
 })
 
+/**
+ * Hasil perintah `supplier.confirm` (Step 19).
+ *
+ * Perintah RabbitMQ tidak punya jalan balik: consumer-nya mengerjakan, mencoba
+ * ulang, lalu diam. Sebelum Step 19, supplier-service hanya MENULIS LOG untuk
+ * hasil konfirmasi, dan saga di booking-service tidak punya cara mengetahui
+ * apakah kamar sudah terjamin. Tiga peristiwa di bawah adalah jalan baliknya —
+ * fakta tentang pemesanan di supplier, diumumkan lewat Kafka, dan dibaca saga.
+ *
+ * Tiga, bukan dua. `uncertain` bukan kegagalan: pemesanan MUNGKIN sudah
+ * terbentuk di supplier. Menyatukannya dengan `rejected` membuat saga
+ * mengembalikan dana untuk kamar yang mungkin tetap harus dibayar platform
+ * (US-05).
+ */
+export const supplierBookingConfirmedPayload = z.object({
+  bookingId: z.uuid(),
+  supplier: supplierCode,
+  /** Bukti pemesanan yang sah (FR-24). */
+  supplierRef: z.string().min(1),
+  /** true bila pemesanan yang sudah ada diadopsi alih-alih dibuat (US-05). */
+  adopted: z.boolean(),
+})
+
+export const supplierBookingRejectedPayload = z.object({
+  bookingId: z.uuid(),
+  supplier: supplierCode,
+  /**
+   * Jenis penolakan dari supplier — kamar habis, hold kedaluwarsa. Hanya
+   * diterbitkan untuk JAWABAN supplier yang sah; kegagalan yang tidak
+   * meninggalkan jawaban menjadi `uncertain`.
+   */
+  reason: z.string().min(1),
+})
+
+export const supplierBookingUncertainPayload = z.object({
+  bookingId: z.uuid(),
+  supplier: supplierCode,
+  /** Kunci yang dipakai; dengan kunci inilah manusia atau rekonsiliasi bertanya. */
+  idempotencyKey: z.string().min(1),
+  reason: z.string().min(1),
+})
+
 export const EVENT_PAYLOADS = {
   'search.performed': searchPerformedPayload,
   'booking.created': bookingCreatedPayload,
@@ -137,6 +182,9 @@ export const EVENT_PAYLOADS = {
   'payment.refunded': paymentRefundedPayload,
   'supplier.degraded': supplierDegradedPayload,
   'supplier.recovered': supplierRecoveredPayload,
+  'supplier.booking_confirmed': supplierBookingConfirmedPayload,
+  'supplier.booking_rejected': supplierBookingRejectedPayload,
+  'supplier.booking_uncertain': supplierBookingUncertainPayload,
 } as const satisfies Record<EventType, z.ZodType>
 
 export type EventPayload<T extends EventType> = z.infer<(typeof EVENT_PAYLOADS)[T]>

@@ -97,6 +97,14 @@ describe('hold dua lapis', () => {
 })
 
 describe('US-04: seratus permintaan serentak untuk ketersediaan sepuluh', () => {
+  /**
+   * Seratus price check dan hold di atas basis data palsuan yang menyalin
+   * seluruh tabelnya pada setiap transaksi — sejak Step 19 termasuk outbox dan
+   * saga yang ikut bertambah. Sendirian dua detik; di bawah `pnpm test`
+   * seluruh repo melewati batas bawaan lima detik.
+   */
+  const HUNDRED_REQUESTS_TIMEOUT_MS = 30_000
+
   async function hundredBookings(world: Harness): Promise<Booking[]> {
     const keys = Array.from(
       { length: 100 },
@@ -105,36 +113,44 @@ describe('US-04: seratus permintaan serentak untuk ketersediaan sepuluh', () => 
     return await Promise.all(keys.map(async (key) => await verified(world, key)))
   }
 
-  test('tepat sepuluh yang tertahan, dan supplier hanya dipanggil sepuluh kali', async () => {
-    const world = harness()
-    const bookings = await hundredBookings(world)
+  test(
+    'tepat sepuluh yang tertahan, dan supplier hanya dipanggil sepuluh kali',
+    async () => {
+      const world = harness()
+      const bookings = await hundredBookings(world)
 
-    const results = await Promise.all(
-      bookings.map(async (booking) => await hold(world, booking, 10)),
-    )
+      const results = await Promise.all(
+        bookings.map(async (booking) => await hold(world, booking, 10)),
+      )
 
-    expect(results.filter((result) => result.kind === 'held')).toHaveLength(10)
-    expect(results.filter((result) => result.kind === 'sold_out')).toHaveLength(90)
-    expect(world.suppliers.holds).toHaveLength(10)
-    expect(bookings.every((booking) => slotOf(booking) === SAMPLE_SLOT)).toBe(true)
-    expect(world.holds.held(SAMPLE_SLOT)).toBe(10)
-  })
+      expect(results.filter((result) => result.kind === 'held')).toHaveLength(10)
+      expect(results.filter((result) => result.kind === 'sold_out')).toHaveLength(90)
+      expect(world.suppliers.holds).toHaveLength(10)
+      expect(bookings.every((booking) => slotOf(booking) === SAMPLE_SLOT)).toBe(true)
+      expect(world.holds.held(SAMPLE_SLOT)).toBe(10)
+    },
+    HUNDRED_REQUESTS_TIMEOUT_MS,
+  )
 
   /**
    * Uji di atas tidak hampa. Hold store yang SAMA tetapi dengan titik tunggu di
    * antara membaca jumlah kursi dan menambah anggota — SCARD lalu SADD dari
    * klien, bukan dari skrip — menjual jauh lebih dari sepuluh.
    */
-  test('uji tidak hampa: pola periksa-lalu-tulis menjual lebih dari sepuluh', async () => {
-    const world = harness({ holds: racyHoldStore() })
-    const bookings = await hundredBookings(world)
+  test(
+    'uji tidak hampa: pola periksa-lalu-tulis menjual lebih dari sepuluh',
+    async () => {
+      const world = harness({ holds: racyHoldStore() })
+      const bookings = await hundredBookings(world)
 
-    const results = await Promise.all(
-      bookings.map(async (booking) => await hold(world, booking, 10)),
-    )
+      const results = await Promise.all(
+        bookings.map(async (booking) => await hold(world, booking, 10)),
+      )
 
-    expect(results.filter((result) => result.kind === 'held').length).toBeGreaterThan(10)
-  })
+      expect(results.filter((result) => result.kind === 'held').length).toBeGreaterThan(10)
+    },
+    HUNDRED_REQUESTS_TIMEOUT_MS,
+  )
 
   test('kapasitas slot tidak dapat dinaikkan permintaan berikutnya', async () => {
     const world = harness()

@@ -162,6 +162,8 @@ model Booking {
   updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
 
   events BookingEvent[]
+  saga   SagaState?
+  outbox OutboxMessage[]
 
   /// Keunikan kunci idempotensi per PENGGUNA, bukan global. Kunci dikirim
   /// klien; dengan keunikan global, dua pengguna yang kebetulan — atau sengaja
@@ -197,4 +199,142 @@ model BookingEvent {
 
   @@unique([bookingId, sequence])
   @@map("booking_events")
+}
+
+// ---------------------------------------------------------------------------
+// Step 19: saga, outbox, dan catatan pesan yang sudah dikonsumsi.
+//
+// Ketiganya ditulis dalam transaksi yang SAMA dengan bookings dan
+// booking_events bila perubahan keadaan menyertainya. Itulah seluruh alasan
+// ketiganya tinggal di basis data ini, bukan di Redis atau di broker: transaksi
+// tidak dapat melintasi dua sistem penyimpanan.
+// ---------------------------------------------------------------------------
+
+/// Sama persis dengan SAGA_STEPS di src/domain/saga-definition.ts.
+enum SagaStep {
+  priceCheck
+  holdLocal
+  holdSupplier
+  awaitPayment
+  confirmSupplier
+  issueVoucher
+
+  @@map("saga_step")
+}
+
+enum SagaStepStatus {
+  /// Langkah langsung sedang dikerjakan — dicatat SEBELUM dikerjakan.
+  started
+  /// Perintahnya sudah di outbox; menunggu jawaban.
+  waiting
+  succeeded
+  failed
+
+  @@map("saga_step_status")
+}
+
+enum CompensationStatus {
+  none
+  running
+  completed
+  failed
+
+  @@map("compensation_status")
+}
+
+/// Keadaan saga satu pemesanan (Step 19). Satu baris per pemesanan.
+///
+/// Kolom step doc (currentStep, stepStatus, compensationStatus, attempts,
+/// lastError, updatedAt) ditambah empat yang dibutuhkan pemulihan:
+/// `compensating_step` (kompensasi langsung berikutnya), `deadline_at` (batas
+/// menunggu jawaban), `leased_until` (sewa proses yang sedang menjalankan
+/// langkah langsung), dan `version` (kunci optimistik).
+model SagaState {
+  id        String @id @db.Uuid
+  bookingId String @unique @map("booking_id") @db.Uuid
+
+  currentStep        SagaStep           @map("current_step")
+  stepStatus         SagaStepStatus     @map("step_status")
+  compensationStatus CompensationStatus @map("compensation_status")
+  compensatingStep   SagaStep?          @map("compensating_step")
+
+  attempts  Int
+  lastError String? @map("last_error")
+
+  /// Batas menunggu jawaban (supplier, refund). Dicari penyapu saga.
+  deadlineAt  DateTime? @map("deadline_at") @db.Timestamptz(3)
+  /// Sewa proses yang menjalankan langkah langsung. Lewat berarti proses itu
+  /// mati di tengah langkah, dan pemulihan mengambil alih.
+  leasedUntil DateTime? @map("leased_until") @db.Timestamptz(3)
+
+  version   Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@index([deadlineAt])
+  @@index([leasedUntil])
+  @@map("saga_states")
+}
+
+enum OutboxChannel {
+  /// Peristiwa — fakta, ke Kafka.
+  kafka
+  /// Perintah — pekerjaan untuk satu pihak, ke RabbitMQ.
+  rabbitmq
+
+  @@map("outbox_channel")
+}
+
+/// Outbox (Step 19). Pesan yang HARUS terbit karena keadaan sudah berubah.
+///
+/// Ditulis dalam transaksi yang sama dengan perubahan keadaan; diterbitkan
+/// belakangan oleh penerbit terpisah, minimal sekali. `id` adalah eventId
+/// pesannya — sama pada setiap pengiriman ulang, supaya consumer dapat
+/// mengenali duplikatnya.
+model OutboxMessage {
+  id        String @id @db.Uuid
+  /// Urutan penerbitan. Per pemesanan, urutan ini sama dengan urutan commit:
+  /// transaksi yang mengubah pemesanan yang sama diserialkan kunci barisnya.
+  sequence  BigInt @unique @default(autoincrement())
+  bookingId String @map("booking_id") @db.Uuid
+
+  channel     OutboxChannel
+  messageType String        @map("message_type")
+  payload     Json
+
+  correlationId String   @map("correlation_id")
+  causationId   String?  @map("causation_id") @db.Uuid
+  traceparent   String?
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(3)
+  createdAt     DateTime @map("created_at") @db.Timestamptz(3)
+
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  /// Pesan yang ditolak kontraknya saat diterbitkan. Tidak dicoba lagi —
+  /// tidak akan pernah lolos — dan tidak menahan pesan di belakangnya.
+  rejectedAt  DateTime? @map("rejected_at") @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  /// Penerbit membaca `published_at IS NULL ORDER BY sequence`. Tanpa indeks
+  /// ini, setiap putaran melompati seluruh pesan yang sudah terbit — yang
+  /// jumlahnya hanya bertambah.
+  @@index([publishedAt, sequence])
+  @@map("outbox")
+}
+
+/// Pesan Kafka yang sudah dikonsumsi (Step 19), dicatat dalam transaksi yang
+/// sama dengan efeknya. Pesan yang sama tiba dua kali — Kafka menjamin minimal
+/// sekali, bukan tepat sekali — ditolak kunci primer ini, dan efeknya ikut
+/// batal.
+model ConsumedMessage {
+  eventId    String   @id @map("event_id") @db.Uuid
+  eventType  String   @map("event_type")
+  bookingId  String   @map("booking_id") @db.Uuid
+  consumedAt DateTime @map("consumed_at") @db.Timestamptz(3)
+
+  @@map("consumed_messages")
 }

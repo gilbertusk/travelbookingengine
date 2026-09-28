@@ -55,6 +55,14 @@ export type Money = z.infer<typeof moneySchema>
 export interface CreateMessageInput<TType extends string, TPayload> {
   readonly eventType: TType
   readonly payload: TPayload
+  /**
+   * Pengenal pesan yang SUDAH ditetapkan sebelumnya. Dipakai outbox (Step 19):
+   * baris outbox yang diterbitkan ulang setelah penerbit mati di tengah jalan
+   * harus membawa eventId yang SAMA, karena consumer menyaring duplikat lewat
+   * nilai itu. eventId baru pada setiap percobaan mengubah "minimal sekali"
+   * menjadi "berkali-kali tanpa dapat dikenali".
+   */
+  readonly eventId?: string
   readonly eventVersion?: number
   readonly causationId?: string
   readonly traceparent?: string
@@ -73,7 +81,7 @@ export function createMessage<TType extends string, TPayload>(
   input: CreateMessageInput<TType, TPayload>,
 ): Message<TType, TPayload> {
   return {
-    eventId: newCorrelationId(),
+    eventId: input.eventId ?? newCorrelationId(),
     eventType: input.eventType,
     eventVersion: input.eventVersion ?? 1,
     occurredAt: input.occurredAt ?? new Date().toISOString(),

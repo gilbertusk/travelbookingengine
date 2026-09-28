@@ -14,6 +14,7 @@
  */
 
 export {
+  LAST_RETRY_TIER,
   RETRY_COUNT_HEADER,
   RETRY_TIERS,
   attemptsSoFar,
@@ -60,6 +61,7 @@ export {
   createCommandConsumer,
   type CommandConsumer,
   type CommandHandlerOptions,
+  type DeadLetterContext,
 } from './rabbit/consumer.js'
 
 export {
@@ -69,6 +71,8 @@ export {
   type RabbitConnectionOptions,
   type RabbitHandler,
 } from './rabbit/client.js'
+
+export { envelopeOverrides, type EnvelopeOptions } from './envelope-options.js'
 
 export {
   createEventPublisher,

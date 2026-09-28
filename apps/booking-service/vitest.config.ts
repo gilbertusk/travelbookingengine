@@ -59,6 +59,19 @@ export default defineConfig({
         // cabang yang tidak teruji: tidak ada jaringan, tidak ada basis data,
         // tidak ada waktu nyata. Ambangnya lebih tinggi dari service lain.
         'src/domain/**': { lines: 95, functions: 95, branches: 95, statements: 95 },
+        // Step 19: jalur kompensasi saga WAJIB 100% (CONVENTIONS.md bagian
+        // 10). Tabel langkah dan kompensasi, mesin keadaan saga, pelaksana
+        // kompensasi, reaksi, pemulihan, dan unit kerja yang menulis semuanya
+        // dalam satu transaksi. Cabang yang tidak tersentuh di sini adalah
+        // kompensasi yang tidak pernah terbukti berjalan.
+        'src/domain/saga-*.ts': { lines: 100, functions: 100, branches: 100, statements: 100 },
+        'src/application/saga/**': { lines: 100, functions: 100, branches: 100, statements: 100 },
+        'src/infrastructure/unit-of-work.ts': {
+          lines: 100,
+          functions: 100,
+          branches: 100,
+          statements: 100,
+        },
       },
     },
   },

@@ -2,33 +2,52 @@ import type { Booking } from '../domain/booking.js'
 import type { BookingError } from '../domain/errors.js'
 import { effectiveHoldUntil } from '../domain/hold-window.js'
 import { isSameAmount } from '../domain/price.js'
+import type { SagaStep } from '../domain/saga-definition.js'
+import {
+  awaitReply,
+  beginSaga,
+  enterStep,
+  restartSaga,
+  type SagaState,
+} from '../domain/saga-state.js'
 import { applyCommand } from '../domain/transitions.js'
+import { slotOf } from './hold-slot.js'
 import { priceForSale, ratePlanStayOf } from './live-quote.js'
-import { loadOwned, persist } from './persist.js'
-import type { BookingDeps, HoldEntry } from './ports.js'
+import { loadOwned } from './persist.js'
+import type { BookingDeps } from './ports.js'
+import { compensate } from './saga/compensation.js'
+
+export { slotOf } from './hold-slot.js'
 
 /**
- * Hold (FR-15): lapis lokal, lalu lapis supplier.
+ * Hold (FR-15): tiga langkah pertama saga — priceCheck, holdLocal, holdSupplier.
  *
- * Urutannya disengaja, dan setiap langkah punya kompensasinya:
+ * Urutannya disengaja, dan setiap langkah punya kompensasinya (tabelnya di
+ * domain/saga-definition.ts):
  *
- * 1. **Periksa domain lebih dulu, tanpa efek.** Hold untuk pemesanan yang
- *    harganya belum disetujui akan ditolak domain di akhir — setelah hold
- *    lokal dan hold supplier terlanjur diambil. Perintah hold dicoba terhadap
- *    domain dengan nilai sementara; kalau ditolak, tidak ada yang disentuh.
- * 2. **Lokal (Redis).** Murah, atomik, dan menjamin US-04. Supplier tidak
- *    dipanggil sama sekali untuk permintaan yang pasti tidak kebagian.
- * 3. **Supplier.** Bila gagal, hold lokal dilepas.
- * 4. **Harga saat hold.** Supplier mengembalikan totalnya lagi; totalnya
- *    dihitung ulang menjadi harga jual dan dibandingkan dengan harga yang
- *    disetujui. Berbeda berarti harga berubah di antara price check dan hold —
- *    G2 melarang melanjutkan dengan harga yang tidak disetujui.
- * 5. **Simpan.** Batas waktu yang dipakai adalah yang lebih awal antara lokal
- *    dan supplier, dan kunci waktu lokal dimajukan ke sana.
+ * 1. **Periksa domain lebih dulu, tanpa efek** — langkah `priceCheck` saga.
+ *    Hold untuk pemesanan yang harganya belum disetujui akan ditolak domain di
+ *    akhir, setelah hold lokal dan hold supplier terlanjur diambil. Perintah
+ *    hold dicoba terhadap domain dengan nilai sementara; kalau ditolak, tidak
+ *    ada yang disentuh — saga pun belum dimulai.
+ * 2. **Lokal (Redis).** Murah, atomik, dan menjamin US-04.
+ * 3. **Supplier.** Bila gagal, hold lokal dilepas lewat kompensasi saga.
+ * 4. **Harga saat hold.** Total supplier dihitung ulang menjadi harga jual dan
+ *    dibandingkan dengan harga yang disetujui (G2).
+ * 5. **Simpan** HELD bersama keadaan saga "menunggu pembayaran", SATU
+ *    transaksi.
  *
- * Hold di supplier TIDAK dapat dilepaskan — tidak ada operasinya (lihat
- * `SupplierQuotes`). Setiap kompensasi setelah langkah 3 meninggalkan hold
- * supplier yang kedaluwarsa sendiri.
+ * Step 19: setiap langkah yang MENGUBAH sesuatu di luar basis data dicatat di
+ * saga SEBELUM dijalankan, dengan sewa waktu. Proses yang mati di tengah hold
+ * meninggalkan catatan itu, dan pemulihan (sweep-sagas.ts) yang
+ * mengompensasinya setelah sewanya habis — kursi lokal kembali tanpa menunggu
+ * kunci waktunya kedaluwarsa. Catatan yang ditulis SESUDAH langkah tidak
+ * pernah ada untuk langkah yang prosesnya mati di tengahnya.
+ *
+ * Catatan saga yang sama menggantikan penjaga Step 17 untuk dua hold
+ * serentak: hanya satu permintaan yang dapat menyimpan dimulainya saga — kunci
+ * versi yang memutuskan — dan yang kalah dijawab `in_progress` sebelum
+ * menyentuh Redis atau supplier.
  */
 
 export interface HoldRequest {
@@ -48,6 +67,12 @@ export type HoldResult =
   | { readonly kind: 'retry_later'; readonly booking: Booking }
   | { readonly kind: 'not_found' }
 
+interface Attempt {
+  readonly deps: BookingDeps
+  readonly booking: Booking
+  readonly localUntil: Date
+}
+
 export async function placeHold(deps: BookingDeps, request: HoldRequest): Promise<HoldResult> {
   const booking = await loadOwned(deps, request.userId, request.bookingId)
   if (booking === undefined) return { kind: 'not_found' }
@@ -66,84 +91,150 @@ export async function placeHold(deps: BookingDeps, request: HoldRequest): Promis
   })
   if (!dryRun.ok) return { kind: 'refused', error: dryRun.error }
 
-  const entry = { bookingId: booking.id, slot: slotOf(booking) }
+  const saga = await startSaga(deps, booking.id, now)
+  if (saga === undefined) return { kind: 'in_progress', booking }
+
+  const attempt = { deps, booking, localUntil }
   const local = await deps.holds.acquire({
-    ...entry,
+    bookingId: booking.id,
+    slot: slotOf(booking),
     capacity: request.unitsLeft,
     until: localUntil,
   })
 
-  if (local === 'sold_out') return { kind: 'sold_out', booking }
-  // Slot sudah dipegang pemesanan ini tetapi pemesanannya belum HELD: ada
-  // permintaan lain yang sedang di tengah langkah 3 atau 4. Melanjutkan berarti
-  // DUA hold di supplier untuk satu pemesanan, dan salah satunya yatim.
-  if (local === 'already_held') return { kind: 'in_progress', booking }
+  // `already_held` bukan hold serentak — yang itu sudah ditolak saga di atas —
+  // melainkan kursi sisa percobaan pemesanan INI sendiri. Saga milik
+  // permintaan ini sekarang, jadi kursinya dipakai, bukan diambil dua kali.
+  if (local === 'sold_out') {
+    await abort(attempt, saga, { stoppedAt: 'holdLocal', reason: 'kursi lokal habis' })
+    return { kind: 'sold_out', booking }
+  }
 
-  return await holdAtSupplier(deps, booking, entry, localUntil)
+  return await holdAtSupplier(attempt, saga)
 }
 
-async function holdAtSupplier(
+/** Niat hold lokal dicatat — saga baru, atau saga yang dimulai ulang. */
+async function startSaga(
   deps: BookingDeps,
-  booking: Booking,
-  entry: HoldEntry,
-  localUntil: Date,
-): Promise<HoldResult> {
+  bookingId: string,
+  at: Date,
+): Promise<SagaState | undefined> {
+  const previous = await deps.sagas.find(bookingId)
+  const saga =
+    previous === undefined
+      ? beginSaga(bookingId, at, deps.sagaPolicy.leaseMs)
+      : restartSaga(previous, at, deps.sagaPolicy.leaseMs)
+  if (saga === undefined) return undefined
+
+  const outcome = await deps.sagas.commit({ bookingId, at, saga })
+  return outcome === 'committed' ? saga : undefined
+}
+
+async function holdAtSupplier(attempt: Attempt, local: SagaState): Promise<HoldResult> {
+  const { deps, booking } = attempt
+  const saga = enterStep(local, 'holdSupplier', deps.clock.now(), deps.sagaPolicy.leaseMs)
+
+  // Sewa hold lokal habis dan pemulih sudah mengambil alih saga ini: proses
+  // ini dianggap mati. Kursinya milik kompensasi pemulih sekarang.
+  if (
+    (await deps.sagas.commit({ bookingId: booking.id, at: saga.updatedAt, saga })) !== 'committed'
+  ) {
+    return { kind: 'in_progress', booking }
+  }
+
   const answer = await deps.suppliers.hold({
     ...ratePlanStayOf(booking),
     guests: booking.guests.count,
   })
-
   if (answer.kind !== 'ok') {
-    await deps.holds.release(entry)
+    await abort(attempt, saga, {
+      stoppedAt: 'holdSupplier',
+      through: 'holdLocal',
+      reason: `hold supplier: ${answer.kind}`,
+    })
     return answer.kind === 'rejected'
       ? { kind: 'sold_out', booking }
       : { kind: 'retry_later', booking }
   }
 
   const priced = await priceForSale(deps, booking, answer.value.total)
-  if (priced.kind !== 'quoted') {
-    await deps.holds.release(entry)
-    return { kind: 'retry_later', booking }
-  }
-  if (!isSameAmount(priced.price.total, booking.price.total)) {
-    await deps.holds.release(entry)
-    return { kind: 'price_changed', booking }
-  }
-
-  const heldUntil = effectiveHoldUntil(localUntil, answer.value.expiresAt)
-  const at = deps.clock.now()
-  const saved = await persist(deps, booking, {
-    type: 'hold',
-    at,
-    holdRef: answer.value.holdRef,
-    heldUntil,
-  })
-
-  // Pemesanan berpindah oleh pihak lain di antara langkah 1 dan 5 — dibatalkan
-  // pengguna, misalnya — atau hold supplier sudah kedaluwarsa saat tiba.
-  if (!saved.ok || saved.value.kind === 'superseded') {
-    await deps.holds.release(entry)
-    return saved.ok
-      ? { kind: 'in_progress', booking: saved.value.booking }
-      : { kind: 'refused', error: saved.error }
+  if (priced.kind !== 'quoted' || !isSameAmount(priced.price.total, booking.price.total)) {
+    const changed = priced.kind === 'quoted'
+    await abort(attempt, saga, {
+      stoppedAt: 'holdSupplier',
+      through: 'holdSupplier',
+      reason: changed ? 'harga berubah saat hold' : 'harga jual tidak dapat dihitung',
+    })
+    return changed ? { kind: 'price_changed', booking } : { kind: 'retry_later', booking }
   }
 
-  await deps.holds.shorten(booking.id, heldUntil)
-
-  return { kind: 'held', booking: saved.value.booking }
+  const heldUntil = effectiveHoldUntil(attempt.localUntil, answer.value.expiresAt)
+  return await saveHold(attempt, saga, { holdRef: answer.value.holdRef, heldUntil })
 }
 
-/**
- * Slot ketersediaan: satu rate plan pada satu rentang tanggal (Step 17).
- *
- * Dua pemesanan untuk rate plan yang sama pada rentang yang TUMPANG TINDIH
- * tetapi tidak sama — 10–12 dan 11–13 November — memakai slot berbeda.
- * Menghitung per malam akan lebih tepat, tetapi butuh ketersediaan per malam
- * dari supplier, dan hasil pencarian hanya memberi satu angka untuk seluruh
- * rentang. Lapis supplier yang menjaga kasus tumpang tindih.
- */
-export function slotOf(booking: Booking): string {
-  const { supplier, ratePlanRef, stay } = booking
+/** HELD dan "menunggu pembayaran" tersimpan bersama, atau tidak sama sekali. */
+async function saveHold(
+  attempt: Attempt,
+  saga: SagaState,
+  held: { readonly holdRef: string; readonly heldUntil: Date },
+): Promise<HoldResult> {
+  const { deps, booking } = attempt
+  const at = deps.clock.now()
+  const change = applyCommand(booking, { type: 'hold', at, ...held })
 
-  return `${supplier}|${ratePlanRef}|${stay.checkIn}|${stay.checkOut}`
+  // Hold supplier yang sudah kedaluwarsa saat tiba, misalnya.
+  if (!change.ok) {
+    await abort(attempt, saga, {
+      stoppedAt: 'holdSupplier',
+      through: 'holdSupplier',
+      reason: change.error.message,
+    })
+    return { kind: 'refused', error: change.error }
+  }
+
+  const waiting = awaitReply(saga, 'awaitPayment', at, undefined)
+  const outcome = await deps.sagas.commit({
+    bookingId: booking.id,
+    at,
+    change: change.value,
+    saga: waiting,
+  })
+
+  // Pemesanan berpindah oleh pihak lain di antara langkah 1 dan 5 —
+  // dibatalkan pengguna, misalnya. Pemesanan yang dikembalikan adalah yang
+  // dikenal permintaan ini; keadaan yang menang dibaca klien lewat GET.
+  if (outcome !== 'committed') {
+    await abort(attempt, saga, {
+      stoppedAt: 'holdSupplier',
+      through: 'holdSupplier',
+      reason: 'pemesanan berpindah di tengah hold',
+    })
+    return { kind: 'in_progress', booking }
+  }
+
+  await deps.holds.shorten(booking.id, held.heldUntil)
+  return { kind: 'held', booking: change.value.booking }
+}
+
+interface Abort {
+  readonly stoppedAt: SagaStep
+  /** Langkah terakhir yang efeknya harus dibalik; tidak ada bila belum ada efek. */
+  readonly through?: SagaStep
+  readonly reason: string
+}
+
+/** Percobaan hold dihentikan: kompensasi mundur dari langkah terakhir yang berhasil. */
+async function abort(attempt: Attempt, saga: SagaState, stop: Abort): Promise<void> {
+  const { deps, booking } = attempt
+
+  await compensate(deps, {
+    booking,
+    saga,
+    start: {
+      through: stop.through,
+      stoppedAt: stop.stoppedAt,
+      at: deps.clock.now(),
+      reason: stop.reason,
+    },
+  })
 }

@@ -15,7 +15,10 @@ import { createSupplierRegistry, mockSupplierRegistryConfig } from '@tbe/supplie
 import { Redis } from 'ioredis'
 import { createSupplierHttpApp } from './composition/app.js'
 import { loadConfig } from './config.js'
-import { createKafkaSupplierEvents } from './infrastructure/kafka-events.js'
+import {
+  createKafkaConfirmReplies,
+  createKafkaSupplierEvents,
+} from './infrastructure/kafka-events.js'
 import { createPrismaClient, prismaResource } from './infrastructure/prisma-client.js'
 import { createPrismaDirectory } from './infrastructure/prisma-directory.js'
 import { createPrismaRequestLog } from './infrastructure/prisma-request-log.js'
@@ -23,7 +26,11 @@ import { createSupplierMetrics } from './infrastructure/prom-metrics.js'
 import { createRedisCircuitStore } from './infrastructure/redis-circuit-store.js'
 import { createRedisRateLimiter } from './infrastructure/redis-rate-limiter.js'
 import { systemClock, systemSleeper } from './infrastructure/system.js'
-import { handleCancel, handleConfirm } from './messaging/command-handlers.js'
+import {
+  handleCancel,
+  handleConfirm,
+  handleConfirmDeadLetter,
+} from './messaging/command-handlers.js'
 import type { ResilienceDeps } from './application/ports.js'
 
 /**
@@ -135,7 +142,12 @@ const httpResource: ManagedResource = {
 const consumersResource: ManagedResource = {
   name: 'rabbit-consumers',
   start: async () => {
-    const deps = { resilience: buildDeps(), logger }
+    const deps = {
+      resilience: buildDeps(),
+      logger,
+      // Jawaban konfirmasi untuk saga booking-service (Step 19).
+      replies: createKafkaConfirmReplies(createEventPublisher(toProducerPort(producer))),
+    }
 
     rabbit.consume(
       mainQueue('supplier.confirm'),
@@ -145,6 +157,7 @@ const consumersResource: ManagedResource = {
         publisher: rabbit.publisher,
         logger,
         handle: handleConfirm(deps),
+        onDeadLetter: handleConfirmDeadLetter(deps),
       }),
     )
 

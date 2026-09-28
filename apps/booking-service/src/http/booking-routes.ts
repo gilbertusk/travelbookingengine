@@ -1,12 +1,5 @@
 import { money, moneySchema } from '@tbe/money'
-import {
-  AppError,
-  NotFoundError,
-  UnauthorizedError,
-  ValidationError,
-  success,
-  validate,
-} from '@tbe/shared-kernel'
+import { AppError, NotFoundError, ValidationError, success, validate } from '@tbe/shared-kernel'
 import { Router, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
 import { placeHold, type HoldResult } from '../application/place-hold.js'
@@ -18,6 +11,7 @@ import {
 import { loadOwned } from '../application/persist.js'
 import type { BookingDeps } from '../application/ports.js'
 import { SUPPLIER_CODES } from '../domain/booking.js'
+import { identity } from './identity.js'
 import { bookingView } from './views.js'
 
 /**
@@ -29,7 +23,7 @@ import { bookingView } from './views.js'
  * header ini dapat dipercaya DI SINI — dan hanya di sini, di balik gateway.
  */
 
-export const USER_ID_HEADER = 'x-tbe-user-id'
+export { USER_ID_HEADER } from './identity.js'
 
 const priceCheckBody = validate(
   z.object({
@@ -62,7 +56,7 @@ const holdBody = validate(
   'body',
 )
 
-const bookingParams = validate(z.object({ id: z.uuid() }), 'params')
+export const bookingParams = validate(z.object({ id: z.uuid() }), 'params')
 
 export function createBookingRouter(deps: BookingDeps): Router {
   const router = Router()
@@ -206,26 +200,3 @@ function unavailable(): AppError {
     message: 'Supplier belum dapat dihubungi. Silakan coba lagi.',
   })
 }
-
-/**
- * Identitas dari gateway. Bukan UUID — atau tidak ada — berarti permintaan
- * tidak lewat gateway, dan dijawab 401.
- */
-const identity = Object.assign(
-  ((req, res, next) => {
-    const header = req.header(USER_ID_HEADER)
-    if (header === undefined || !z.uuid().safeParse(header).success) {
-      next(new UnauthorizedError())
-      return
-    }
-    res.locals.userId = header
-    next()
-  }) satisfies RequestHandler,
-  {
-    value(res: Response): string {
-      const userId: unknown = res.locals.userId
-      if (typeof userId !== 'string') throw new Error('middleware identitas tidak dipasang')
-      return userId
-    },
-  },
-)

@@ -1,8 +1,9 @@
 import { money, type Money } from '@tbe/money'
-import { createLogger } from '@tbe/shared-kernel'
+import { createLogger, type Logger } from '@tbe/shared-kernel'
 import type {
   AcquireOutcome,
   BookingDeps,
+  SagaPolicy,
   HoldClaim,
   HoldEntry,
   HoldStore,
@@ -15,6 +16,7 @@ import type {
 } from '../application/ports.js'
 import type { SellQuote } from '../domain/sell-price.js'
 import { createPrismaBookingRepository } from '../infrastructure/prisma-booking-repository.js'
+import { createPrismaSagaStore } from '../infrastructure/prisma-saga-store.js'
 import { memoryBookingDb, type MemoryBookingDb } from './memory-db.js'
 
 /**
@@ -48,6 +50,9 @@ export interface MemoryHoldStore extends HoldStore {
  * tunggu DI ANTARA membaca jumlah kursi dan menambah anggota — meniru
  * SCARD lalu SADD dari klien.
  */
+/** Lebar jendela balapan palsuan tandingan. */
+const RACE_WINDOW_MS = 20
+
 async function acquire(
   slots: Slots,
   membersOf: (slot: string) => Set<string>,
@@ -61,7 +66,14 @@ async function acquire(
   slots.capacity.set(claim.slot, capacity)
   const taken = members.size
 
-  if (racy) await Promise.resolve()
+  // Jendela balapan selebar beberapa milidetik, bukan satu mikrotask. Step
+  // 19 menambah penulisan saga SEBELUM hold lokal, dan penulisan itu
+  // menyerialkan permintaan sehingga jendela satu mikrotask tidak pernah
+  // tumpang tindih — tandingan yang tidak pernah berbalapan membuat uji
+  // "seratus permintaan, sepuluh kursi" hampa lagi. Satu giliran makrotask
+  // pun ternyata tidak cukup di bawah beban `pnpm test` seluruh repo; jeda
+  // beberapa milidetik meniru perjalanan jaringan SCARD lalu SADD dari klien.
+  if (racy) await new Promise((resolve) => setTimeout(resolve, RACE_WINDOW_MS))
   if (taken >= capacity) return 'sold_out'
 
   members.add(claim.bookingId)
@@ -240,20 +252,39 @@ export interface Harness {
 
 export const HOLD_DURATION_MS = 15 * 60 * 1_000
 
-export function harness(options: { holds?: MemoryHoldStore } = {}): Harness {
-  let now = new Date('2026-10-01T03:00:00.000Z')
+/** Kebijakan saga di uji: angka bulat supaya batas waktu mudah dilompati jam palsu. */
+export const SAGA_POLICY: SagaPolicy = {
+  leaseMs: 60_000,
+  confirmTimeoutMs: 10 * 60_000,
+  awaitRefundTimeoutMs: 15 * 60_000,
+  compensationRetry: { maxAttempts: 3, retryDelayMs: 30_000 },
+  sweepBatch: 50,
+}
+
+export function harness(
+  options: {
+    holds?: MemoryHoldStore
+    logger?: Logger
+    db?: MemoryBookingDb
+    /** Jam bersama — dipakai dunia saga yang "memulai ulang proses" di atas jam yang sama. */
+    clock?: { value: Date }
+  } = {},
+): Harness {
+  const clock = options.clock ?? { value: new Date('2026-10-01T03:00:00.000Z') }
   let ids = 0
-  const db = memoryBookingDb()
+  const db = options.db ?? memoryBookingDb()
   const holds = options.holds ?? memoryHoldStore()
-  const suppliers = scriptedSuppliers(() => now)
+  const suppliers = scriptedSuppliers(() => clock.value)
   const pricing = scriptedPricing()
 
   const deps: BookingDeps = {
     bookings: createPrismaBookingRepository(db),
+    sagas: createPrismaSagaStore(db),
+    sagaPolicy: SAGA_POLICY,
     suppliers,
     pricing,
     holds,
-    clock: { now: () => now },
+    clock: { now: () => clock.value },
     ids: {
       next: () => {
         ids += 1
@@ -261,7 +292,8 @@ export function harness(options: { holds?: MemoryHoldStore } = {}): Harness {
       },
     },
     holdPolicy: { durationMs: HOLD_DURATION_MS, sweepBatch: 50 },
-    logger: createLogger({ serviceName: 'booking-service-test', level: 'silent' }),
+    logger:
+      options.logger ?? createLogger({ serviceName: 'booking-service-test', level: 'silent' }),
   }
 
   return {
@@ -271,9 +303,9 @@ export function harness(options: { holds?: MemoryHoldStore } = {}): Harness {
     suppliers,
     pricing,
     advance: (ms) => {
-      now = new Date(now.getTime() + ms)
+      clock.value = new Date(clock.value.getTime() + ms)
     },
-    now: () => now,
+    now: () => clock.value,
   }
 }
 
@@ -295,5 +327,41 @@ export function priceCheckRequest(
     checkOut: '2026-11-12',
     guest: { fullName: 'Sari Wulandari', email: 'sari@example.com', count: 2 },
     displayedTotal: money(overrides.displayed ?? 2_442_000, 'IDR'),
+  }
+}
+
+export interface LogEntry {
+  readonly level: string
+  readonly msg: string
+  readonly [key: string]: unknown
+}
+
+/**
+ * Label tingkat `error` — logger shared-kernel menuliskan label, bukan angka
+ * pino. Uji "galat tingkat error" memeriksa nilai ini.
+ */
+export const ERROR_LEVEL = 'error'
+
+/**
+ * Logger sungguhan (pino) yang tulisannya direkam — supaya uji dapat
+ * membuktikan TINGKAT log, bukan sekadar bahwa sesuatu tercatat. Step doc 19
+ * menuntut kegagalan kompensasi dicatat tingkat error.
+ */
+export function recordingLogger(): { readonly logger: Logger; entries(): readonly LogEntry[] } {
+  const lines: string[] = []
+  const logger = createLogger({
+    serviceName: 'booking-service-test',
+    level: 'debug',
+    destination: {
+      write(line: string): void {
+        lines.push(line)
+      },
+    },
+  })
+
+  return {
+    logger,
+    // Setiap baris pino adalah satu objek JSON dengan `level` dan `msg`.
+    entries: () => lines.map((line) => JSON.parse(line) as LogEntry),
   }
 }
