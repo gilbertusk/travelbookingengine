@@ -80,6 +80,35 @@ export interface SupplierEvents {
   recovered(supplier: SupplierCode): Promise<void>
 }
 
+/**
+ * Jawaban atas perintah `supplier.confirm`, diumumkan kepada saga (Step 19).
+ *
+ * Sebelum Step 19 hasil konfirmasi hanya masuk log, dan booking-service tidak
+ * punya cara mengetahui apakah kamar sudah terjamin. Tiga jawaban, bukan dua:
+ * `uncertain` berarti pemesanan MUNGKIN sudah terbentuk, dan saga yang
+ * memperlakukannya sebagai penolakan akan mengembalikan dana untuk kamar yang
+ * tetap harus dibayar platform (US-05).
+ */
+export interface ConfirmReplies {
+  confirmed(reply: {
+    readonly bookingId: string
+    readonly supplier: SupplierCode
+    readonly supplierRef: string
+    readonly adopted: boolean
+  }): Promise<void>
+  rejected(reply: {
+    readonly bookingId: string
+    readonly supplier: SupplierCode
+    readonly reason: string
+  }): Promise<void>
+  uncertain(reply: {
+    readonly bookingId: string
+    readonly supplier: SupplierCode
+    readonly idempotencyKey: string
+    readonly reason: string
+  }): Promise<void>
+}
+
 export interface SupplierMetrics {
   observeRequest(params: {
     readonly supplier: SupplierCode

@@ -11,7 +11,13 @@ import {
   type Logger,
 } from '@tbe/shared-kernel'
 import type { CommandOutcome, IncomingCommand, RabbitPublisher } from '../ports.js'
-import { dispositionFor, headerString, type Disposition } from '../retry.js'
+import {
+  LAST_RETRY_TIER,
+  attemptsSoFar,
+  dispositionFor,
+  headerString,
+  type Disposition,
+} from '../retry.js'
 import { publishOptions } from './sender.js'
 import { DEAD_LETTER_EXCHANGE, RETRY_EXCHANGE, retryRoutingKey } from './topology.js'
 
@@ -30,6 +36,29 @@ export interface CommandHandlerOptions<T extends CommandType> {
   readonly publisher: RabbitPublisher
   readonly logger: Logger
   handle(payload: CommandPayload<T>, message: Message<T, CommandPayload<T>>): Promise<void>
+  /**
+   * Dipanggil SEBELUM perintah yang bentuknya sah dipindahkan ke dead letter —
+   * percobaannya habis, atau kegagalannya final.
+   *
+   * Ditambahkan Step 19. Dead letter adalah akhir yang diam: pesan tertahan,
+   * galat tercatat, dan tidak ada yang memberi tahu pihak yang MENGIRIM
+   * perintah. Untuk `supplier.confirm`, pihak itu saga yang menunggu
+   * jawabannya; tanpa kabar ini ia menunggu sampai batas waktunya sendiri.
+   *
+   * Kegagalan di sini TIDAK membuang pesan dan tidak memutarnya seketika:
+   * pesan kembali ke jenjang tunda TERAKHIR dengan hitungan percobaan yang
+   * sama, lalu kembali lagi ke sini setelah tundaannya. Mengembalikannya ke
+   * antrian utama (`requeue`) akan memutarnya tanpa jeda selama Kafka mati.
+   */
+  readonly onDeadLetter?: (context: DeadLetterContext<T>) => Promise<void>
+}
+
+export interface DeadLetterContext<T extends CommandType> {
+  readonly payload: CommandPayload<T>
+  readonly message: Message<T, CommandPayload<T>>
+  /** Galat terakhir dari handler — yang menentukan apa yang dikabarkan. */
+  readonly error: unknown
+  readonly reason: 'exhausted' | 'not_retryable'
 }
 
 export type CommandConsumer = (incoming: IncomingCommand) => Promise<CommandOutcome>
@@ -62,9 +91,59 @@ export function createCommandConsumer<T extends CommandType>(
     } catch (error) {
       const disposition = dispositionFor(error, incoming.headers)
       logCommandFailure(logger, command, error, disposition)
-      return await route(publisher, command, incoming, disposition)
+      const final = await announceDeadLetter(options, parsed, { error, disposition, incoming })
+      return await route(publisher, command, incoming, final)
     }
   }
+}
+
+interface Failure {
+  readonly error: unknown
+  readonly disposition: Disposition
+  readonly incoming: IncomingCommand
+}
+
+/**
+ * Menjalankan kabar dead letter, dan memutuskan ulang ke mana pesannya pergi
+ * bila kabar itu gagal disampaikan.
+ */
+async function announceDeadLetter<T extends CommandType>(
+  options: CommandHandlerOptions<T>,
+  parsed: Message<T, CommandPayload<T>>,
+  failure: Failure,
+): Promise<Disposition> {
+  const { disposition } = failure
+  if (disposition.kind !== 'dead_letter' || options.onDeadLetter === undefined) return disposition
+
+  const hook = options.onDeadLetter
+  try {
+    await withTraceparent(parsed.traceparent, async () => {
+      await runWithCorrelation(parsed.correlationId, async () => {
+        await hook({
+          payload: parsed.payload,
+          message: parsed,
+          error: failure.error,
+          reason: disposition.reason,
+        })
+      })
+    })
+    return disposition
+  } catch (hookError) {
+    options.logger.error(
+      { err: hookError, command: options.command },
+      'kabar dead letter gagal disampaikan, perintah ditunda untuk dicoba lagi',
+    )
+    return lastTierAgain(failure.incoming)
+  }
+}
+
+/**
+ * Jenjang tunda terakhir, dengan hitungan percobaan yang TIDAK naik. Pesan akan
+ * kembali setelah tundaannya, gagal dengan cara yang sama, dan tiba lagi di
+ * dead letter — kali ini dengan kesempatan baru untuk menyampaikan kabarnya.
+ */
+function lastTierAgain(incoming: IncomingCommand): Disposition {
+  return { kind: 'retry', tier: LAST_RETRY_TIER, attempt: attemptsSoFar(incoming.headers) }
 }
 
 function parseCommand<T extends CommandType>(

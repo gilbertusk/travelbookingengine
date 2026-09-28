@@ -10,8 +10,12 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { BookingDeps } from '../application/ports.js'
+import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
 import { createBookingRouter } from '../http/booking-routes.js'
+import { createStatusRouter, type StatusStreamOptions } from '../http/status-routes.js'
+import type { OutboxRelay } from '../infrastructure/outbox-relay.js'
+import { periodicResource } from './periodic.js'
 
 /**
  * Perangkaian HTTP, dipisahkan dari perangkaian dependensi supaya pengujian
@@ -24,7 +28,11 @@ export interface BookingHttpOptions {
   readonly logger: Logger
   readonly serviceName: string
   readonly extraChecks?: readonly HealthCheck[]
+  readonly statusStream?: StatusStreamOptions
 }
+
+/** Satu pembacaan per detik; komentar penjaga tiap lima belas detik. */
+const DEFAULT_STATUS_STREAM: StatusStreamOptions = { pollMs: 1_000, heartbeatMs: 15_000 }
 
 /** UUID nol; health check menyentuh basis data tanpa membaca data sungguhan. */
 const PROBE_ID = '00000000-0000-0000-0000-000000000000'
@@ -42,6 +50,7 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
       options.logger,
     ),
   )
+  app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
   app.use(createBookingRouter(options.deps))
 
   finalizeHttpServer(app, options.logger)
@@ -59,49 +68,60 @@ function databaseCheck(deps: BookingDeps): HealthCheck {
   }
 }
 
-/**
- * Penyapu hold sebagai sumber daya terkelola.
- *
- * Putaran berikutnya dijadwalkan SETELAH putaran sebelumnya selesai, bukan
- * dengan `setInterval`. Putaran yang lebih lama dari selangnya — basis data
- * lambat, ribuan hold kedaluwarsa sekaligus setelah pemadaman — tidak boleh
- * bertumpuk dengan putaran berikutnya. Aman bila bertumpuk, karena seluruh
- * perpindahannya idempoten; tetapi tumpukan itu tidak melepaskan apa pun
- * lebih cepat dan hanya menambah beban pada saat yang paling tidak tepat.
- */
+/** Penyapu hold Step 17: jaring pengaman untuk keyspace notification. */
 export function holdSweeper(deps: BookingDeps, intervalMs: number): ManagedResource {
-  let timer: NodeJS.Timeout | undefined
-  let running: Promise<void> | undefined
-  let stopped = false
-
-  const tick = async (): Promise<void> => {
-    try {
+  return periodicResource({
+    name: 'hold-sweeper',
+    intervalMs,
+    logger: deps.logger,
+    failure: 'putaran penyapu hold gagal',
+    tick: async () => {
       const report = await sweepHolds(deps)
       const released = report.due.expired + report.orphansReleased
       if (released > 0) deps.logger.info(report, 'penyapu hold melepaskan hold')
-    } catch (error) {
-      // Satu putaran yang gagal tidak menghentikan penyapu. Tingkat error:
-      // penyapu adalah jaring pengaman terakhir, dan jaring yang terus gagal
-      // berarti hold yatim menumpuk tanpa ada yang melepaskannya.
-      deps.logger.error({ err: error }, 'putaran penyapu hold gagal')
-    }
-    if (!stopped) timer = setTimeout(schedule, intervalMs)
-  }
-
-  const schedule = (): void => {
-    running = tick()
-  }
-
-  return {
-    name: 'hold-sweeper',
-    start: async () => {
-      timer = setTimeout(schedule, intervalMs)
-      await Promise.resolve()
+      return false
     },
-    stop: async () => {
-      stopped = true
-      clearTimeout(timer)
-      await running
+  })
+}
+
+/**
+ * Penyapu saga Step 19: batas waktu dan pemulihan. Putaran pertamanya berjalan
+ * di dalam `start` — "saat startup, pulihkan saga yang tertinggal" — sebelum
+ * consumer dan HTTP dinyalakan.
+ */
+export function sagaSweeper(deps: BookingDeps, intervalMs: number): ManagedResource {
+  return periodicResource({
+    name: 'saga-sweeper',
+    intervalMs,
+    logger: deps.logger,
+    failure: 'putaran penyapu saga gagal',
+    runOnStart: true,
+    tick: async () => {
+      const report = await sweepSagas(deps)
+      if (report.timedOut + report.recovered + report.failed > 0) {
+        deps.logger.info(report, 'penyapu saga menangani saga')
+      }
+      return false
     },
-  }
+  })
+}
+
+/**
+ * Penerbit outbox Step 19. Batch yang penuh berarti masih ada antrean: putaran
+ * berikutnya segera, bukan setelah selang.
+ */
+export function outboxPublisher(
+  relay: OutboxRelay,
+  options: { readonly intervalMs: number; readonly batch: number; readonly logger: Logger },
+): ManagedResource {
+  return periodicResource({
+    name: 'outbox-publisher',
+    intervalMs: options.intervalMs,
+    logger: options.logger,
+    failure: 'putaran penerbit outbox gagal',
+    tick: async () => {
+      const report = await relay.relayOnce()
+      return !report.stalled && report.published + report.rejected >= options.batch
+    },
+  })
 }

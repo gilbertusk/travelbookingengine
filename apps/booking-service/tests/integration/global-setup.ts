@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import pg from 'pg'
 import { integrationEnv } from './env.js'
 
@@ -19,7 +20,11 @@ export default async function setup(): Promise<void> {
   await client.query('CREATE SCHEMA public')
   await client.end()
 
-  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
+  // CLI Prisma dijalankan lewat node sendiri, bukan `npx`: di Windows `npx`
+  // adalah berkas .cmd yang tidak dapat dijalankan execFileSync tanpa shell,
+  // dan Step 17 hanya pernah menjalankan uji ini di kontainer Linux.
+  const prismaCli = createRequire(import.meta.url).resolve('prisma/build/index.js')
+  execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: 'pipe',
   })

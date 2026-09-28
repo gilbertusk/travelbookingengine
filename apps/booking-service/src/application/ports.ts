@@ -1,8 +1,10 @@
+import type { CommandPayload, CommandType } from '@tbe/event-contracts'
 import type { Money } from '@tbe/money'
 import type { Logger } from '@tbe/shared-kernel'
 import type { Booking, DraftBooking, SupplierCode } from '../domain/booking.js'
 import type { BookingChange } from '../domain/events.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
+import type { RetryPolicy, SagaState } from '../domain/saga-state.js'
 import type { SellQuote } from '../domain/sell-price.js'
 
 /**
@@ -41,6 +43,12 @@ export type CreateOutcome =
 export type SaveOutcome =
   { readonly kind: 'saved' } | { readonly kind: 'stale'; readonly current: Booking | undefined }
 
+/**
+ * Step 19: setiap penyimpanan pemesanan — `create` dan `save` di bawah —
+ * juga menulis padanan Kafka peristiwa domainnya ke OUTBOX, dalam transaksi
+ * yang sama. Pemanggil tidak dapat lupa menerbitkannya, karena tidak ada
+ * pemanggil yang menerbitkan apa pun: penerbit terpisah membaca outbox.
+ */
 export interface BookingRepository {
   findById(id: string): Promise<Booking | undefined>
 
@@ -161,6 +169,70 @@ export interface HoldStore {
   orphans(limit: number): Promise<readonly HoldEntry[]>
 }
 
+/** Perintah RabbitMQ yang ditulis ke outbox. Kontraknya di @tbe/event-contracts. */
+export type OutboundCommand = {
+  readonly [T in CommandType]: { readonly type: T; readonly payload: CommandPayload<T> }
+}[CommandType]
+
+/** Pesan Kafka yang efeknya sedang disimpan — dicatat supaya efeknya tidak terjadi dua kali. */
+export interface ConsumedMessage {
+  readonly eventId: string
+  readonly eventType: string
+}
+
+/**
+ * Satu unit kerja saga: SATU transaksi basis data.
+ *
+ * Semua yang ada di dalamnya tersimpan bersama atau tidak sama sekali —
+ * perubahan pemesanan beserta jejak auditnya, keadaan saga, perintah dan
+ * peristiwa untuk outbox, dan catatan bahwa pesan pemicunya sudah dikonsumsi.
+ * Tidak ada jendela di mana keadaan sudah berubah tetapi perintah kompensasinya
+ * belum tercatat, atau sebaliknya.
+ */
+export interface SagaUnit {
+  readonly bookingId: string
+  /** Waktu keputusan. Menjadi waktu kejadian perintah di outbox. */
+  readonly at: Date
+  /** Transisi pemesanan, dijaga kunci versinya. */
+  readonly change?: BookingChange
+  /** Keadaan saga, dijaga kunci versinya. Versi 1 berarti saga baru. */
+  readonly saga?: SagaState
+  readonly commands?: readonly OutboundCommand[]
+  readonly consumed?: ConsumedMessage
+}
+
+/**
+ * `stale`: pemesanan atau saga sudah dipindahkan pihak lain sejak dibaca;
+ * tidak ada yang ditulis, dan pemanggil membaca ulang lalu memutuskan ulang.
+ * `already_consumed`: pesan pemicunya sudah pernah dikonsumsi; tidak ada yang
+ * ditulis, dan itu jawaban yang benar — efeknya sudah terjadi sekali.
+ */
+export type CommitOutcome = 'committed' | 'stale' | 'already_consumed'
+
+export interface SagaStore {
+  find(bookingId: string): Promise<SagaState | undefined>
+  commit(unit: SagaUnit): Promise<CommitOutcome>
+  /** Saga yang batas menunggu jawabannya sudah lewat. */
+  findDue(now: Date, limit: number): Promise<readonly SagaState[]>
+  /** Saga yang sewa prosesnya sudah lewat: prosesnya mati di tengah langkah langsung. */
+  findLeaseExpired(now: Date, limit: number): Promise<readonly SagaState[]>
+}
+
+export interface SagaPolicy {
+  /**
+   * Sewa proses untuk langkah langsung (hold lokal, hold supplier, pelepasan
+   * hold). Harus lebih panjang dari langkah terlama — lihat config.ts, yang
+   * menolak sewa yang lebih pendek dari batas waktu panggilan ke supplier.
+   */
+  readonly leaseMs: number
+  /** Batas menunggu jawaban supplier.confirm sebelum saga menyerah (US-05). */
+  readonly confirmTimeoutMs: number
+  /** Batas menunggu konfirmasi refund sebelum kompensasi dianggap gagal. */
+  readonly awaitRefundTimeoutMs: number
+  readonly compensationRetry: RetryPolicy
+  readonly sweepBatch: number
+}
+
 export interface Clock {
   now(): Date
 }
@@ -179,6 +251,8 @@ export interface HoldPolicy {
 /** Dependensi seluruh use case. Dirangkai di index.ts, satu-satunya tempat wiring. */
 export interface BookingDeps {
   readonly bookings: BookingRepository
+  readonly sagas: SagaStore
+  readonly sagaPolicy: SagaPolicy
   readonly suppliers: SupplierQuotes
   readonly pricing: Pricing
   readonly holds: HoldStore

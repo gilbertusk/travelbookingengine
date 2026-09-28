@@ -3,7 +3,8 @@ import type { Booking, DraftBooking } from '../domain/booking.js'
 import type { BookingChange } from '../domain/events.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
 import { isUniqueViolation, type BookingDb } from './booking-db.js'
-import { fromRow, toEventRow, toRow, toStateColumns } from './booking-rows.js'
+import { fromRow, toEventRow, toRow } from './booking-rows.js'
+import { commitTransition, writeEventOutbox } from './unit-of-work.js'
 
 /**
  * Repository pemesanan di atas Prisma.
@@ -19,6 +20,13 @@ import { fromRow, toEventRow, toRow, toStateColumns } from './booking-rows.js'
  * sesudahnya. Kunci asing booking_events → bookings menuntutnya pada
  * pembuatan, dan pada transisi, pemeriksaan versi harus menang lebih dulu
  * sebelum ada yang ditulis ke jejak.
+ *
+ * Step 19: transaksi yang sama juga menulis padanan Kafka peristiwanya ke
+ * OUTBOX — `booking.created` pada pembuatan, dan seterusnya. Menerbitkannya
+ * langsung ke Kafka dari sini ditolak: penerbitan di dalam transaksi terjadi
+ * walau transaksinya lalu batal, dan penerbitan sesudahnya hilang bila proses
+ * mati di antara commit dan kirim. payment-service tidak dapat menagih
+ * pemesanan yang `booking.created`-nya tidak pernah tiba.
  */
 export function createPrismaBookingRepository(db: BookingDb): BookingRepository {
   async function findById(id: string): Promise<Booking | undefined> {
@@ -52,6 +60,7 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
       await db.$transaction(async (tx) => {
         await tx.booking.create({ data: toRow(booking) })
         await tx.bookingEvent.create({ data: toEventRow(event) })
+        await writeEventOutbox(tx, change, undefined)
       })
 
       return { kind: 'created' }
@@ -70,7 +79,7 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
   }
 
   /**
-   * Transisi, dijaga kunci versi.
+   * Transisi, dijaga kunci versi — lihat unit-of-work.ts.
    *
    * `updateMany` dengan `version` di klausa WHERE, bukan `update`: Prisma
    * `update` melempar bila baris tidak ditemukan, dan "tidak ditemukan karena
@@ -80,23 +89,10 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
    * mendapat nol baris.
    */
   async function save(change: BookingChange): Promise<SaveOutcome> {
-    const { booking, event } = change
+    const outcome = await commitTransition(db, change)
+    if (outcome === 'saved') return { kind: 'saved' }
 
-    const saved = await db.$transaction(async (tx) => {
-      const { count } = await tx.booking.updateMany({
-        where: { id: booking.id, version: booking.version - 1 },
-        data: toStateColumns(booking),
-      })
-
-      if (count === 0) return false
-
-      await tx.bookingEvent.create({ data: toEventRow(event) })
-      return true
-    })
-
-    if (saved) return { kind: 'saved' }
-
-    return { kind: 'stale', current: await findById(booking.id) }
+    return { kind: 'stale', current: await findById(change.booking.id) }
   }
 
   return {

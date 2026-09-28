@@ -1,5 +1,6 @@
 import type { BookingStatus, CancellationReason } from '../domain/booking.js'
 import type { BookingEventType } from '../domain/events.js'
+import type { SagaStep } from '../domain/saga-definition.js'
 
 /**
  * Bagian klien Prisma yang dipakai repository, dinyatakan sebagai tipe
@@ -88,6 +89,64 @@ export interface EventWriteColumns {
   readonly occurredAt: Date
 }
 
+/** Baris saga_states (Step 19). Ditulis dan dibaca dengan bentuk yang sama. */
+export interface SagaRow {
+  readonly id: string
+  readonly bookingId: string
+  readonly currentStep: SagaStep
+  readonly stepStatus: 'started' | 'waiting' | 'succeeded' | 'failed'
+  readonly compensationStatus: 'none' | 'running' | 'completed' | 'failed'
+  readonly compensatingStep: SagaStep | null
+  readonly attempts: number
+  readonly lastError: string | null
+  readonly deadlineAt: Date | null
+  readonly leasedUntil: Date | null
+  readonly version: number
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export type SagaUpdateColumns = Omit<SagaRow, 'id' | 'bookingId' | 'createdAt'>
+
+export type OutboxChannel = 'kafka' | 'rabbitmq'
+
+/** Baris outbox yang DITULIS di transaksi bisnis. */
+export interface OutboxWriteColumns {
+  readonly id: string
+  readonly bookingId: string
+  readonly channel: OutboxChannel
+  readonly messageType: string
+  readonly payload: JsonObject
+  readonly correlationId: string
+  readonly causationId: string | null
+  readonly traceparent: string | null
+  readonly occurredAt: Date
+  readonly createdAt: Date
+}
+
+/** Baris outbox yang DIBACA penerbit. `payload` diurai ulang dengan skema kontrak. */
+export interface OutboxRow extends Omit<OutboxWriteColumns, 'payload'> {
+  readonly payload: unknown
+  readonly sequence: bigint
+  readonly publishedAt: Date | null
+  readonly attempts: number
+  readonly lastError: string | null
+  readonly rejectedAt: Date | null
+}
+
+/** Kemajuan satu pesan outbox: terbit, gagal sementara, atau ditolak kontraknya. */
+export type OutboxProgress =
+  | { readonly publishedAt: Date }
+  | { readonly attempts: number; readonly lastError: string }
+  | { readonly attempts: number; readonly lastError: string; readonly rejectedAt: Date }
+
+export interface ConsumedColumns {
+  readonly eventId: string
+  readonly eventType: string
+  readonly bookingId: string
+  readonly consumedAt: Date
+}
+
 export interface BookingDb {
   readonly booking: {
     findUnique(args: { where: { id: string } }): Promise<BookingRow | null>
@@ -100,7 +159,22 @@ export interface BookingDb {
       take: number
     }): Promise<BookingRow[]>
   }
-  $transaction<T>(fn: (tx: BookingTx) => Promise<T>): Promise<T>
+  readonly sagaState: {
+    findUnique(args: { where: { bookingId: string } }): Promise<SagaRow | null>
+    /**
+     * Dua kueri penyapu saga, keduanya dilayani indeks sendiri: saga yang
+     * batas menunggunya lewat, dan saga yang sewa prosesnya lewat.
+     */
+    findMany(args: {
+      where: { deadlineAt: { lte: Date } } | { leasedUntil: { lte: Date } }
+      orderBy: { deadlineAt: 'asc' } | { leasedUntil: 'asc' }
+      take: number
+    }): Promise<SagaRow[]>
+  }
+  $transaction<T>(
+    fn: (tx: BookingTx) => Promise<T>,
+    options?: { readonly timeout?: number; readonly maxWait?: number },
+  ): Promise<T>
 }
 
 export interface BookingTx {
@@ -114,6 +188,30 @@ export interface BookingTx {
   readonly bookingEvent: {
     create(args: { data: EventWriteColumns }): Promise<unknown>
   }
+  readonly sagaState: {
+    create(args: { data: SagaRow }): Promise<unknown>
+    updateMany(args: {
+      where: { bookingId: string; version: number }
+      data: SagaUpdateColumns
+    }): Promise<{ count: number }>
+  }
+  readonly outboxMessage: {
+    create(args: { data: OutboxWriteColumns }): Promise<unknown>
+    findMany(args: {
+      where: { publishedAt: null; rejectedAt: null }
+      orderBy: { sequence: 'asc' }
+      take: number
+    }): Promise<OutboxRow[]>
+    update(args: { where: { id: string }; data: OutboxProgress }): Promise<unknown>
+  }
+  readonly consumedMessage: {
+    create(args: { data: ConsumedColumns }): Promise<unknown>
+  }
+  /**
+   * Hanya untuk kunci penasihat penerbit outbox — lihat prisma-outbox-store.ts.
+   * Tidak ada kueri mentah lain di service ini.
+   */
+  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>
 }
 
 /** Kode galat Prisma untuk pelanggaran batasan UNIK. */

@@ -50,6 +50,18 @@ describe('amplop', () => {
     expect(dengan.causationId).toBe(BOOKING_ID)
   })
 
+  test('memakai eventId yang sudah ditetapkan, supaya penerbitan ulang dapat dikenali', () => {
+    // Outbox Step 19 menerbitkan ulang baris yang sama setelah penerbit mati di
+    // tengah jalan. Consumer menyaring duplikat lewat eventId; nilai baru pada
+    // setiap percobaan membuat duplikatnya tidak dapat dikenali.
+    const ditetapkan = '0199f000-0000-7000-8000-00000000abcd'
+    const pertama = createMessage({ eventType: 'booking.held', payload: {}, eventId: ditetapkan })
+    const ulang = createMessage({ eventType: 'booking.held', payload: {}, eventId: ditetapkan })
+
+    expect(pertama.eventId).toBe(ditetapkan)
+    expect(ulang.eventId).toBe(pertama.eventId)
+  })
+
   test('menyertakan traceparent hanya bila diberikan', () => {
     const dengan = createMessage({
       eventType: 'booking.held',
@@ -218,6 +230,31 @@ describe('topik', () => {
     // membaca keadaan yang belum ada.
     expect(topicFor('booking.confirmed').partitionKey).toBe('bookingId')
     expect(topicFor('payment.succeeded').partitionKey).toBe('bookingId')
+  })
+
+  test('jawaban supplier atas konfirmasi dikunci bookingId dan beretensi panjang', () => {
+    // Saga Step 19 membaca ketiganya. Kunci supplier akan memusatkan seluruh
+    // saga satu supplier di satu partisi, dan retensi pendek membuang catatan
+    // atas pemesanan yang sudah dibayar.
+    for (const type of [
+      'supplier.booking_confirmed',
+      'supplier.booking_rejected',
+      'supplier.booking_uncertain',
+    ] as const) {
+      expect(topicFor(type).partitionKey).toBe('bookingId')
+      expect(topicFor(type).retentionMs).toBeGreaterThan(30 * 86_400_000)
+    }
+  })
+
+  test('uncertain menuntut kunci idempotensi, supaya statusnya masih dapat ditanyakan', () => {
+    const payload = {
+      bookingId: BOOKING_ID,
+      supplier: 'SKY',
+      idempotencyKey: '',
+      reason: 'timeout',
+    }
+
+    expect(EVENT_PAYLOADS['supplier.booking_uncertain'].safeParse(payload).success).toBe(false)
   })
 
   test('topik yang perlu dibangun ulang punya retensi panjang', () => {

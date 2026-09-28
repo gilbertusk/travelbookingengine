@@ -18,6 +18,7 @@
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@tbe/event-contracts": "workspace:*",
+    "@tbe/messaging": "workspace:*",
     "@tbe/money": "workspace:*",
     "@tbe/shared-kernel": "workspace:*",
     "@tbe/supplier-adapters": "workspace:*",

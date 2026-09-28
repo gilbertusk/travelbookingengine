@@ -3,7 +3,15 @@ import type { Express } from 'express'
 import request from 'supertest'
 import { describe, expect, test } from 'vitest'
 import { createBookingHttpApp } from '../composition/app.js'
-import { harness, OTHER_USER, priceCheckRequest, USER, type Harness } from '../testing/fakes.js'
+import { beginSaga } from '../domain/saga-state.js'
+import {
+  harness,
+  OTHER_USER,
+  priceCheckRequest,
+  SAGA_POLICY,
+  USER,
+  type Harness,
+} from '../testing/fakes.js'
 import { USER_ID_HEADER } from './booking-routes.js'
 
 /**
@@ -252,17 +260,17 @@ describe('POST /bookings/hold', () => {
    * yang kedua tiba setelah yang pertama selesai dan dijawab sebagai
    * pengulangan yang sah. Balapan sesungguhnya diuji di place-hold.test.ts;
    * yang diuji di sini hanya pemetaan statusnya.
+   *
+   * Step 19: "sedang diproses" kini dikenali dari SAGA yang sedang berjalan —
+   * niat hold yang tercatat dan sewanya belum habis — bukan dari kursi Redis
+   * yang sudah dipegang.
    */
   test('hold yang sedang diproses permintaan lain: 409 HOLD_IN_PROGRESS', async () => {
     const world = harness()
     const created = await priceCheck(world)
     const id: string = created.body.data.id
-    await world.deps.holds.acquire({
-      bookingId: id,
-      slot: 'SKY|SKY-RP-DLX-BB|2026-11-10|2026-11-12',
-      capacity: 5,
-      until: new Date('2026-10-01T03:15:00Z'),
-    })
+    const running = beginSaga(id, world.now(), SAGA_POLICY.leaseMs)
+    await world.deps.sagas.commit({ bookingId: id, at: world.now(), saga: running })
 
     const response = await holdCall(world, id)
 

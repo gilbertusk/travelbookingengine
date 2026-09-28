@@ -2,7 +2,14 @@ import { describe, expect, test } from 'vitest'
 import { harness, HOLD_DURATION_MS, priceCheckRequest, USER } from '../testing/fakes.js'
 import { placeHold } from '../application/place-hold.js'
 import { startPriceCheck } from '../application/price-check.js'
-import { holdSweeper } from './app.js'
+import { createLogger } from '@tbe/shared-kernel'
+import { SAGA_POLICY } from '../testing/fakes.js'
+import { crashingHoldStore } from '../testing/crash.js'
+import { memoryHoldStore } from '../testing/fakes.js'
+import { sagaWorld } from '../testing/saga-world.js'
+import type { OutboxRelay, RelayReport } from '../infrastructure/outbox-relay.js'
+import { slotOf } from '../application/hold-slot.js'
+import { holdSweeper, outboxPublisher, sagaSweeper } from './app.js'
 
 async function until(condition: () => Promise<boolean>): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -102,5 +109,89 @@ describe('penyapu hold terkelola', () => {
     await new Promise((resolve) => setTimeout(resolve, 30))
 
     expect(calls).toBe(stoppedAt)
+  })
+})
+
+describe('penyapu saga terkelola (Step 19)', () => {
+  test('saat startup memulihkan saga yang tertinggal SEBELUM start selesai', async () => {
+    // "Saat startup, pulihkan saga yang tertinggal": sumber daya berikutnya —
+    // consumer dan HTTP — baru menyala setelah start ini kembali.
+    const world = sagaWorld({ holds: crashingHoldStore(memoryHoldStore(), 'after-acquire') })
+    const checked = await startPriceCheck(world.deps, priceCheckRequest())
+    if (checked.kind !== 'checked') throw new Error('persiapan gagal')
+    await placeHold(world.deps, {
+      userId: USER,
+      bookingId: checked.booking.id,
+      unitsLeft: 1,
+    }).catch(() => undefined)
+    const revived = world.restart()
+    revived.advance(SAGA_POLICY.leaseMs)
+    const sweeper = sagaSweeper(revived.deps, 60_000)
+
+    await sweeper.start?.()
+
+    expect(revived.holds.held(slotOf(checked.booking))).toBe(0)
+    await sweeper.stop()
+  })
+
+  test('putaran tanpa pekerjaan tidak menulis apa pun ke log', async () => {
+    const world = sagaWorld()
+    const sweeper = sagaSweeper(world.deps, 60_000)
+
+    await sweeper.start?.()
+    await sweeper.stop()
+
+    expect(world.logs()).toEqual([])
+  })
+
+  test('putaran berikutnya berjalan berkala', async () => {
+    const world = sagaWorld()
+    const paid = await world.paid()
+    world.advance(SAGA_POLICY.confirmTimeoutMs)
+    const sweeper = sagaSweeper(world.deps, 5)
+
+    await sweeper.start?.()
+    await until(async () => (await world.booking(paid.id)).status === 'NEEDS_REVIEW')
+    await sweeper.stop()
+  })
+})
+
+describe('penerbit outbox terkelola (Step 19)', () => {
+  function relay(reports: readonly RelayReport[]): OutboxRelay & { calls: () => number } {
+    let calls = 0
+    return {
+      calls: () => calls,
+      relayOnce: async () => {
+        const report = reports[Math.min(calls, reports.length - 1)]
+        calls += 1
+        if (report === undefined) throw new Error('tidak ada laporan')
+        return await Promise.resolve(report)
+      },
+    }
+  }
+  const logger = createLogger({ serviceName: 'booking-service-test', level: 'silent' })
+  const full = { locked: true, published: 2, rejected: 0, stalled: false }
+  const idle = { locked: true, published: 0, rejected: 0, stalled: false }
+
+  test('penerbit yang tertahan tidak berputar tanpa jeda', async () => {
+    const stalled = { locked: true, published: 2, rejected: 0, stalled: true }
+    const fake = relay([stalled])
+    const publisher = outboxPublisher(fake, { intervalMs: 20, batch: 2, logger })
+
+    await publisher.start?.()
+    await new Promise((resolve) => setTimeout(resolve, 70))
+    await publisher.stop()
+
+    expect(fake.calls()).toBeLessThanOrEqual(4)
+    expect(fake.calls()).toBeGreaterThanOrEqual(1)
+  })
+
+  test('antrean penuh dikuras berturut-turut', async () => {
+    const fake = relay([full, full, full, idle])
+    const publisher = outboxPublisher(fake, { intervalMs: 5, batch: 2, logger })
+
+    await publisher.start?.()
+    await until(async () => await Promise.resolve(fake.calls() >= 4))
+    await publisher.stop()
   })
 })

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { BOOKING_STATUSES, CANCELLATION_REASONS } from '../domain/booking.js'
 import { BOOKING_EVENT_TYPES } from '../domain/events.js'
+import { SAGA_STEPS } from '../domain/saga-definition.js'
 
 /**
  * Menjaga skema dan migrasi tetap sepakat dengan domain dan dengan NFR.
@@ -66,6 +67,12 @@ describe('waktu kejadian sistem bertipe TIMESTAMPTZ', () => {
     ['bookings', 'created_at'],
     ['bookings', 'updated_at'],
     ['booking_events', 'occurred_at'],
+    ['saga_states', 'deadline_at'],
+    ['saga_states', 'leased_until'],
+    ['saga_states', 'updated_at'],
+    ['outbox', 'occurred_at'],
+    ['outbox', 'published_at'],
+    ['consumed_messages', 'consumed_at'],
   ])('%s.%s', (table, name) => {
     expect(sqlType(table, name)).toMatch(new RegExp(`^"${name}" TIMESTAMPTZ\\(3\\)`))
   })
@@ -84,6 +91,7 @@ describe('enum skema sepakat dengan tipe domain', () => {
     ['CancellationReason', CANCELLATION_REASONS],
     ['BookingEventType', BOOKING_EVENT_TYPES],
     ['PriceCheckOutcome', ['verified', 'changed', 'accepted']],
+    ['SagaStep', SAGA_STEPS],
   ] as const)('%s', (name, expected) => {
     expect([...enumValues(name)].sort()).toEqual([...expected].sort())
   })
@@ -112,6 +120,38 @@ describe('keunikan dan indeks', () => {
     expect(MIGRATION).toMatch(
       /FOREIGN KEY \("booking_id"\) REFERENCES "bookings"\("id"\) ON DELETE RESTRICT/,
     )
+  })
+})
+
+describe('saga dan outbox (Step 19)', () => {
+  test('satu saga per pemesanan', () => {
+    expect(MIGRATION).toContain(
+      'CREATE UNIQUE INDEX "saga_states_booking_id_key" ON "saga_states"("booking_id");',
+    )
+  })
+
+  test('urutan outbox unik dan dilayani indeks pesan yang belum terbit', () => {
+    expect(MIGRATION).toContain(
+      'CREATE UNIQUE INDEX "outbox_sequence_key" ON "outbox"("sequence");',
+    )
+    expect(MIGRATION).toContain(
+      'CREATE INDEX "outbox_published_at_sequence_idx" ON "outbox"("published_at", "sequence");',
+    )
+  })
+
+  test('pesan yang sama tidak dapat dicatat terkonsumsi dua kali', () => {
+    expect(sqlType('consumed_messages', 'event_id')).toBe('"event_id" UUID NOT NULL,')
+    expect(MIGRATION).toContain('PRIMARY KEY ("event_id")')
+  })
+
+  test('penyapu saga punya indeks batas waktu dan sewa', () => {
+    expect(MIGRATION).toContain('ON "saga_states"("deadline_at");')
+    expect(MIGRATION).toContain('ON "saga_states"("leased_until");')
+  })
+
+  test('saga yang menunggu supplier tanpa batas waktu ditolak basis data', () => {
+    expect(MIGRATION).toMatch(/"saga_states_confirm_has_deadline_check"/)
+    expect(MIGRATION).toMatch(/"saga_states_started_has_lease_check"/)
   })
 })
 

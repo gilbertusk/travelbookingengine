@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
 /**
- * Uji integrasi: Redis dan Postgres SUNGGUHAN, bukan palsuan.
+ * Uji integrasi: Redis dan Postgres SUNGGUHAN, bukan palsuan — dan sejak
+ * Step 19, Kafka dan RabbitMQ sungguhan untuk jalur saga
+ * (`INTEGRATION_KAFKA_BROKERS`, `INTEGRATION_RABBITMQ_URL`).
  *
  * Yang dibuktikan di sini adalah sifat infrastruktur yang diandalkan kode dan
  * yang tidak dapat dibuktikan palsuan mana pun: atomisitas skrip Lua,
@@ -28,7 +30,8 @@ export default defineConfig({
     // satu Redis, dan uji balapan di dalamnya tidak boleh ikut berebut dengan
     // uji di berkas lain.
     fileParallelism: false,
-    testTimeout: 30_000,
+    // Uji saga Step 19 menunggu pesan melintasi Kafka dan RabbitMQ sungguhan.
+    testTimeout: 60_000,
     hookTimeout: 60_000,
   },
 })

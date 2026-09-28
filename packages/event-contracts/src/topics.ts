@@ -57,6 +57,23 @@ export const TOPICS: readonly TopicDefinition[] = [
       'berurutan pada consumer yang sama. Retensi panjang untuk audit finansial.',
   },
   {
+    name: 'tbe.supplier-booking.v1',
+    partitions: 6,
+    partitionKey: 'bookingId',
+    retentionMs: 90 * DAY_MS,
+    events: [
+      'supplier.booking_confirmed',
+      'supplier.booking_rejected',
+      'supplier.booking_uncertain',
+    ],
+    rationale:
+      'Hasil supplier.confirm untuk saga (Step 19). Dikunci bookingId, bukan kode ' +
+      'supplier: urutan yang penting adalah urutan per pemesanan, dan satu supplier ' +
+      'populer tidak boleh memusatkan seluruh saga di satu partisi. Terpisah dari ' +
+      'tbe.supplier.v1 karena yang itu satu partisi dan beretensi pendek; ' +
+      'jawaban supplier atas pemesanan berbayar adalah catatan finansial.',
+  },
+  {
     name: 'tbe.search.v1',
     partitions: 3,
     partitionKey: 'city',

@@ -1,8 +1,8 @@
 # booking-service
 
-Siklus hidup pemesanan sebagai state machine eksplisit (Step 16), ditambah price check dan hold dua lapis (Step 17). Belum ada broker: saga, outbox, dan penerbitan peristiwa Kafka jatah Step 19.
+Siklus hidup pemesanan sebagai state machine eksplisit (Step 16), price check dan hold dua lapis (Step 17), dan saga orkestrasi dengan kompensasi, outbox, serta antarmuka status (Step 19).
 
-Port 4006. Memenuhi FR-13 sampai FR-16, FR-18, US-02, US-04, NFR-06, NFR-09, NFR-10, dan G2.
+Port 4006. Memenuhi FR-13 sampai FR-16, FR-18, FR-21, FR-22, FR-26, US-02 sampai US-05, NFR-06, NFR-07, NFR-09, NFR-10, NFR-19, dan G2, G3.
 
 ## Yang paling penting di sini
 
@@ -178,20 +178,95 @@ Notifikasi yang tiba sebelum `heldUntil` menurut jam kita — jam Redis dan jam 
 
 Service memeriksa `notify-keyspace-events` saat startup dan mencatat peringatan bila tidak memuat `Ex`.
 
+## Saga (Step 19)
+
+Orkestrasi, bukan koreografi: booking-service yang memegang kendali, dan langkah beserta kompensasinya dinyatakan sebagai DATA di [`domain/saga-definition.ts`](src/domain/saga-definition.ts).
+
+| Langkah           | Aksi                                                   | Boleh diulang otomatis | Kompensasi                                           |
+| ----------------- | ------------------------------------------------------ | ---------------------- | ---------------------------------------------------- |
+| `priceCheck`      | gerbang: harga disetujui DAN terverifikasi             | tidak                  | `nothing` — hanya membaca                            |
+| `holdLocal`       | kursi dari slot Redis (Lua)                            | tidak                  | `releaseLocalHold`, **langsung**                     |
+| `holdSupplier`    | hold lewat supplier-service                            | tidak (tanpa kunci)    | `lapses` — tidak ada operasi pelepasan di mana pun   |
+| `awaitPayment`    | menunggu `payment.succeeded` / `payment.failed`        | tidak                  | `refundPayment`, **lewat outbox** (`payment.refund`) |
+| `confirmSupplier` | `supplier.confirm` lewat RabbitMQ, jawaban lewat Kafka | ya (kunci = id pesan)  | `cancelSupplierBooking`, **lewat outbox**            |
+| `issueVoucher`    | `voucher.generate` lewat RabbitMQ                      | ya                     | `nothing` — sesudah titik balik, maju saja           |
+
+Kompensasi **langsung** (Redis) tidak dapat ikut transaksi basis data: niatnya dicatat lebih dulu — penunjuk `compensating_step` dan sewa `leased_until` — baru dijalankan. Kompensasi **lewat outbox** ditulis dalam transaksi yang SAMA dengan perubahan keadaan yang memulainya. Pelaksananya generik ([`application/saga/compensation.ts`](src/application/saga/compensation.ts)); implementasinya `Record` atas seluruh aksi, jadi aksi baru tanpa implementasi adalah galat compiler.
+
+### Alur
+
+```
+hold ──► HELD ──payment.succeeded──► PAID ──supplier.confirm (RabbitMQ)──► supplier-service
+                                           ◄──supplier.booking_* (Kafka)────
+  booking_confirmed  → CONFIRMED + voucher.generate                (saga completed)
+  booking_rejected   → FAILED + payment.refund + lepas hold lokal  → payment.refunded → REFUNDED
+  booking_uncertain  → NEEDS_REVIEW, TANPA refund (US-05)
+  tanpa jawaban sampai SAGA_CONFIRM_TIMEOUT_MS → NEEDS_REVIEW, TANPA refund
+  payment.failed     → CANCELLED + lepas hold lokal
+  refund tak terkonfirmasi sampai SAGA_REFUND_TIMEOUT_MS → NEEDS_REVIEW + galat tingkat error
+```
+
+**Tidak ada pembayaran berhasil tanpa pemesanan terkonfirmasi atau refund.** Pembayaran yang tidak dapat diterima — tiba setelah hold kedaluwarsa, setelah pembatalan, pembayaran kedua, atau bernilai lain — dikembalikan. Bila pemesanannya final, saga membuka diri lagi untuk menunggu konfirmasi refund itu. Konfirmasi supplier yang tiba setelah uang dikembalikan menjalankan kompensasi `confirmSupplier` (pembatalan di supplier) dan menyerahkannya ke manusia.
+
+### Keadaan saga disimpan SEBELUM langkah
+
+Niat hold lokal dicatat sebelum kursi diambil; niat hold supplier sebelum supplier dipanggil. Proses yang mati di tengahnya meninggalkan saga "dimulai" dengan sewa. Penyapu saga — sekali saat startup sebelum consumer dan HTTP menyala, lalu berkala — mengompensasi langkah yang sewanya habis, **seolah berhasil** (kompensasinya idempoten). Sewa, bukan "semua yang tertinggal saat startup": beberapa instance berjalan bersamaan, dan saga yang sedang dikerjakan instance lain juga tampak tertinggal.
+
+### Outbox
+
+Setiap penyimpanan pemesanan menulis padanan Kafka peristiwanya ke tabel `outbox` dalam transaksi yang sama — pemanggil tidak dapat lupa, karena tidak ada pemanggil yang menerbitkan apa pun. `booking.created` dan `booking.price_changed` yang ditunggu payment-service sejak Step 18 kini terbit.
+
+Penerbit terpisah ([`infrastructure/outbox-relay.ts`](src/infrastructure/outbox-relay.ts)): satu penerbit pada satu waktu lewat `pg_try_advisory_xact_lock`, berhenti pada kegagalan sementara pertama (urutan per pemesanan tidak dibalik), menyisihkan pesan yang ditolak kontraknya. Minimal sekali: `eventId` = id baris outbox, sama pada setiap pengiriman ulang; `occurredAt` = waktu perubahan keadaan.
+
+### Konsumsi idempoten
+
+Setiap reaksi terhadap Kafka menulis `consumed_messages(event_id)` dalam transaksi yang sama dengan efeknya. Pesan yang sama yang tiba lagi ditolak kunci primer, dan efeknya ikut batal. Mesin keadaan menjaga sebagian besar duplikat; catatan ini menjaga yang tidak — pembayaran terlambat untuk pemesanan EXPIRED, yang tidak lagi punya transisi untuk ditolak.
+
 ## Skema
 
-| Tabel            | Isi                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `bookings`       | Keadaan sekarang. Kolom khas keadaan nullable; batasan CHECK per keadaan di migrasi. |
-| `booking_events` | Jejak audit, hanya bertambah. `sequence` = versi pemesanan sesudah transisi.         |
+| Tabel               | Isi                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `bookings`          | Keadaan sekarang. Kolom khas keadaan nullable; batasan CHECK per keadaan di migrasi. |
+| `booking_events`    | Jejak audit, hanya bertambah. `sequence` = versi pemesanan sesudah transisi.         |
+| `saga_states`       | Satu saga per pemesanan. Fase diturunkan dari `step_status` + `compensation_status`. |
+| `outbox`            | Pesan yang harus terbit. `id` = eventId; `sequence` = urutan terbit.                 |
+| `consumed_messages` | Pesan Kafka yang efeknya sudah tersimpan.                                            |
 
 Migrasi [`20260927000000_init`](prisma/migrations/20260927000000_init/migration.sql) dihasilkan offline dengan `prisma migrate diff --from-empty --to-schema`. Bagian di bawah garis penanda ditulis tangan: tujuh batasan CHECK dan trigger append-only. Migrasi [`20260928000000_add_city`](prisma/migrations/20260928000000_add_city/migration.sql) (Step 17) menambahkan kota properti — cakupan aturan markup. Keduanya diterapkan ke Postgres 16 sungguhan, dan `prisma migrate diff` terhadap basis data hasilnya kosong: Prisma tidak menganggap CHECK dan trigger tulisan tangan sebagai drift.
+
+Migrasi [`20260929000000_add_saga_outbox`](prisma/migrations/20260929000000_add_saga_outbox/migration.sql) (Step 19) dihasilkan dengan `prisma migrate diff --from-config-datasource` terhadap basis data hasil dua migrasi sebelumnya; di bawah garis penanda, lima CHECK tulisan tangan (langkah langsung wajib bersewa, menunggu supplier wajib berbatas waktu, dan lainnya). `migrate diff` sesudahnya kosong.
 
 Rincian harga disimpan di **satu** kolom JSON non-null `price_lines` (`{ agreed, quoted }`), bukan dua kolom yang salah satunya nullable: kolom `Json?` Prisma tidak menerima `null` biasa, dan menuntut sentinel `Prisma.DbNull` membuat port tidak lagi dapat dipenuhi palsuan dan klien sungguhan dengan tipe yang sama.
 
 ## Bukti suntikan
 
 Aturan sejak Step 03: setiap penjagaan diuji terhadap pelanggaran yang sengaja disuntikkan. Seluruhnya dipulihkan, dan pemulihannya diperiksa dengan membandingkan berkas terhadap cadangan.
+
+### Step 19
+
+Diterapkan, diperiksa, dipulihkan oleh skrip di luar repo; pemulihan diperiksa per berkas dengan perbandingan byte, dan seluruh `src/`, `tests/`, dan `prisma/` dibandingkan dengan arsip cadangan sesudahnya.
+
+| #   | Pelanggaran yang disuntikkan                                            | Diperiksa terhadap               | Hasil        | Uji gagal |
+| --- | ----------------------------------------------------------------------- | -------------------------------- | ------------ | --------- |
+| G1  | Keadaan saga disimpan SESUDAH hold lokal, bukan sebelum                 | unit (proses mati disimulasikan) | GAGAL (baik) | 2         |
+| G2  | Peristiwa tidak lewat outbox di transaksi bisnis                        | unit                             | GAGAL (baik) | 14        |
+| G3  | `booking.created` ke outbox di transaksi terpisah dari pemesanan        | unit (palsuan dengan rollback)   | GAGAL (baik) | 1         |
+| G3b | Perintah outbox di transaksi terpisah dari unit kerja saga              | **Postgres sungguhan**           | GAGAL (baik) | 1         |
+| G4  | Timeout `confirmSupplier` langsung dianggap gagal lalu refund           | unit                             | GAGAL (baik) | 1         |
+| G4b | Jawaban `uncertain` dianggap penolakan lalu refund                      | unit                             | GAGAL (baik) | 1         |
+| G5  | Refund tak terkonfirmasi diabaikan: saga dianggap selesai               | unit                             | GAGAL (baik) | 3         |
+| G5b | Kompensasi langsung yang gagal ditelan                                  | unit                             | GAGAL (baik) | 2         |
+| G6  | Catatan pesan terkonsumsi tidak ditulis                                 | unit                             | GAGAL (baik) | 1         |
+| G6b | G6, dua transaksi serentak                                              | **Postgres sungguhan**           | GAGAL (baik) | 2         |
+| G7  | Langkah `holdLocal` tanpa kompensasi terdefinisi                        | unit                             | GAGAL (baik) | 13        |
+| G8  | Berkas suntikan: domain mengimpor infrastructure                        | eslint                           | GAGAL (baik) | 1 galat   |
+| G9  | Pemulihan tidak menghormati sewa                                        | unit                             | GAGAL (baik) | 1         |
+| G10 | Penerbit outbox melompati pesan yang gagal alih-alih berhenti           | unit                             | GAGAL (baik) | 1         |
+| G11 | Penerbit outbox tanpa kunci penasihat                                   | **Postgres sungguhan**           | GAGAL (baik) | 2         |
+| G12 | supplier-service: dead letter karena galat apa pun diumumkan `rejected` | unit supplier-service            | GAGAL (baik) | 1         |
+| G13 | @tbe/messaging: kabar dead letter yang gagal membuang pesan             | unit messaging                   | GAGAL (baik) | 1         |
+
+Keluaran G8: `1:28  error  domain tidak boleh mengimpor dari infrastructure  boundaries/element-types`.
 
 ### Step 17
 
@@ -257,21 +332,28 @@ S13b adalah satu-satunya yang ditangkap **hanya** oleh uji penjaga: tanpa zona n
 pnpm --filter @tbe/booking-service test
 ```
 
-449 uji unit, tanpa Redis, Postgres, maupun jaringan. Cakupan: **99,67% pernyataan, 99,43% cabang, 100% fungsi, 100% baris**. Ambang domain 95%, ambang service 85%. Suite unit juga dijalankan dengan urutan acak (`--sequence.shuffle`) dan tetap hijau.
+657 uji unit, tanpa Redis, Postgres, maupun jaringan. Cakupan: **99,91% pernyataan, 99,85% cabang, 100% fungsi, 100% baris**. Ambang: service 85%, domain 95%, **jalur kompensasi 100%** (`domain/saga-*.ts`, `application/saga/**`, `infrastructure/unit-of-work.ts`) — ditegakkan di `vitest.config.ts`. Suite unit dijalankan tiga kali dengan urutan acak.
 
-Dua pernyataan yang tidak tersentuh, keduanya penjaga cacat perangkaian, bukan keadaan sah: lemparan di `price-check.ts` bila `isCheckable` dan tabel transisi tidak lagi sepakat, dan lemparan di `booking-routes.ts` bila middleware identitas tidak terpasang pada rute.
+Satu pernyataan yang tidak tersentuh, penjaga cacat perangkaian: lemparan di `price-check.ts` bila `isCheckable` dan tabel transisi tidak lagi sepakat (sejak Step 17).
+
+Palsuan di `src/testing` MENIRU sifat sungguhan dengan palsuan tandingan: basis data dengan rollback (tandingan: autocommit), hold store atomik (tandingan: baca-lalu-tulis). Proses yang mati disimulasikan di `testing/crash.ts` dengan galat yang tidak ditangkap kode produksi mana pun, lalu `restart()` membangun dependensi baru di atas basis data dan Redis yang sama.
 
 Dikecualikan dari cakupan unit: `index.ts`, `telemetry.ts`, `config.ts`, `prisma-client.ts`, `system.ts`, dan adapter Redis (`redis-hold-store.ts`, `keyspace-expiry.ts`) — yang terakhir diuji terhadap Redis sungguhan, di bawah.
 
 ### Uji integrasi
 
 ```bash
-export INTEGRATION_DATABASE_URL=postgresql://tbe@localhost:5440/booking_it
-export INTEGRATION_REDIS_URL=redis://localhost:6390/5
+export INTEGRATION_DATABASE_URL=postgresql://tbe:<sandi>@localhost:5433/booking_it
+export INTEGRATION_REDIS_URL=redis://:<sandi>@localhost:6380/5
+export INTEGRATION_KAFKA_BROKERS=localhost:29092
+export INTEGRATION_RABBITMQ_URL=amqp://tbe:<sandi>@localhost:5672
+pnpm topics:create
 pnpm test:integration
 ```
 
-39 uji terhadap **Redis 7.0.15 dan PostgreSQL 16.13 sungguhan**, di [`tests/integration`](tests/integration). Basis data uji dibangun ulang dari migrasi setiap kali — trigger append-only menolak pembersihan tabel, dan memang harus. Uji GAGAL keras bila salah satu env tidak ada; tidak dilewati diam-diam.
+Step 19: **56 uji terhadap PostgreSQL 16.15, Redis 7, Kafka, dan RabbitMQ sungguhan** (`pnpm infra:up`), di zona `Asia/Jakarta` dan `America/Los_Angeles`, dengan urutan acak. Yang baru: unit kerja saga di Postgres (atomik, konsumsi serentak, kunci versi, lima CHECK), penerbit outbox dengan kunci penasihat yang diperebutkan, dan saga ujung ke ujung — `payment.refund` benar-benar tiba di RabbitMQ pada US-03, TIDAK tiba pada US-05, pesan Kafka yang sama dua kali menghasilkan satu `supplier.confirm`, `booking.created` tiba di Kafka dengan eventId baris outbox-nya.
+
+Sampai Step 17: 39 uji terhadap **Redis 7.0.15 dan PostgreSQL 16.13 sungguhan**, di [`tests/integration`](tests/integration). Basis data uji dibangun ulang dari migrasi setiap kali — trigger append-only menolak pembersihan tabel, dan memang harus. Uji GAGAL keras bila salah satu env tidak ada; tidak dilewati diam-diam.
 
 Docker masih mati, tetapi kontainer pengembangan Step 17 ternyata sudah membawa `redis-server` dan PostgreSQL 16 terpasang langsung. CONVENTIONS.md meminta Testcontainers; tanpa Docker, infrastrukturnya diberikan lewat env.
 
@@ -297,6 +379,7 @@ Dijalankan di zona `Asia/Jakarta` dan `America/Los_Angeles`, masing-masing tiga 
 ```bash
 cp apps/booking-service/.env.example apps/booking-service/.env
 pnpm infra:up
+pnpm topics:create
 pnpm --filter @tbe/booking-service db:deploy
 pnpm --filter @tbe/booking-service build && pnpm --filter @tbe/booking-service start
 ```
@@ -305,18 +388,23 @@ pnpm --filter @tbe/booking-service build && pnpm --filter @tbe/booking-service s
 
 Seluruhnya lewat api-gateway, yang mewajibkan autentikasi untuk `/bookings` dan meneruskan identitas sebagai `x-tbe-user-id`. Tanpa header itu — atau bukan UUID — dijawab 401, sebelum isi permintaan diperiksa. Pemesanan milik pengguna lain dijawab 404, sama dengan pemesanan yang tidak ada.
 
-| Rute                                | Guna                                                       |
-| ----------------------------------- | ---------------------------------------------------------- |
-| `POST /bookings/price-check`        | Buat bila belum ada (idempoten), lalu price check langsung |
-| `POST /bookings/price-check/accept` | Setujui harga baru, lalu price check ulang                 |
-| `POST /bookings/hold`               | Hold lokal lalu supplier                                   |
-| `GET /bookings/:id`                 | Keadaan pemesanan milik sendiri                            |
+| Rute                                | Guna                                                        |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `POST /bookings/price-check`        | Buat bila belum ada (idempoten), lalu price check langsung  |
+| `POST /bookings/price-check/accept` | Setujui harga baru, lalu price check ulang                  |
+| `POST /bookings/hold`               | Hold lokal lalu supplier                                    |
+| `GET /bookings/:id`                 | Keadaan pemesanan milik sendiri                             |
+| `GET /bookings/:id/status`          | Status, fase saga, alasan gagal, status refund (FR-23)      |
+| `GET /bookings/stream/:id`          | SSE: setiap perubahan status sampai tuntas (FR-26, Step 21) |
 
 ## Perintah verifikasi yang BELUM dijalankan
 
-| Pemeriksaan                                                               | Yang diharapkan                                                                                                                                                                      |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Alur lewat supplier-service dan pricing-service yang berjalan             | Price check dan hold terhadap mock-supplier sungguhan. Yang terbukti sekarang: penerjemahan jawaban HTTP (unit) dan use case terhadap supplier/pricing palsuan (unit dan integrasi). |
-| `pnpm --filter @tbe/booking-service start` dengan infra lengkap           | Startup, pemeriksaan `notify-keyspace-events`, penyapu terjadwal, dan penutupan berurutan. `index.ts` belum pernah dijalankan.                                                       |
-| Lewat api-gateway                                                         | `x-tbe-user-id` diteruskan dan header kiriman klien dibuang. Diuji di api-gateway sendiri (Step 07), belum ujung ke ujung dengan service ini.                                        |
-| Konsumsi `booking.created` / `booking.price_changed` oleh payment-service | Belum ada yang menerbitkannya — outbox Step 19. Sampai itu, `POST /internal/payments` tetap menolak `amount_unknown`.                                                                |
+| Pemeriksaan                                                     | Yang diharapkan                                                                                                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Alur lewat supplier-service dan pricing-service yang berjalan   | Price check dan hold terhadap mock-supplier sungguhan. Yang terbukti sekarang: penerjemahan jawaban HTTP (unit) dan use case terhadap supplier/pricing palsuan (unit dan integrasi). |
+| `pnpm --filter @tbe/booking-service start` dengan infra lengkap | Startup, pemeriksaan `notify-keyspace-events`, penyapu terjadwal, dan penutupan berurutan. `index.ts` belum pernah dijalankan.                                                       |
+| Lewat api-gateway                                               | `x-tbe-user-id` diteruskan dan header kiriman klien dibuang. Diuji di api-gateway sendiri (Step 07), belum ujung ke ujung dengan service ini.                                        |
+| Saga dengan supplier-service dan payment-service yang BERJALAN  | Step 20. Terbukti sekarang: booking-service dengan broker sungguhan, kedua service lain diperankan uji; handler supplier-service dan payment-service diuji unit masing-masing.       |
+| `pnpm --filter @tbe/booking-service start` dengan saga          | Pemulihan saat startup, penerbit outbox, consumer Kafka, dan penutupan berurutan. Bagiannya diuji terpisah; prosesnya utuh belum pernah dijalankan.                                  |
+| Proses OS yang benar-benar dibunuh di tengah saga               | Step 20/28. Yang terbukti: galat yang tidak ditangkap + dependensi baru di atas basis data dan Redis yang sama.                                                                      |
+| Konsumsi `booking.created` oleh payment-service yang berjalan   | Diterbitkan ke Kafka sungguhan dan terbaca kembali (uji integrasi); payment-service yang membacanya belum dijalankan bersamaan.                                                      |

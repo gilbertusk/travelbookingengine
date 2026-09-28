@@ -24,6 +24,7 @@ import { DEFAULT_RETRY_POLICY } from '../domain/retry-policy.js'
 import type {
   CircuitKey,
   CircuitStore,
+  ConfirmReplies,
   OutboundRateLimiter,
   RequestLog,
   RequestLogEntry,
@@ -126,6 +127,45 @@ export function recordingEvents(): SupplierEvents & { readonly published: Record
     async recovered(supplier) {
       published.push({ type: 'recovered', supplier })
       await Promise.resolve()
+    },
+  }
+}
+
+export type RecordedReply =
+  | ({ readonly type: 'confirmed' } & Parameters<ConfirmReplies['confirmed']>[0])
+  | ({ readonly type: 'rejected' } & Parameters<ConfirmReplies['rejected']>[0])
+  | ({ readonly type: 'uncertain' } & Parameters<ConfirmReplies['uncertain']>[0])
+
+/** Jawaban konfirmasi yang terekam. `failNext` meniru Kafka yang tidak dapat dihubungi. */
+export function recordingReplies(): ConfirmReplies & {
+  readonly published: RecordedReply[]
+  failNext(): void
+} {
+  const published: RecordedReply[] = []
+  let failing = false
+
+  async function record(reply: RecordedReply): Promise<void> {
+    await Promise.resolve()
+    if (failing) {
+      failing = false
+      throw new Error('kafka tidak dapat dihubungi')
+    }
+    published.push(reply)
+  }
+
+  return {
+    published,
+    failNext: () => {
+      failing = true
+    },
+    confirmed: async (reply) => {
+      await record({ type: 'confirmed', ...reply })
+    },
+    rejected: async (reply) => {
+      await record({ type: 'rejected', ...reply })
+    },
+    uncertain: async (reply) => {
+      await record({ type: 'uncertain', ...reply })
     },
   }
 }

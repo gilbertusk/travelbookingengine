@@ -1,5 +1,6 @@
 import { subtract, toJson, type Money, type MoneyJson } from '@tbe/money'
-import type { Booking } from '../domain/booking.js'
+import type { StatusSnapshot } from '../application/booking-status.js'
+import { isFinal, type Booking } from '../domain/booking.js'
 
 /**
  * Bentuk pemesanan yang dikirim ke klien.
@@ -64,4 +65,42 @@ export function priceCheckView(booking: Booking) {
 
 function difference(previous: Money, current: Money): MoneyJson | null {
   return previous.currency === current.currency ? toJson(subtract(current, previous)) : null
+}
+
+/**
+ * Status pemesanan untuk pengguna yang menunggu (Step 19, dipakai Step 21).
+ *
+ * Membawa yang dibutuhkan FR-23 — alasan kegagalan dan status pengembalian
+ * dananya — tanpa rincian saga yang hanya bermakna bagi operator: fase dan
+ * langkahnya disertakan supaya layar tunggu dapat berkata "menunggu
+ * konfirmasi supplier", bukan untuk ditafsirkan klien menjadi keputusan.
+ */
+export function statusView(snapshot: StatusSnapshot) {
+  const { booking, saga } = snapshot
+
+  return {
+    id: booking.id,
+    status: booking.status,
+    isFinal: isFinal(booking.status),
+    version: booking.version,
+    updatedAt: booking.updatedAt.toISOString(),
+    heldUntil: booking.heldUntil?.toISOString() ?? null,
+    supplierRef: booking.supplierRef ?? null,
+    failureReason: booking.failure?.reason ?? null,
+    refund: refundStatus(booking),
+    saga: saga === undefined ? null : { phase: saga.phase, step: saga.step },
+  }
+}
+
+/**
+ * `pending`: refund sudah diminta dan belum dikonfirmasi. `review`: uang
+ * pengguna sedang ditangani manusia — refund gagal, atau status supplier tidak
+ * pasti dan TIDAK ada refund otomatis (US-05).
+ */
+function refundStatus(booking: Booking): 'pending' | 'completed' | 'review' | null {
+  if (booking.status === 'FAILED') return 'pending'
+  if (booking.status === 'REFUNDED') return 'completed'
+  if (booking.status === 'NEEDS_REVIEW') return 'review'
+
+  return null
 }

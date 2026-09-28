@@ -67,6 +67,30 @@ describe('penerbit peristiwa', () => {
     expect(producer.sent[0]?.records[0]?.headers.traceparent).toBe('00-4bf92f-00f067-01')
   })
 
+  test('memakai amplop yang sudah ditetapkan outbox, bukan waktu pengiriman', async () => {
+    // payment-service memilih nilai tagihan terakhir menurut occurredAt. Penerbit
+    // outbox yang tertinggal tidak boleh mengubah urutan perubahan harga.
+    const producer = fakeKafkaProducer()
+    const eventId = '0199f000-0000-7000-8000-00000000abcd'
+
+    await createEventPublisher(producer).publish('booking.created', bookingCreated, {
+      eventId,
+      occurredAt: '2026-10-01T03:00:00.000Z',
+      correlationId: 'req-asal',
+      causationId: '0199f000-0000-7000-8000-00000000abce',
+    })
+
+    const record = producer.sent[0]?.records[0]
+    const sent = JSON.parse(record?.value ?? '{}') as Record<string, unknown>
+    expect(sent).toMatchObject({
+      eventId,
+      occurredAt: '2026-10-01T03:00:00.000Z',
+      correlationId: 'req-asal',
+      causationId: '0199f000-0000-7000-8000-00000000abce',
+    })
+    expect(record?.headers['x-correlation-id']).toBe('req-asal')
+  })
+
   test('menolak payload yang tidak sesuai kontrak sebelum dikirim', async () => {
     const producer = fakeKafkaProducer()
     const publisher = createEventPublisher(producer)

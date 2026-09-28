@@ -14,10 +14,17 @@ export interface RetryTier {
   readonly delayMs: number
 }
 
+/**
+ * Jenjang terakhir, dinamai sendiri. Dipakai consumer untuk menunda ulang
+ * perintah yang kabar dead letter-nya gagal disampaikan (Step 19) — tanpa
+ * mengindeks larik yang, menurut tipenya, boleh saja kosong.
+ */
+export const LAST_RETRY_TIER: RetryTier = { name: 't3', delayMs: 120_000 }
+
 export const RETRY_TIERS: readonly RetryTier[] = [
   { name: 't1', delayMs: 5_000 },
   { name: 't2', delayMs: 30_000 },
-  { name: 't3', delayMs: 120_000 },
+  LAST_RETRY_TIER,
 ]
 
 export const RETRY_COUNT_HEADER = 'x-tbe-retry-count'

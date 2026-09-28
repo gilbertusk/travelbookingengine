@@ -48,10 +48,13 @@ function change(booking: Booking, command: BookingCommand): BookingChange {
 /** Klien Prisma sungguhan yang tulisan peristiwanya dipaksa gagal di DALAM transaksi. */
 function failingEvents(real: BookingDb): BookingDb {
   return {
+    ...real,
     booking: real.booking,
+    sagaState: real.sagaState,
     $transaction: async (fn) =>
       await real.$transaction(async (tx) => {
         const sabotaged: BookingTx = {
+          ...tx,
           booking: tx.booking,
           bookingEvent: {
             create: async () => {
