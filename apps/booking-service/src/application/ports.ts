@@ -130,6 +130,41 @@ export interface Pricing {
   sellPrice(request: PricingRequest): Promise<SellQuote | undefined>
 }
 
+/**
+ * Jawaban payment-service atas permintaan membuka pembayaran (Step 21).
+ *
+ * `not_ready`: payment-service belum mengenal harga yang disetujui — peristiwa
+ * pemesanan dari outbox belum sampai, atau harga yang baru disetujui belum
+ * terbaca. Sementara, dan pengguna boleh mencoba lagi. `settled`: pembayaran
+ * untuk pemesanan ini sudah tidak menunggu; yang tersisa hanyalah statusnya.
+ */
+export type PaymentStart =
+  | {
+      readonly kind: 'started'
+      readonly paymentId: string
+      readonly redirectUrl: string
+      readonly snapToken: string
+    }
+  | { readonly kind: 'settled'; readonly paymentId: string; readonly status: string }
+  | { readonly kind: 'not_ready' }
+  | { readonly kind: 'rejected' }
+  | { readonly kind: 'unreachable' }
+
+export interface PaymentStartRequest {
+  readonly bookingId: string
+  readonly idempotencyKey: string
+  readonly amount: Money
+}
+
+/**
+ * Pintu ke payment-service. Satu-satunya jalan pengguna membuka pembayaran:
+ * payment-service tidak mengenal pemilik pemesanan, jadi kepemilikan dan
+ * keadaan HELD diperiksa di sini lebih dulu (lihat start-payment.ts).
+ */
+export interface Payments {
+  start(request: PaymentStartRequest): Promise<PaymentStart>
+}
+
 export type AcquireOutcome = 'held' | 'already_held' | 'sold_out'
 
 export interface HoldClaim {

@@ -7,6 +7,9 @@ import type {
   HoldClaim,
   HoldEntry,
   HoldStore,
+  Payments,
+  PaymentStart,
+  PaymentStartRequest,
   Pricing,
   PricingRequest,
   RatePlanStay,
@@ -186,6 +189,36 @@ export function scriptedSuppliers(now: () => Date): ScriptedSuppliers {
   }
 
   return suppliers
+}
+
+/** payment-service palsuan: menjawab `started` kecuali dijadwalkan lain. */
+export interface ScriptedPayments extends Payments {
+  readonly requests: PaymentStartRequest[]
+  next(answer: PaymentStart): void
+}
+
+export function scriptedPayments(): ScriptedPayments {
+  const requests: PaymentStartRequest[] = []
+  const answers: PaymentStart[] = []
+
+  return {
+    requests,
+    next: (answer) => {
+      answers.push(answer)
+    },
+    async start(request) {
+      requests.push(request)
+      await Promise.resolve()
+      return (
+        answers.shift() ?? {
+          kind: 'started',
+          paymentId: `pay-${request.bookingId}`,
+          redirectUrl: `https://app.sandbox.midtrans.example/snap/v4/redirection/${request.bookingId}`,
+          snapToken: `snap-${request.bookingId}`,
+        }
+      )
+    },
+  }
 }
 
 /**

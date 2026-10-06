@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { MIN_PASSWORD_LENGTH, registerSchema, type RegisterInput } from '@/features/auth/types'
 import { useRegister } from '@/features/auth/use-auth'
 import { humanMessage } from '@/lib/api-error'
-import { Field } from './field'
+import { Field } from '@/components/ui/field'
 
 export function RegisterForm() {
   const router = useRouter()

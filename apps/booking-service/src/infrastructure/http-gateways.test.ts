@@ -3,8 +3,10 @@ import { money } from '@tbe/money'
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import {
+  createHttpPayments,
   createHttpPricing,
   createHttpSupplierQuotes,
+  toPaymentStart,
   toSellQuote,
   toSupplierAnswer,
   undiciTransport,
@@ -192,6 +194,73 @@ describe('jawaban pricing-service', () => {
     if (item !== undefined) item.breakdown.tax.currency = 'XYZ'
 
     expect(toSellQuote({ status: 200, body }, 'bkg-1')).toBeUndefined()
+  })
+})
+
+describe('jawaban payment-service', () => {
+  const PAYMENT = {
+    id: '018f0000-0000-7000-8000-000000000001',
+    bookingId: 'b-1',
+    status: 'PENDING',
+    amount: { amountMinor: 2_442_000, currency: 'IDR' },
+  }
+  const ok = (status: number, data: unknown): HttpResponse => ({
+    status,
+    body: { data, error: null },
+  })
+
+  test('membuat maksud pembayaran: memanggil /internal/payments dengan nilai dari pemesanan', async () => {
+    const { transport, calls } = recording(
+      ok(201, { payment: PAYMENT, redirectUrl: 'https://snap/r/1', snapToken: 'tok-1' }),
+    )
+
+    const answer = await createHttpPayments('http://payment', transport).start({
+      bookingId: 'b-1',
+      idempotencyKey: 'booking:b-1',
+      amount: money(2_442_000, 'IDR'),
+    })
+
+    expect(calls).toEqual([
+      [
+        'http://payment/internal/payments',
+        {
+          bookingId: 'b-1',
+          idempotencyKey: 'booking:b-1',
+          amount: { amountMinor: 2_442_000, currency: 'IDR' },
+        },
+      ],
+    ])
+    expect(answer).toEqual({
+      kind: 'started',
+      paymentId: PAYMENT.id,
+      redirectUrl: 'https://snap/r/1',
+      snapToken: 'tok-1',
+    })
+  })
+
+  test('permintaan berulang (200) atas pembayaran yang masih menunggu tetap membuka popup', () => {
+    expect(
+      toPaymentStart(ok(200, { payment: PAYMENT, redirectUrl: 'https://snap/r/1', snapToken: 't' }))
+        .kind,
+    ).toBe('started')
+  })
+
+  test('pembayaran yang sudah tidak menunggu dijawab settled beserta statusnya', () => {
+    expect(toPaymentStart(ok(200, { payment: { ...PAYMENT, status: 'SUCCEEDED' } }))).toEqual({
+      kind: 'settled',
+      paymentId: PAYMENT.id,
+      status: 'SUCCEEDED',
+    })
+  })
+
+  test.each([
+    ['409: harga belum dikenal atau belum mutakhir', error(409, 'CONFLICT'), 'not_ready'],
+    ['402: penyedia menolak', error(402, 'PAYMENT_REJECTED'), 'rejected'],
+    ['502: penyedia tidak dapat dihubungi', error(502, 'UPSTREAM_ERROR'), 'unreachable'],
+    ['0: payment-service tidak menjawab', error(0, 'NETWORK'), 'unreachable'],
+    ['200 dengan bentuk yang tidak dikenal', ok(200, { payment: { id: 1 } }), 'unreachable'],
+  ])('%s', (_name, response, expected) => {
+    expect(toPaymentStart(response).kind).toBe(expected)
   })
 })
 

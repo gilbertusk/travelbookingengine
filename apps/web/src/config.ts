@@ -14,6 +14,13 @@ const publicSchema = z.object({
   /** Alamat api-gateway yang dipanggil dari peramban. */
   apiUrl: z.url(),
   appName: z.string().min(1),
+  /**
+   * Client key Midtrans untuk popup Snap. Publik menurut rancangannya — kunci
+   * server tidak pernah ada di sini. Kosong berarti popup tidak dipakai dan
+   * pengguna diarahkan ke halaman Snap penuh (lihat features/booking/snap.ts).
+   */
+  midtransClientKey: z.string().min(1).optional(),
+  snapScriptUrl: z.url(),
 })
 
 export type PublicConfig = z.infer<typeof publicSchema>
@@ -21,6 +28,10 @@ export type PublicConfig = z.infer<typeof publicSchema>
 export const publicConfig: PublicConfig = publicSchema.parse({
   apiUrl: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001',
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? 'Lintang',
+  // Nilai kosong di .env sama dengan tidak diatur: popup tidak dipakai.
+  midtransClientKey: blankToUndefined(process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY),
+  snapScriptUrl:
+    process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ?? 'https://app.sandbox.midtrans.com/snap/snap.js',
 })
 
 const serverSchema = z.object({
@@ -48,4 +59,8 @@ export function serverConfig(): ServerConfig {
     apiUrl: process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001',
     secureCookies: process.env.NODE_ENV === 'production',
   })
+}
+
+function blankToUndefined(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === '' ? undefined : value
 }

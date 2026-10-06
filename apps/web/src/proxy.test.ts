@@ -35,6 +35,13 @@ describe('rute privat', () => {
     expect(redirectTarget('/bookings/bkg_123')).toBe('/masuk?lanjut=%2Fbookings%2Fbkg_123')
   })
 
+  test('kuerinya ikut: pilihan kamar di alur pemesanan tidak hilang di halaman masuk', () => {
+    const target = redirectTarget('/bookings/pesan?properti=padma&penyedia=SKY&tarif=rp-1')
+    const lanjut = new URL(`${BASE}${String(target)}`).searchParams.get('lanjut')
+
+    expect(lanjut).toBe('/bookings/pesan?properti=padma&penyedia=SKY&tarif=rp-1')
+  })
+
   test('membiarkan pemilik sesi melanjutkan', () => {
     expect(redirectTarget('/bookings', { withSession: true })).toBeNull()
   })
