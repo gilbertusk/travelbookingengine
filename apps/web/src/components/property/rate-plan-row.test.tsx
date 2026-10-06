@@ -38,7 +38,12 @@ function offer(overrides: Partial<Offer> = {}): Offer {
 function renderRow(overrides: Partial<Offer> = {}, isCheapest = false) {
   return render(
     <ul>
-      <RatePlanRow offer={offer(overrides)} nights={2} isCheapest={isCheapest} />
+      <RatePlanRow
+        offer={offer(overrides)}
+        nights={2}
+        isCheapest={isCheapest}
+        href="/bookings/pesan?properti=padma"
+      />
     </ul>,
   )
 }
@@ -72,13 +77,14 @@ describe('kebijakan pembatalan terlihat tanpa diklik (FR-11)', () => {
   })
 
   test('tidak ada tombol yang menyembunyikan keterangannya', () => {
-    // Satu-satunya tombol yang boleh ada di baris ini adalah "Pilih".
+    // Satu-satunya kendali yang boleh ada di baris ini adalah "Pilih" — sejak
+    // Step 21 tautan ke alur pemesanan, bukan tombol.
     renderRow()
 
-    const buttons = screen.getAllByRole('button')
-
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0]).toHaveTextContent('Pilih')
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveTextContent('Pilih')
   })
 })
 
@@ -139,5 +145,16 @@ describe('penanda termurah', () => {
     renderRow({}, false)
 
     expect(screen.queryByText('Termurah')).not.toBeInTheDocument()
+  })
+})
+
+describe('memilih tarif', () => {
+  test('Pilih membuka alur pemesanan tarif ini, dengan nama yang dapat dibedakan pembaca layar', () => {
+    renderRow({ roomTypeName: 'Deluxe', ratePlanName: 'Termasuk sarapan' })
+
+    expect(screen.getByRole('link', { name: 'Pilih Deluxe, Termasuk sarapan' })).toHaveAttribute(
+      'href',
+      '/bookings/pesan?properti=padma',
+    )
   })
 })

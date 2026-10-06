@@ -31,6 +31,7 @@ import {
 } from './composition/app.js'
 import { loadConfig } from './config.js'
 import {
+  createHttpPayments,
   createHttpPricing,
   createHttpSupplierQuotes,
   undiciTransport,
@@ -105,6 +106,7 @@ const deps: BookingDeps = {
 
 const { app } = createBookingHttpApp({
   deps,
+  payments: createHttpPayments(config.PAYMENT_SERVICE_URL, transport),
   logger,
   serviceName: config.SERVICE_NAME,
   statusStream: {

@@ -81,6 +81,8 @@ describe('POST /internal/payments', () => {
     expect(response.status).toBe(201)
     expect(response.body.data.payment.status).toBe('PENDING')
     expect(response.body.data.redirectUrl).toContain('http')
+    // Token Snap: halaman pemesanan membuka popup Snap dengannya (Step 21).
+    expect(response.body.data.snapToken).toMatch(/^snap-/)
     // Pembayaran PENDING tidak punya rujukan penyedia, jadi tidak boleh ada
     // bidangnya di respons — union diskriminan domain yang menjaminnya.
     expect(response.body.data.payment.gatewayRef).toBeUndefined()

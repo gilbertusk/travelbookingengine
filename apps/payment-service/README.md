@@ -187,9 +187,11 @@ Batas ini bukan formalitas: sandbox **tidak dapat diperintah gagal sesuai kehend
 
 | Metode | Rute                     | Untuk                                                              |
 | ------ | ------------------------ | ------------------------------------------------------------------ |
-| `POST` | `/internal/payments`     | Membuat maksud pembayaran (FR-19)                                  |
+| `POST` | `/internal/payments`     | Membuat maksud pembayaran (FR-19). Dipanggil booking-service       |
 | `GET`  | `/internal/payments/:id` | Keadaan pembayaran beserta refundnya                               |
 | `POST` | `/webhooks/midtrans`     | Notifikasi penyedia (FR-20). **Publik**, diverifikasi tanda tangan |
+
+Jawaban maksud pembayaran membawa `redirectUrl` (Snap halaman penuh) dan `snapToken` (popup Snap, Step 21) — keduanya menunjuk transaksi yang sama. Pengguna tidak memanggil endpoint ini langsung: booking-service memeriksa kepemilikan dan keadaan HELD lebih dulu (`POST /bookings/:id/payment`).
 
 Status HTTP pada endpoint webhook dibentuk oleh satu kenyataan: **Midtrans mengirim ulang notifikasi yang tidak dijawab 2xx.**
 

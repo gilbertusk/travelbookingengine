@@ -119,6 +119,7 @@ export async function startSystem(): Promise<System> {
     DATABASE_URL: url('booking'),
     SUPPLIER_SERVICE_URL: supplierService.url,
     PRICING_SERVICE_URL: pricing.url,
+    PAYMENT_SERVICE_URL: payment.url,
   })
   const bookingStart = startService(bookingSpec)
   await settleOrCleanUp(midtrans, [bookingStart], [pricing, supplierService, payment])

@@ -10,7 +10,7 @@ import { loginSchema, type LoginInput } from '@/features/auth/types'
 import { useLogin } from '@/features/auth/use-auth'
 import { humanMessage } from '@/lib/api-error'
 import { safeRedirect } from '@/lib/safe-redirect'
-import { Field } from './field'
+import { Field } from '@/components/ui/field'
 
 export function LoginForm() {
   const router = useRouter()

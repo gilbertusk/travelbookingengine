@@ -232,6 +232,8 @@ describe('kegagalan penyedia', () => {
     expect(second.kind).toBe('resumed')
     if (second.kind !== 'resumed') return
     expect(second.redirectUrl).toBe('https://sandbox.example/redirect')
+    // Token Snap untuk mode popup — rujukan penyedia yang sama, bukan token baru.
+    expect(second.snapToken).toBe('snap-2')
     expect(world.payments.rows.size).toBe(1)
   })
 })

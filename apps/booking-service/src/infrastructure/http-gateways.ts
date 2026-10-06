@@ -1,8 +1,10 @@
-import { money, moneySchema, type MoneyJson } from '@tbe/money'
+import { money, moneySchema, toJson, type MoneyJson } from '@tbe/money'
 import { holdResultSchema, priceCheckResultSchema } from '@tbe/supplier-adapters'
 import { request } from 'undici'
 import { z } from 'zod'
 import type {
+  Payments,
+  PaymentStart,
   Pricing,
   PricingRequest,
   RatePlanStay,
@@ -147,6 +149,51 @@ export function createHttpPricing(baseUrl: string, transport: Transport): Pricin
     async sellPrice(item: PricingRequest) {
       const response = await transport(`${baseUrl}/internal/pricing/rate-plans`, { items: [item] })
       return toSellQuote(response, item.ref)
+    },
+  }
+}
+
+const intentSchema = envelope(
+  z.object({
+    payment: z.object({ id: z.string().min(1), status: z.string().min(1) }),
+    redirectUrl: z.string().min(1).optional(),
+    snapToken: z.string().min(1).optional(),
+  }),
+)
+
+/**
+ * Jawaban payment-service atas `POST /internal/payments` menjadi keputusan.
+ *
+ * 409 berarti harga yang disetujui belum dikenal payment-service — peristiwa
+ * pemesanan belum terbaca — dan itu sementara. 402 berarti penyedia menolak.
+ * Selain itu, termasuk bentuk jawaban yang tidak dikenal, adalah "belum ada
+ * jawaban yang dapat dipakai".
+ */
+export function toPaymentStart(response: HttpResponse): PaymentStart {
+  if (response.status === 409) return { kind: 'not_ready' }
+  if (response.status === 402) return { kind: 'rejected' }
+  if (response.status !== 200 && response.status !== 201) return { kind: 'unreachable' }
+
+  const parsed = intentSchema.safeParse(response.body)
+  if (!parsed.success) return { kind: 'unreachable' }
+
+  const { payment, redirectUrl, snapToken } = parsed.data.data
+  if (redirectUrl === undefined || snapToken === undefined) {
+    return { kind: 'settled', paymentId: payment.id, status: payment.status }
+  }
+
+  return { kind: 'started', paymentId: payment.id, redirectUrl, snapToken }
+}
+
+export function createHttpPayments(baseUrl: string, transport: Transport): Payments {
+  return {
+    async start(request) {
+      const response = await transport(`${baseUrl}/internal/payments`, {
+        bookingId: request.bookingId,
+        idempotencyKey: request.idempotencyKey,
+        amount: toJson(request.amount),
+      })
+      return toPaymentStart(response)
     },
   }
 }
