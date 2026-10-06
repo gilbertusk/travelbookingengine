@@ -146,6 +146,8 @@ Uji integrasi lintas service adalah pertama kalinya `index.ts` setiap service, s
 - **Proses yatim saat startup gagal.** Satu service yang gagal menyala meninggalkan service lain berjalan di bawah berkas uji berikutnya. Kini semuanya dimatikan sebelum galatnya dilempar.
 - **Empat penundaan tetap di uji integrasi Step 17 dan 19.** Diganti polling. Dua di antaranya membuktikan "tidak terjadi apa-apa" dengan menunggu satu detik — lulus sama baiknya bila handler belum sempat berjalan. Kini menunggu offset consumer group ter-commit dan memeriksa outbox.
 
+- **Putaran CI pertama gagal di `hold-flow.test.ts`.** Uji penyapu membandingkan jumlah di laporan penyapu dengan 1, padahal penyapu menyapu SEMUA hold yang lewat di basis data bersama. Dengan urutan berkas yang berbeda di runner Linux, jumlahnya 6. Kini yang diperiksa hanya pemesanan uji itu sendiri, lewat jejak peristiwanya. Lokal lewat dengan `--sequence.shuffle`.
+
 ### Belum terjelaskan: 0xC0000409
 
 Dalam empat putaran penuh rangkaian saga hari ini, dua kali sebuah proses node keluar dengan kode 3221226505 (`STATUS_STACK_BUFFER_OVERRUN`, `abort()` di Windows) dengan stderr kosong. Sekali pekerja Vitest saat `crash-recovery`, sekali booking-service saat startup. Tidak ada jejak di Windows Event Log. Kedua kali, berkas yang sama lewat saat dijalankan ulang.
