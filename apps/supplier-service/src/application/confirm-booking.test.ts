@@ -221,9 +221,14 @@ describe('jawaban sah yang bukan keberhasilan', () => {
 })
 
 describe('batas percobaan', () => {
-  test('berhenti setelah tiga pengiriman book, dan melaporkannya tidak pasti', async () => {
+  test('berhenti setelah tiga pengiriman book yang PASTI tidak sampai, dan melaporkannya gagal', async () => {
     // Gelung yang tidak berbatas akan terus menembak supplier selama ia
     // menjawab "koneksi ditolak" — yaitu selama supplier sedang tumbang.
+    //
+    // Gagal, bukan tidak pasti: koneksi yang ditolak berarti supplier tidak
+    // pernah menerima permintaannya. Step 11 melaporkannya `uncertain`, dan
+    // Step 20 menemukan akibatnya — supplier yang mati setelah pembayaran
+    // berakhir di peninjauan manusia, bukan refund otomatis.
     const world = harness({
       script: { book: [err(failure('SKY', 'book', 'unavailable'))] },
     })
@@ -231,6 +236,45 @@ describe('batas percobaan', () => {
     const outcome = await confirmBooking(world.deps, PARAMS)
 
     expect(world.gateway.calls.filter((call) => call === 'book')).toHaveLength(3)
+    expect(world.gateway.calls).not.toContain('findByKey')
+    expect(outcome.status).toBe('failed')
+    if (outcome.status !== 'failed') return
+    expect(outcome.error.kind).toBe('unavailable')
+  })
+
+  test('percobaan yang habis setelah supplier memastikan belum ada pemesanan juga gagal', async () => {
+    // timeout → ditanya → not_found memberi kepastian yang sama dengan
+    // koneksi ditolak: tidak ada yang tersimpan.
+    const world = harness({
+      script: {
+        book: [err(failure('SKY', 'book', 'timeout'))],
+        lookup: [err(failure('SKY', 'getBooking', 'not_found'))],
+      },
+    })
+
+    const outcome = await confirmBooking(world.deps, PARAMS)
+
+    expect(world.gateway.calls).toEqual([
+      'book',
+      'findByKey',
+      'book',
+      'findByKey',
+      'book',
+      'findByKey',
+    ])
+    expect(outcome.status).toBe('failed')
+  })
+
+  test('satu percobaan yang tidak pasti di tengah jalan tetap dilaporkan tidak pasti', async () => {
+    const world = harness({
+      script: {
+        book: [err(failure('SKY', 'book', 'unavailable')), err(failure('SKY', 'book', 'timeout'))],
+        lookup: [err(failure('SKY', 'getBooking', 'timeout'))],
+      },
+    })
+
+    const outcome = await confirmBooking(world.deps, PARAMS)
+
     expect(outcome.status).toBe('uncertain')
   })
 })

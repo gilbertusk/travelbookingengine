@@ -66,6 +66,11 @@ export async function confirmBooking(
   params: ConfirmParams,
 ): Promise<ConfirmOutcome> {
   const gateway = deps.registry.get(params.supplier)
+  let lastError: SupplierError = {
+    supplier: params.supplier,
+    operation: 'book',
+    kind: 'unavailable',
+  }
 
   for (let attempt = 1; attempt <= MAX_BOOK_ATTEMPTS; attempt += 1) {
     const booked = await callSupplier(deps, {
@@ -86,19 +91,22 @@ export async function confirmBooking(
 
     const next = await resolve(deps, params, booked.error)
     if (next.status !== 'retry_book') return next
+    lastError = booked.error
   }
 
-  return {
-    status: 'uncertain',
-    error: {
-      supplier: params.supplier,
-      operation: 'book',
-      kind: 'upstream_error',
-      status: 0,
-      code: 'MAX_BOOK_ATTEMPTS',
-    },
-    idempotencyKey: params.idempotencyKey,
-  }
+  // Percobaan habis, dan SETIAP percobaan berakhir dengan kepastian bahwa
+  // supplier tidak menyimpan apa pun: `retry_book` hanya diberikan untuk
+  // koneksi yang tidak pernah terbentuk, kuota habis, atau supplier yang
+  // menjawab "tidak ada" saat ditanya. Kegagalan yang tidak pasti sudah keluar
+  // lebih awal sebagai `uncertain`.
+  //
+  // Versi Step 11 melaporkan `uncertain` di sini. Step 20 menemukan
+  // akibatnya: supplier yang mati tepat setelah pembayaran tidak pernah
+  // menghasilkan refund — pemesanan menunggu peninjauan manusia untuk
+  // kegagalan yang sebenarnya sudah pasti, padahal step doc 20 meminta refund
+  // otomatis. `failed` membuat perintahnya dicoba lagi sepanjang jenjang
+  // retry, lalu diumumkan sebagai penolakan dan saga mengembalikan dana.
+  return { status: 'failed', error: lastError }
 }
 
 type Resolution = ConfirmOutcome | { readonly status: 'retry_book' }

@@ -1,0 +1,18 @@
+# Konteks build citra dari akar repo (apps/*/Dockerfile).
+#
+# Yang dibuang: hasil instalasi dan build lokal — keduanya dibangun ulang di
+# dalam citra dari lockfile — serta seluruh berkas env. Kredensial lokal tidak
+# boleh ikut masuk ke lapisan citra, meski citranya tidak pernah diterbitkan.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/src/generated
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+.git
+infra/.env
+docs

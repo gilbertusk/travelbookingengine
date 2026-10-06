@@ -27,6 +27,9 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
+/** Batas hold yang tidak akan pernah dicapai jam uji mana pun. */
+const PARKED_HOLD_UNTIL = new Date('2099-01-01T00:00:00.000Z')
+
 let sequence = 0
 /** Pengenal unik per uji: tabel tidak dapat dikosongkan — trigger append-only menolaknya. */
 function fresh() {
@@ -37,6 +40,18 @@ function fresh() {
     userId: `aaaaaaaa-bbbb-4ccc-8ddd-${suffix}`,
     key: sampleKey(suffix),
   }
+}
+
+/**
+ * HELD diparkir jauh di masa depan. Basis data dipakai bersama seluruh berkas
+ * uji integrasi, dan penyapu di hold-flow.test.ts menyapu SEMUA hold yang
+ * lewat — termasuk pemesanan contoh yang ditulis langsung ke kolom tanpa
+ * saga. Dengan `heldUntil` bawaan builder (T0 + 15 menit, 2026-10-01) uji
+ * pulang-pergi adalah bom waktu: lulus sampai tanggal itu lewat, lalu
+ * hold-flow gagal setiap kali berkas ini berjalan lebih dulu (Step 20).
+ */
+function parked(booking: Booking): Booking {
+  return booking.status === 'HELD' ? { ...booking, heldUntil: PARKED_HOLD_UNTIL } : booking
 }
 
 function change(booking: Booking, command: BookingCommand): BookingChange {
@@ -166,7 +181,7 @@ describe('kolom DATE (NFR-09) lewat adapter-pg', () => {
 describe('setiap keadaan pulang-pergi melewati Postgres', () => {
   test.each(BOOKING_STATUSES)('%s', async (status) => {
     const { id, userId, key } = fresh()
-    const target = { ...inState(status), id, userId, idempotencyKey: key }
+    const target = parked({ ...inState(status), id, userId, idempotencyKey: key })
     const { booking: draft, event } = draftChange({ id, userId, key })
     await repository.create({ booking: draft, event })
 

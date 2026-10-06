@@ -133,14 +133,24 @@ describe('pelepasan otomatis ujung ke ujung (FR-16)', () => {
     const userId = crypto.randomUUID()
     const booking = await verified(world, userId, 'req-e2e-sweeper-0001')
     await placeHold(world, { userId, bookingId: booking.id, unitsLeft: 1 })
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await vi.waitFor(
+      async () => {
+        const due = await world.bookings.findExpiredHolds(new Date(), 1_000)
+        expect(due.map((held) => held.id)).toContain(booking.id)
+      },
+      { timeout: 5_000, interval: 25 },
+    )
 
     // Tidak ada pendengar: notifikasinya hilang. Penyapu dan satu panggilan
     // "keyspace" yang terlambat berjalan bersamaan.
-    const [report, late] = await Promise.all([sweepHolds(world), expireHold(world, booking.id)])
+    const [, late] = await Promise.all([sweepHolds(world), expireHold(world, booking.id)])
 
     expect((await world.bookings.findById(booking.id))?.status).toBe('EXPIRED')
-    expect(report.due.expired + (late === 'expired' ? 1 : 0)).toBe(1)
+    // Penyapu menyapu SEMUA hold yang lewat di basis data bersama, jadi angka
+    // di laporannya bukan milik uji ini — versi sebelumnya membandingkannya
+    // dengan 1, dan CI pertama (urutan berkas berbeda) melihat 6. Yang
+    // membuktikan "tidak menggandakan" adalah jejaknya: tepat satu HoldExpired.
+    expect(['expired', 'already_moved']).toContain(late)
     expect(
       await prisma.bookingEvent.count({
         where: { bookingId: booking.id, eventType: 'HoldExpired' },

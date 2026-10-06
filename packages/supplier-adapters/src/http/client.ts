@@ -124,13 +124,34 @@ const TIMEOUT_CODES = new Set([
 ])
 
 /**
- * Batas waktu dibedakan dari tidak-dapat-dihubungi.
+ * Kode yang berarti koneksi TIDAK PERNAH terbentuk: nama tidak dapat
+ * diselesaikan, atau alamatnya menolak. Permintaannya pasti belum sampai.
+ */
+const NEVER_CONNECTED_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+])
+
+/**
+ * Tiga jawaban atas "kenapa tidak ada respons", dan hanya satu yang pasti.
  *
- * Pada batas waktu, supplier mungkin sudah mengerjakan permintaannya. Pada
- * koneksi yang ditolak, pasti belum. Perbedaan itulah yang menentukan apakah
- * `book` boleh diulang langsung atau harus diperiksa dulu lewat idempotency
- * key — dan menyatukannya menjadi satu "gagal" membuang informasinya
- * selamanya.
+ * - `timeout`: supplier mungkin sudah mengerjakan permintaannya.
+ * - `unavailable`: koneksi TIDAK PERNAH terbentuk — supplier pasti belum
+ *   menerima apa pun, jadi `book` boleh dikirim ulang tanpa bertanya.
+ * - `upstream_error` (status 0): koneksi SUDAH terbentuk lalu putus — soket
+ *   ditutup, `ECONNRESET`, atau galat yang tidak dikenali. Permintaannya
+ *   mungkin sudah sampai dan dikerjakan, sama tidak pastinya dengan 500.
+ *
+ * Versi Step 10 menggolongkan semua yang bukan batas waktu sebagai
+ * `unavailable`. Step 20 menemukan akibatnya: supplier yang memutus koneksi
+ * SETELAH menyimpan pemesanan akan dianggap "pasti belum menerima", dan saga
+ * mengembalikan dana untuk kamar yang tetap harus dibayar. Galat yang tidak
+ * dikenali kini jatuh ke sisi yang tidak pasti — menebak "pasti belum sampai"
+ * adalah tebakan yang mahal bila salah, menebak "tidak pasti" hanya menambah
+ * satu pertanyaan ke supplier.
  */
 export function classifyTransportFailure(
   supplier: SupplierCode,
@@ -141,15 +162,22 @@ export function classifyTransportFailure(
   const code = errorCode(cause)
 
   if (TIMEOUT_CODES.has(code)) return { supplier, operation, kind: 'timeout', timeoutMs }
+  if (NEVER_CONNECTED_CODES.has(code)) return { supplier, operation, kind: 'unavailable' }
 
-  return { supplier, operation, kind: 'unavailable' }
+  return { supplier, operation, kind: 'upstream_error', status: 0, code: code || 'TRANSPORT' }
 }
 
+/**
+ * Kode galat jaringan, dari galat itu sendiri atau dari `cause`-nya — undici
+ * kadang membungkus galat soket Node di dalam galatnya sendiri.
+ */
 function errorCode(error: unknown): string {
   if (typeof error !== 'object' || error === null) return ''
 
-  const code = (error as { code?: unknown }).code
-  return typeof code === 'string' ? code : ''
+  const own = 'code' in error && typeof error.code === 'string' ? error.code : ''
+  if (own !== '') return own
+
+  return 'cause' in error ? errorCode(error.cause) : ''
 }
 
 export function retryAfterSeconds(

@@ -84,6 +84,8 @@ export async function hold(
     operation: 'hold',
     requestPayload: { supplierRatePlanId, ...stay, guests },
     correlationId: context.correlationId,
+    // Hold tidak idempoten — lihat `mutating` di call-supplier.ts.
+    mutating: true,
     run: async () => await deps.registry.get(supplier).hold(supplierRatePlanId, stay, guests),
   })
 }

@@ -1,6 +1,10 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # Rangkaian uji lintas service (Step 20). Bukan aplikasi dan bukan pustaka:
+  # tidak ada yang mengimpornya, dan ia bergantung pada seluruh service yang
+  # dijalankannya supaya turbo membangun semuanya lebih dulu.
+  - 'tests/*'
 
 # Skrip build dependensi yang diizinkan berjalan saat instalasi. pnpm memblokir
 # semuanya secara bawaan; setiap izin di bawah diberikan dengan alasan tertulis.
@@ -21,6 +25,11 @@ allowBuilds:
   # di jalur kritis kita.
   msgpackr-extract: false
   workerd: false
+  # Dibawa testcontainers lewat docker-modem (Step 20). ssh2 hanya dipakai bila
+  # Docker dihubungi lewat SSH, dan cpu-features hanya akselerasi opsional
+  # untuk ssh2 — uji integrasi memakai soket Docker lokal.
+  ssh2: false
+  cpu-features: false
 
 minimumReleaseAgeExclude:
   - '@next/env@16.3.6'

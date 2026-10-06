@@ -7,7 +7,9 @@ import {
   type Metrics,
 } from '@tbe/shared-kernel'
 import { createChaosRegistry, type ChaosRegistry } from '../application/chaos.js'
+import { createFaultScript } from '../application/fault-script.js'
 import type { OperationDeps } from '../application/ports.js'
+import { DEFAULT_HOLD_TTL_MS } from '../domain/booking.js'
 import { buildCatalog } from '../domain/catalog.js'
 import { SUPPLIER_CODES, type SupplierCode } from '../domain/supplier.js'
 import { createCatalogReader } from '../infrastructure/catalog-reader.js'
@@ -36,6 +38,8 @@ export interface BuildAppOptions {
   readonly instant?: boolean | undefined
   readonly random?: (() => number) | undefined
   readonly now?: (() => number) | undefined
+  /** Umur hold bawaan; tanpa nilai, 15 menit seperti supplier sungguhan. */
+  readonly holdTtlMs?: number | undefined
 }
 
 const ROUTERS: Readonly<
@@ -52,6 +56,7 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
   const catalog = createCatalogReader(buildCatalog())
   const store = createMemoryStore()
   const chaos: ChaosRegistry = createChaosRegistry()
+  const script = createFaultScript()
   const random = options.random ?? systemRandom
 
   const deps: OperationDeps = {
@@ -60,6 +65,7 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
     clock: options.now === undefined ? systemClock : { now: options.now },
     random,
     newRef,
+    holdTtlMs: options.holdTtlMs ?? DEFAULT_HOLD_TTL_MS,
   }
 
   const context: SupplierContext = {
@@ -79,12 +85,12 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
     res.json({ data: { status: 'alive' }, error: null })
   })
 
-  app.use('/admin', createAdminRouter(chaos, store))
+  app.use('/admin', createAdminRouter({ chaos, script, deps }))
   app.use('/admin', createCatalogRouter(catalog))
 
   for (const code of SUPPLIER_CODES) {
     const path = `/${code.toLowerCase()}`
-    app.use(path, createChaosMiddleware({ code, chaos, random, instant: options.instant }))
+    app.use(path, createChaosMiddleware({ code, chaos, random, instant: options.instant, script }))
     app.use(path, ROUTERS[code](context))
   }
 

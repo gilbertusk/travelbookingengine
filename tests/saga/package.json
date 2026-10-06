@@ -1,0 +1,30 @@
+{
+  "name": "@tbe/saga-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test:integration": "vitest run"
+  },
+  "devDependencies": {
+    "@tbe/booking-service": "workspace:*",
+    "@tbe/event-contracts": "workspace:*",
+    "@tbe/messaging": "workspace:*",
+    "@tbe/mock-supplier": "workspace:*",
+    "@tbe/payment-service": "workspace:*",
+    "@tbe/pricing-service": "workspace:*",
+    "@tbe/supplier-adapters": "workspace:*",
+    "@tbe/supplier-service": "workspace:*",
+    "@tbe/testing-infra": "workspace:*",
+    "@tbe/tsconfig": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.0",
+    "testcontainers": "12.1.0",
+    "typescript": "^7.0.2",
+    "undici": "^8.11.0",
+    "vitest": "^5.0.1",
+    "zod": "^4.6.5"
+  }
+}

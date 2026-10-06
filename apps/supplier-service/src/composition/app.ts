@@ -27,13 +27,19 @@ export interface SupplierHttpOptions {
   readonly serviceName: string
   readonly corsOrigins?: readonly string[] | undefined
   readonly extraChecks?: readonly HealthCheck[]
+  /**
+   * Registry metrik yang SAMA dengan yang dipakai dependensi. Tanpa ini
+   * dibuat baru — cukup untuk uji, tetapi metrik lapisan ketahanan lalu
+   * dicatat di registry yang tidak pernah muncul di `/metrics`.
+   */
+  readonly metrics?: Metrics | undefined
 }
 
 export function createSupplierHttpApp(options: SupplierHttpOptions): {
   app: Express
   metrics: Metrics
 } {
-  const metrics = createMetrics({ serviceName: options.serviceName })
+  const metrics = options.metrics ?? createMetrics({ serviceName: options.serviceName })
 
   const app = createHttpServer({
     logger: options.logger,

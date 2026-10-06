@@ -343,13 +343,19 @@ Dikecualikan dari cakupan unit: `index.ts`, `telemetry.ts`, `config.ts`, `prisma
 ### Uji integrasi
 
 ```bash
+pnpm test:integration
+```
+
+Sejak Step 20 global setup menyalakan PostgreSQL, Redis, Kafka, dan RabbitMQ sungguhan lewat **Testcontainers** — cukup Docker yang hidup. Migrasi dan topik Kafka dibuat otomatis. Jalur cepat untuk mesin yang infranya sudah menyala (`pnpm infra:up`): isi KEEMPAT env berikut, dan kontainer tidak dinyalakan. Sebagian saja ditolak.
+
+```bash
 export INTEGRATION_DATABASE_URL=postgresql://tbe:<sandi>@localhost:5433/booking_it
 export INTEGRATION_REDIS_URL=redis://:<sandi>@localhost:6380/5
 export INTEGRATION_KAFKA_BROKERS=localhost:29092
 export INTEGRATION_RABBITMQ_URL=amqp://tbe:<sandi>@localhost:5672
-pnpm topics:create
-pnpm test:integration
 ```
+
+Saga LINTAS SERVICE — booking-service, payment-service, supplier-service, dan pricing-service sebagai proses OS sungguhan, mock-supplier sebagai kontainer — diuji di [`tests/saga`](../../tests/saga) (Step 20), bukan di sini.
 
 Step 19: **56 uji terhadap PostgreSQL 16.15, Redis 7, Kafka, dan RabbitMQ sungguhan** (`pnpm infra:up`), di zona `Asia/Jakarta` dan `America/Los_Angeles`, dengan urutan acak. Yang baru: unit kerja saga di Postgres (atomik, konsumsi serentak, kunci versi, lima CHECK), penerbit outbox dengan kunci penasihat yang diperebutkan, dan saga ujung ke ujung — `payment.refund` benar-benar tiba di RabbitMQ pada US-03, TIDAK tiba pada US-05, pesan Kafka yang sama dua kali menghasilkan satu `supplier.confirm`, `booking.created` tiba di Kafka dengan eventId baris outbox-nya.
 

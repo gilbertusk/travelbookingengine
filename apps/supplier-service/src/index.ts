@@ -1,7 +1,13 @@
 // Harus paling pertama — lihat catatan pada telemetry.ts.
 import { tracingSdk } from './telemetry.js'
 
-import { createApp, createLogger, tracingResource, type ManagedResource } from '@tbe/shared-kernel'
+import {
+  createApp,
+  createLogger,
+  createMetrics,
+  tracingResource,
+  type ManagedResource,
+} from '@tbe/shared-kernel'
 import {
   createCommandConsumer,
   createEventPublisher,
@@ -54,11 +60,25 @@ const rabbit = createRabbitConnection({ url: config.RABBITMQ_URL })
 
 const registry = createSupplierRegistry(mockSupplierRegistryConfig(config.SUPPLIER_BASE_URL))
 
-const { app, metrics } = createSupplierHttpApp({
+/**
+ * Registry metrik dibuat LEBIH DULU dan diberikan ke dependensi maupun ke
+ * aplikasi HTTP — satu registry, jadi metrik lapisan ketahanan muncul di
+ * `/metrics`.
+ *
+ * Versi sebelumnya membaca `metrics` dari hasil `createSupplierHttpApp` lewat
+ * fungsi "tertunda" yang ternyata dipanggil SEBELUM hasil itu ada: `buildDeps()`
+ * adalah argumen pemanggilan yang sama. Proses mati saat startup dengan
+ * ReferenceError — dan tidak ada yang tahu, karena `index.ts` tidak pernah
+ * dijalankan sampai uji integrasi Step 20.
+ */
+const metrics = createMetrics({ serviceName: config.SERVICE_NAME })
+
+const { app } = createSupplierHttpApp({
   deps: buildDeps(),
   logger,
   serviceName: config.SERVICE_NAME,
   corsOrigins: config.CORS_ORIGINS,
+  metrics,
 })
 
 function buildDeps(): ResilienceDeps {
@@ -83,23 +103,12 @@ function buildDeps(): ResilienceDeps {
       logger.error({ error }, 'gagal mencatat permintaan supplier')
     }),
     events: createKafkaSupplierEvents(createEventPublisher(toProducerPort(producer))),
-    metrics: createSupplierMetrics(metricsHandle()),
+    metrics: createSupplierMetrics(metrics),
     directory: createPrismaDirectory(prisma),
     clock: systemClock,
     sleeper: systemSleeper,
     random: Math.random,
   }
-}
-
-/**
- * Metrik dirangkai oleh factory HTTP, sementara dependensi membutuhkannya.
- *
- * Dipecahkan dengan pembacaan tertunda alih-alih membangun registry metrik
- * dua kali: dua registry berarti metrik yang dicatat lapisan ketahanan tidak
- * pernah muncul di `/metrics`.
- */
-function metricsHandle(): typeof metrics {
-  return metrics
 }
 
 const redisResource: ManagedResource = {

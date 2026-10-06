@@ -1,17 +1,25 @@
 import 'dotenv/config'
 import { v7 as uuidv7 } from 'uuid'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '../src/generated/prisma/client.js'
+// Klien Prisma dan modul service yang dipakainya diambil dari dist/, bukan
+// src/. Seed dijalankan dengan --experimental-strip-types, yang TIDAK
+// memetakan `.js` ke `.ts`: impor ke src/ gagal ERR_MODULE_NOT_FOUND —
+// termasuk impor internal klien Prisma sendiri. Ditemukan Step 20, saat seed
+// pertama kali benar-benar dijalankan. Keduanya harus dari dist/ yang sama:
+// campuran src/ dan dist/ menghasilkan dua tipe PrismaClient yang tidak
+// cocok. Konsekuensinya: `pnpm build` wajib lebih dulu, sama seperti
+// typecheck.
+import { PrismaClient } from '../dist/generated/prisma/client.js'
 import {
   SEED_SOURCE_SUPPLIER,
   buildSeedPlan,
   groundTruthSchema,
   seedSourceMappings,
-} from '../src/domain/catalog-seed.js'
+} from '../dist/domain/catalog-seed.js'
 import {
   createPrismaMappingStore,
   createPrismaPropertyStore,
-} from '../src/infrastructure/prisma-catalog.js'
+} from '../dist/infrastructure/prisma-catalog.js'
 
 /**
  * Mengisi katalog properti dan pemetaan supplier dari mock-supplier.

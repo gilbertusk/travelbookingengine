@@ -34,7 +34,7 @@ import {
   scriptedPricing,
   scriptedSuppliers,
 } from '../../src/testing/fakes.js'
-import { commandObserver, eventObserver, eventually } from './brokers.js'
+import { caughtUp, commandObserver, eventObserver, eventually } from './brokers.js'
 import { brokerEnv, integrationEnv } from './env.js'
 
 /**
@@ -59,7 +59,9 @@ const db = bookingDbOf(prisma)
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
 const kafka = createKafkaClient({ clientId: 'booking-it', brokers: kafkaBrokers })
 const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 })
-const consumer = kafka.consumer({ groupId: `booking-it-saga-${String(Date.now())}` })
+const groupId = `booking-it-saga-${String(Date.now())}`
+const consumer = kafka.consumer({ groupId })
+const admin = kafka.admin()
 const events = createEventPublisher(toProducerPort(producer))
 
 const deps: BookingDeps = {
@@ -122,8 +124,10 @@ beforeAll(async () => {
     }),
   ]
   for (const resource of resources) await resource.start?.()
+  await admin.connect()
   await joined
   stopAll = async () => {
+    await admin.disconnect()
     for (const resource of [...resources].reverse()) await resource.stop()
     await commands.stop()
     await published.stop()
@@ -235,8 +239,14 @@ describe('saga terhadap PostgreSQL, Redis, Kafka, dan RabbitMQ sungguhan', () =>
     })
 
     await eventually('NEEDS_REVIEW', async () => (await status(booking.id)) === 'NEEDS_REVIEW')
-    // Beri waktu penerbit outbox; refund yang salah akan sudah tiba.
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    // Perintah refund hanya mungkin lahir di outbox, dalam transaksi yang sama
+    // dengan perubahan keadaan. Begitu NEEDS_REVIEW terbaca, isi outbox
+    // pemesanan ini sudah final — tidak perlu menunggu penerbitnya.
+    expect(
+      await prisma.outboxMessage.count({
+        where: { bookingId: booking.id, messageType: 'payment.refund' },
+      }),
+    ).toBe(0)
     expect(commandsFor(booking.id, 'payment.refund')).toEqual([])
   })
 
@@ -270,7 +280,22 @@ describe('saga terhadap PostgreSQL, Redis, Kafka, dan RabbitMQ sungguhan', () =>
       'supplier.confirm tiba',
       () => commandsFor(booking.id, 'supplier.confirm').length >= 1,
     )
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    // Kiriman KEDUA sudah dikerjakan — bukan sekadar belum sempat dibaca.
+    await eventually(
+      'consumer membaca kedua kiriman',
+      async () => await caughtUp(admin, groupId, topicFor('payment.succeeded').name),
+    )
+    await eventually('outbox pemesanan terkuras', async () => {
+      const pending = await prisma.outboxMessage.count({
+        where: { bookingId: booking.id, publishedAt: null, rejectedAt: null },
+      })
+      return pending === 0
+    })
+    expect(
+      await prisma.outboxMessage.count({
+        where: { bookingId: booking.id, messageType: 'supplier.confirm' },
+      }),
+    ).toBe(1)
     expect(commandsFor(booking.id, 'supplier.confirm')).toHaveLength(1)
     expect(await prisma.consumedMessage.count({ where: { eventId } })).toBe(1)
   })

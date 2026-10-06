@@ -1,7 +1,13 @@
 import 'dotenv/config'
 import { v7 as uuidv7 } from 'uuid'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '../src/generated/prisma/client.js'
+// Klien dari dist/, bukan src/generated/. Seed dijalankan dengan
+// --experimental-strip-types, yang TIDAK memetakan `.js` ke `.ts`: impor ke
+// src/generated gagal ERR_MODULE_NOT_FOUND — termasuk impor internal klien
+// Prisma sendiri. Ditemukan Step 20, saat seed pertama kali benar-benar
+// dijalankan. Konsekuensinya: `pnpm build` wajib lebih dulu, sama seperti
+// typecheck.
+import { PrismaClient } from '../dist/generated/prisma/client.js'
 
 /**
  * Mengisi tabel `exchange_rates` dan `markup_rules`.

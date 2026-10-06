@@ -10,11 +10,11 @@ import { defineConfig } from 'vitest/config'
  * keyspace notification, batasan UNIK dan transaksi Postgres, trigger dan
  * CHECK di migrasi, dan perilaku adapter-pg terhadap kolom DATE.
  *
- * CONVENTIONS.md bagian 10 meminta Testcontainers. Docker tidak tersedia,
- * jadi infrastrukturnya diberikan lewat env — `INTEGRATION_DATABASE_URL` dan
- * `INTEGRATION_REDIS_URL` — dan uji GAGAL keras bila salah satunya tidak ada.
- * Tidak dilewati: uji integrasi yang diam-diam tidak berjalan adalah persis
- * bentuk "hijau" yang tidak membuktikan apa pun.
+ * Sejak Step 20 infrastrukturnya dinyalakan Testcontainers (CONVENTIONS.md
+ * bagian 10), kecuali keempat env `INTEGRATION_*` diisi — lihat
+ * tests/integration/env.ts. Tanpa keduanya uji GAGAL keras, tidak dilewati:
+ * uji integrasi yang diam-diam tidak berjalan adalah persis bentuk "hijau"
+ * yang tidak membuktikan apa pun.
  *
  * Zona waktu dapat diganti lewat `INTEGRATION_TZ` supaya uji kolom DATE dapat
  * dijalankan di zona di depan dan di belakang UTC.

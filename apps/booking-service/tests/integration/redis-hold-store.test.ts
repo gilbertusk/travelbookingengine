@@ -134,9 +134,13 @@ describe('pelepasan', () => {
       until: new Date(Date.now() + 50),
     })
     await store.acquire({ bookingId: 'booking-2', slot: SLOT, capacity: 2, until: future() })
-    await new Promise((resolve) => setTimeout(resolve, 150))
 
-    expect(await store.orphans(10)).toEqual([{ bookingId: 'booking-1', slot: SLOT }])
+    await vi.waitFor(
+      async () => {
+        expect(await store.orphans(10)).toEqual([{ bookingId: 'booking-1', slot: SLOT }])
+      },
+      { timeout: 5_000, interval: 25 },
+    )
   })
 })
 
