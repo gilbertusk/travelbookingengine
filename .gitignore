@@ -47,3 +47,6 @@ infra/k6/results/*
 # Volume lokal
 infra/data/
 **/src/generated/
+
+# Log service dari uji saga yang gagal (Step 20)
+tests/saga/.logs/

@@ -22,6 +22,7 @@ export interface HarnessOptions {
   /** 0.99 secara bawaan: di atas seluruh peluang kegagalan dan pergeseran harga. */
   readonly random?: number
   readonly startMs?: number
+  readonly holdTtlMs?: number
 }
 
 export const STAY = {
@@ -48,6 +49,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
     instant: true,
     random: () => randomValue,
     now: () => nowMs,
+    holdTtlMs: options.holdTtlMs,
   })
 
   return {

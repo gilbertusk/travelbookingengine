@@ -105,3 +105,39 @@ export async function eventually(
   }
   throw new Error(`tidak pernah terpenuhi dalam ${String(timeoutMs)} ms: ${label}`)
 }
+
+/** Bagian admin KafkaJS yang dibutuhkan `caughtUp`. */
+interface OffsetAdmin {
+  fetchTopicOffsets(topic: string): Promise<readonly { partition: number; high: string }[]>
+  fetchOffsets(options: {
+    groupId: string
+    topics: string[]
+  }): Promise<readonly { partitions: readonly { partition: number; offset: string }[] }[]>
+}
+
+/**
+ * Consumer group sudah meng-commit SELURUH pesan yang ada di topik saat ini.
+ *
+ * Inilah cara membuktikan "tidak terjadi apa-apa" tanpa penundaan tetap:
+ * setelah offset ter-commit melewati pesan terakhir, handler sudah selesai
+ * mengerjakannya — dan efek apa pun yang akan ditulisnya sudah tertulis.
+ * Versi Step 19 menunggu satu detik lalu memeriksa, yang lulus sama baiknya
+ * bila handler belum sempat berjalan sama sekali.
+ */
+export async function caughtUp(
+  admin: OffsetAdmin,
+  groupId: string,
+  topic: string,
+): Promise<boolean> {
+  const [ends, [committed]] = await Promise.all([
+    admin.fetchTopicOffsets(topic),
+    admin.fetchOffsets({ groupId, topics: [topic] }),
+  ])
+  const at = new Map(committed?.partitions.map((p) => [p.partition, Number(p.offset)]) ?? [])
+
+  return ends.every(({ partition, high }) => {
+    const end = Number(high)
+    // Partisi kosong tidak punya offset ter-commit (-1), dan tidak perlu.
+    return end === 0 || (at.get(partition) ?? -1) >= end
+  })
+}

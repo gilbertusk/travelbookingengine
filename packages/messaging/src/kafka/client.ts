@@ -70,7 +70,17 @@ export function consumerResource(options: ConsumerResourceOptions): ManagedResou
       await options.consumer.connect()
       await options.consumer.subscribe({
         topics: [...options.topics],
-        fromBeginning: false,
+        // Hanya berlaku untuk partisi yang BELUM punya offset ter-commit untuk
+        // consumer group ini. `false` berarti mulai dari pesan TERBARU — dan
+        // setiap pesan yang terbit selama service mati, di partisi yang belum
+        // pernah di-commit, hilang tanpa jejak. Step 20 menemukannya:
+        // booking-service dibunuh, pembayaran berhasil, service menyala lagi,
+        // dan payment.succeeded tidak pernah dibaca; hold kedaluwarsa atas
+        // pembayaran yang sudah masuk. Membaca dari awal aman karena setiap
+        // consumer di project ini idempoten (consumed_messages, UPSERT
+        // berdasarkan waktu) — membaca ulang adalah biaya, kehilangan adalah
+        // cacat.
+        fromBeginning: true,
       })
       await options.consumer.run({
         // Offset di-commit KafkaJS setelah eachMessage selesai tanpa melempar.

@@ -13,6 +13,10 @@ export default defineConfig({
         'src/testing.ts',
         'src/**/client.ts',
         'src/bin/**',
+        // Hanya berbicara dengan admin Kafka sungguhan. Dijalankan setiap kali
+        // uji integrasi Step 20 menyalakan broker; uji unit dengan admin
+        // palsuan hanya akan membuktikan palsuannya.
+        'src/kafka/topics.ts',
       ],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, functions: 80, branches: 75, statements: 80 },

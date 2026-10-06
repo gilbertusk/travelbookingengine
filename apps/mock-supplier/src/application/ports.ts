@@ -42,10 +42,13 @@ export interface InventoryStore {
   hold(ref: string): Hold | undefined
   removeHold(ref: string): void
   expiredHolds(nowMs: number): readonly Hold[]
+  /** Seluruh hold yang tersimpan, termasuk yang sudah lewat tetapi belum disapu. */
+  holds(): readonly Hold[]
 
   putBooking(booking: Booking): void
   booking(ref: string): Booking | undefined
   bookingByIdempotencyKey(supplier: SupplierCode, key: string): Booking | undefined
+  bookings(): readonly Booking[]
 
   driftedPrice(key: string): number | undefined
   setDriftedPrice(key: string, priceMinorIdr: number): void
@@ -61,4 +64,10 @@ export interface OperationDeps {
   readonly random: () => number
   /** Pembuat pengenal hold dan booking; dapat diganti pada pengujian. */
   readonly newRef: (prefix: string) => string
+  /**
+   * Umur hold bila permintaan tidak menyebutnya. Bawaan 15 menit; uji
+   * integrasi Step 20 memendekkannya supaya "hold supplier habis sendiri"
+   * dapat dibuktikan tanpa menunggu seperempat jam.
+   */
+  readonly holdTtlMs: number
 }

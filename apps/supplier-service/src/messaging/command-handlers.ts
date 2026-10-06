@@ -29,7 +29,10 @@ export interface ConfirmHandlerDeps extends HandlerDeps {
 }
 
 /**
- * Penolakan SAH dari supplier atas konfirmasi — kamar habis, hold kedaluwarsa.
+ * Penolakan SAH dari supplier atas konfirmasi — kamar habis, hold kedaluwarsa —
+ * ATAU kepastian bahwa tidak ada pemesanan yang tersimpan: supplier yang
+ * menolak koneksi di setiap percobaan (sejak Step 20, lihat confirm-booking.ts).
+ * Keduanya sama bagi saga: tidak ada kamar, jadi dana dikembalikan.
  *
  * Kelas tersendiri, bukan `Error` biasa, karena kabar dead letter harus dapat
  * membedakan "supplier menjawab tidak" dari "sesuatu gagal di tengah jalan".

@@ -95,3 +95,5 @@ export {
   type ConsumerResourceOptions,
   type KafkaConnectionOptions,
 } from './kafka/client.js'
+
+export { ensureTopics, type EnsureTopicsOptions } from './kafka/topics.js'

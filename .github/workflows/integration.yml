@@ -1,0 +1,53 @@
+# Uji integrasi terhadap infrastruktur sungguhan (Step 20).
+#
+# Sengaja minimal: hanya build lalu `pnpm test:integration`. Lint, typecheck,
+# uji unit, dan penyebaran adalah pekerjaan Step 30. Yang dijamin workflow ini:
+# jalur kompensasi saga dibuktikan di setiap PR terhadap Postgres, Redis,
+# Kafka, dan RabbitMQ sungguhan — Testcontainers menyalakannya di runner, tidak
+# ada layanan yang harus dideklarasikan di sini.
+#
+# Batas waktunya besar dengan sengaja: skenario refund menunggu jenjang retry
+# RabbitMQ yang sungguhan (5 s, 30 s, 2 m) sampai dead letter.
+
+name: integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Uji integrasi (Testcontainers)
+        run: pnpm test:integration
+
+      - name: Log service dari uji saga yang gagal
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-logs
+          path: tests/saga/.logs/
+          if-no-files-found: ignore

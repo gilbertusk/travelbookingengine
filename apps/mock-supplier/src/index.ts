@@ -20,7 +20,11 @@ const logger = createLogger({
   pretty: config.NODE_ENV === 'development',
 })
 
-const { app } = buildMockSupplierApp({ logger, instant: config.MOCK_SUPPLIER_INSTANT })
+const { app } = buildMockSupplierApp({
+  logger,
+  instant: config.MOCK_SUPPLIER_INSTANT,
+  holdTtlMs: config.MOCK_SUPPLIER_HOLD_TTL_MS,
+})
 
 const server = app.listen(config.PORT, () => {
   logger.info({ port: config.PORT }, 'mock supplier mendengarkan')

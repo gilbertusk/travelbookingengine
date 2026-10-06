@@ -1,6 +1,5 @@
 import { err, ok, type Result } from '@tbe/shared-kernel'
 import {
-  DEFAULT_HOLD_TTL_MS,
   cancelBooking,
   isHoldExpired,
   type Booking,
@@ -134,7 +133,7 @@ export function hold(deps: OperationDeps, request: HoldRequest): Result<Hold, Op
     guests: request.guests,
     priceMinorIdr: currentPrice(deps, request) ?? 0,
     createdAtMs: now,
-    expiresAtMs: now + (request.ttlMs ?? DEFAULT_HOLD_TTL_MS),
+    expiresAtMs: now + (request.ttlMs ?? deps.holdTtlMs),
   }
 
   deps.store.putHold(record)
@@ -243,4 +242,27 @@ export function findBooking(
   }
 
   return ok(found)
+}
+
+export interface ReservationSnapshot {
+  readonly holds: readonly Hold[]
+  readonly bookings: readonly Booking[]
+}
+
+/**
+ * Seluruh hold AKTIF dan seluruh pemesanan — kebenaran dasar untuk invarian
+ * uji integrasi Step 20 ("tidak ada hold yatim di supplier", "tidak ada
+ * pemesanan ganda").
+ *
+ * Hold yang sudah lewat DISAPU lebih dulu, sama seperti setiap operasi lain.
+ * Tanpa itu, hold yang sebenarnya sudah habis masih terlihat sampai operasi
+ * berikutnya menyentuh supplier, dan invariannya gagal karena persoalan waktu
+ * penyapuan — bukan karena ada hold yang benar-benar tertinggal.
+ *
+ * Seperti /admin/catalog, ini sesuatu yang tidak pernah diterbitkan supplier
+ * sungguhan, dan tidak satu pun kode di jalur produksi boleh memanggilnya.
+ */
+export function reservationSnapshot(deps: OperationDeps): ReservationSnapshot {
+  sweepExpiredHolds(deps)
+  return { holds: deps.store.holds(), bookings: deps.store.bookings() }
 }

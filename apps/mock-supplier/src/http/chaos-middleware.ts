@@ -5,7 +5,9 @@ import {
   type ChaosRegistry,
   type FailureMode,
 } from '../application/chaos.js'
+import type { FaultScript } from '../application/fault-script.js'
 import { SUPPLIER_PROFILES, type SupplierCode } from '../domain/supplier.js'
+import { operationOf } from './operation.js'
 
 /**
  * Menyuntikkan latensi dan kegagalan sebelum permintaan mencapai penangannya.
@@ -30,6 +32,12 @@ export interface ChaosMiddlewareOptions {
    * tanpa menambah satu pun jaminan.
    */
   readonly instant?: boolean | undefined
+  /**
+   * Kegagalan terjadwal per operasi (Step 20). Diperiksa SEBELUM keacakan:
+   * jadwal adalah perintah eksplisit dari uji, dan tidak boleh kalah oleh
+   * undian peluang bawaan profil.
+   */
+  readonly script?: FaultScript | undefined
 }
 
 export function createChaosMiddleware(options: ChaosMiddlewareOptions): RequestHandler {
@@ -37,8 +45,16 @@ export function createChaosMiddleware(options: ChaosMiddlewareOptions): RequestH
   const isXml = SUPPLIER_PROFILES[code].protocol === 'soap-xml'
 
   return (req: Request, res: Response, next: NextFunction): void => {
+    const operation = operationOf(code, req)
+    const scripted = operation === undefined ? undefined : options.script?.take(code, operation)
+
+    if (scripted === 'lose_response') {
+      loseResponse(req, res, next)
+      return
+    }
+
     const state = chaos.get(code)
-    const failure = failureFor(code, state, random)
+    const failure = scripted ?? failureFor(code, state, random)
     const delayMs = options.instant === true ? 0 : latencyFor(code, state, random)
 
     if (failure === 'connection_reset') {
@@ -63,6 +79,24 @@ export function createChaosMiddleware(options: ChaosMiddlewareOptions): RequestH
       respondWithFailure({ res, failure, isXml, code })
     }, delayMs)
   }
+}
+
+/**
+ * Penangan dijalankan — efeknya tersimpan — tetapi jawabannya dibuang, dan
+ * koneksinya ditahan sampai klien menyerah.
+ *
+ * `send` dan `json` diganti pada objek `res` permintaan INI saja; `end` tidak
+ * disentuh supaya penahan waktu di bawah tetap dapat menutup koneksinya.
+ * Alternatif yang ditolak: memutus soket setelah penangan selesai. Klien lalu
+ * melihat `connection_reset`, bukan timeout — dan skenario US-05 yang diuji
+ * Step 20 adalah timeout, yang oleh supplier-service ditangani lewat jalur
+ * pencarian ulang yang berbeda.
+ */
+function loseResponse(req: Request, res: Response, next: NextFunction): void {
+  res.send = () => res
+  res.json = () => res
+  holdUntilTimeout(req, res)
+  next()
 }
 
 function holdUntilTimeout(req: Request, res: Response): void {

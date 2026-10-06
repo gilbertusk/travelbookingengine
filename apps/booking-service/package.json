@@ -29,6 +29,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@tbe/testing-infra": "workspace:*",
     "@tbe/tsconfig": "workspace:*",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",

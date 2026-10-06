@@ -2,7 +2,13 @@ import { Router, type Response } from 'express'
 import { pathParam } from './context.js'
 import { z } from 'zod'
 import { FAILURE_MODES, NEUTRAL_CHAOS, type ChaosRegistry } from '../application/chaos.js'
-import type { InventoryStore } from '../application/ports.js'
+import {
+  SCRIPTED_MODES,
+  SUPPLIER_OPERATIONS,
+  type FaultScript,
+} from '../application/fault-script.js'
+import type { OperationDeps } from '../application/ports.js'
+import { reservationSnapshot } from '../application/reservation.js'
 import { SUPPLIER_CODES, SUPPLIER_PROFILES, isSupplierCode } from '../domain/supplier.js'
 
 /**
@@ -28,36 +34,59 @@ const failureSchema = z.object({
 
 const driftSchema = z.object({ rate: z.number().min(0).max(1) })
 
-export function createAdminRouter(chaos: ChaosRegistry, store: InventoryStore): Router {
+const faultSchema = z.object({
+  operation: z.enum(SUPPLIER_OPERATIONS),
+  mode: z.enum(SCRIPTED_MODES),
+  times: z.number().int().min(1).max(100).default(1),
+})
+
+export interface AdminRouterOptions {
+  readonly chaos: ChaosRegistry
+  readonly script: FaultScript
+  readonly deps: OperationDeps
+}
+
+export function createAdminRouter(options: AdminRouterOptions): Router {
   const router = Router()
 
-  registerGlobalRoutes(router, chaos, store)
-  registerSupplierRoutes(router, chaos)
+  registerGlobalRoutes(router, options)
+  registerSupplierRoutes(router, options.chaos)
+  registerScriptRoutes(router, options.script)
 
   return router
 }
 
-function registerGlobalRoutes(router: Router, chaos: ChaosRegistry, store: InventoryStore): void {
+function registerGlobalRoutes(router: Router, options: AdminRouterOptions): void {
+  const { chaos, script, deps } = options
+
   router.get('/state', (_req, res) => {
     res.json({
       suppliers: SUPPLIER_CODES.map((code) => ({
         code,
         profile: SUPPLIER_PROFILES[code],
         chaos: chaos.get(code),
+        scripted: script.pending(code),
       })),
     })
   })
 
   router.post('/reset', (_req, res) => {
+    // Jadwal ikut dibersihkan: kegagalan terjadwal yang tidak terpakai oleh
+    // satu skenario tidak boleh menimpa skenario berikutnya.
     chaos.reset()
+    script.clear()
     res.json({ reset: 'chaos', suppliers: SUPPLIER_CODES })
+  })
+
+  router.get('/reservations', (_req, res) => {
+    res.json(reservationSnapshot(deps))
   })
 
   router.post('/inventory/reset', (_req, res) => {
     // Mengembalikan ketersediaan, hold, booking, dan pergeseran harga ke
     // keadaan awal. Dipakai di antara skenario uji beban agar setiap skenario
     // mulai dari titik yang sama.
-    store.reset()
+    deps.store.reset()
     res.json({ reset: 'inventory' })
   })
 }
@@ -113,6 +142,24 @@ function registerSupplierRoutes(router: Router, chaos: ChaosRegistry): void {
     // bukan hanya mematikan flag down. Suntikan yang tertinggal dari skenario
     // sebelumnya adalah penyebab umum uji berikutnya gagal tanpa sebab jelas.
     apply(res, chaos, pathParam(req, 'supplier'), NEUTRAL_CHAOS)
+  })
+}
+
+function registerScriptRoutes(router: Router, script: FaultScript): void {
+  router.post('/:supplier/faults', (req, res) => {
+    const code = pathParam(req, 'supplier').toUpperCase()
+    const parsed = faultSchema.safeParse(req.body)
+
+    if (!isSupplierCode(code)) {
+      res.status(404).json({ error: 'UNKNOWN_SUPPLIER' })
+      return
+    }
+    if (!parsed.success) {
+      res.status(400).json({ error: 'INVALID_FAULT', modes: SCRIPTED_MODES })
+      return
+    }
+
+    res.json({ supplier: code, scripted: script.add(code, parsed.data) })
   })
 }
 

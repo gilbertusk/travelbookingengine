@@ -14,6 +14,12 @@ const envSchema = baseEnvSchema.extend({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  /**
+   * Umur hold bawaan dalam milidetik. Tanpa nilai: 15 menit. Uji integrasi
+   * Step 20 memendekkannya untuk membuktikan hold supplier habis sendiri —
+   * kompensasi `lapses` yang diputuskan di Step 19.
+   */
+  MOCK_SUPPLIER_HOLD_TTL_MS: z.coerce.number().int().positive().optional(),
   OTEL_ENABLED: z.enum(['true', 'false']).default('true'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318/v1/traces'),
 })

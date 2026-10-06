@@ -35,7 +35,18 @@ export interface CallParams<T> {
   readonly correlationId?: string | undefined
   /** Menonaktifkan percobaan ulang, untuk operasi yang mengubah keadaan. */
   readonly noRetry?: boolean
+  /**
+   * Operasi yang mengubah keadaan di supplier dan TIDAK idempoten (hold).
+   * Hanya dicoba ulang bila permintaannya pasti belum dikerjakan: koneksi
+   * tidak pernah terbentuk, atau supplier menolak karena laju. Batas waktu
+   * dan koneksi yang putus setelah terbentuk tidak dicoba ulang — efeknya
+   * mungkin sudah terjadi, dan percobaan kedua menggandakannya (Step 20).
+   */
+  readonly mutating?: boolean
 }
+
+/** Kegagalan yang memastikan permintaan belum dikerjakan supplier. */
+const UNDELIVERED: ReadonlySet<SupplierError['kind']> = new Set(['unavailable', 'rate_limited'])
 
 export async function callSupplier<T>(
   deps: ResilienceDeps,
@@ -62,6 +73,7 @@ export async function callSupplier<T>(
     if (result.ok) return result
 
     if (params.noRetry === true) return result
+    if (params.mutating === true && !UNDELIVERED.has(result.error.kind)) return result
 
     const decision = decideRetry(result.error, attempt, retryPolicy, deps.random)
     if (!decision.retry) return result

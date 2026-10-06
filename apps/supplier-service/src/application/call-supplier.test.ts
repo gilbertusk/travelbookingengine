@@ -1,7 +1,8 @@
+import type { HoldResult } from '@tbe/supplier-adapters'
 import { describe, expect, test } from 'vitest'
 import type { CircuitPolicy } from '../domain/circuit.js'
 import { callSupplier } from './call-supplier.js'
-import { search } from './supplier-operations.js'
+import { hold, search } from './supplier-operations.js'
 import {
   booking,
   denyingRateLimiter,
@@ -258,6 +259,51 @@ describe('percobaan ulang', () => {
     expect(world.metrics.retries).toEqual(['SKY:search:timeout'])
   })
 
+  test('hold yang kehabisan waktu TIDAK dikirim ulang', async () => {
+    // Hold tidak idempoten: supplier mungkin sudah menahan unit sebelum
+    // jawabannya hilang, dan hold kedua menahan unit kedua untuk pemesanan
+    // yang sama. Step 20 menemukannya lewat proses yang dibunuh: hold pertama
+    // kehabisan waktu, percobaan ulang supplier-service berhasil SETELAH
+    // booking-service mati, dan hold ulang pengguna ditolak SOLD_OUT oleh
+    // unit yang ditahan hold yatim itu.
+    const world = harness({
+      script: { hold: [err(failure('SKY', 'hold', 'timeout')), ok(holdResult())] },
+    })
+
+    const result = await hold(world.deps, HOLD)
+
+    expect(result.ok).toBe(false)
+    expect(world.gateway.calls).toEqual(['hold'])
+  })
+
+  test('hold yang koneksinya putus setelah terbentuk juga tidak dikirim ulang', async () => {
+    const world = harness({
+      script: {
+        hold: [
+          err({ supplier: 'SKY', operation: 'hold', kind: 'upstream_error', status: 0, code: 'X' }),
+          ok(holdResult()),
+        ],
+      },
+    })
+
+    await hold(world.deps, HOLD)
+
+    expect(world.gateway.calls).toEqual(['hold'])
+  })
+
+  test('hold yang koneksinya tidak pernah terbentuk dicoba ulang', async () => {
+    // Pasti belum sampai ke supplier, jadi mengulangnya tidak menahan unit
+    // kedua — sama dengan aturan book di confirm-booking.ts.
+    const world = harness({
+      script: { hold: [err(failure('SKY', 'hold', 'unavailable')), ok(holdResult())] },
+    })
+
+    const result = await hold(world.deps, HOLD)
+
+    expect(result.ok).toBe(true)
+    expect(world.gateway.calls).toEqual(['hold', 'hold'])
+  })
+
   test('berhenti setelah batas percobaan, bukan berputar selamanya', async () => {
     const world = harness({ script: { search: [err(failure('SKY', 'search', 'timeout'))] } })
 
@@ -316,5 +362,21 @@ function searchResult() {
     checkIn: '2026-11-10',
     checkOut: '2026-11-12',
     properties: [],
+  }
+}
+
+const HOLD = {
+  supplier: 'SKY' as const,
+  supplierRatePlanId: 'rp-1',
+  checkIn: '2026-11-10',
+  checkOut: '2026-11-12',
+  guests: 2,
+}
+
+function holdResult(): HoldResult {
+  return {
+    supplierHoldId: 'hold-1',
+    expiresAt: '2026-11-01T00:15:00.000Z',
+    total: { amountMinor: 1_500_000, currency: 'IDR' },
   }
 }

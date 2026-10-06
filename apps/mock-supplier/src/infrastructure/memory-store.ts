@@ -47,9 +47,11 @@ interface ReservationBook {
   hold(ref: string): Hold | undefined
   removeHold(ref: string): void
   expiredHolds(nowMs: number): readonly Hold[]
+  holds(): readonly Hold[]
   putBooking(booking: Booking): void
   booking(ref: string): Booking | undefined
   byIdempotencyKey(supplier: SupplierCode, key: string): Booking | undefined
+  bookings(): readonly Booking[]
   clear(): void
 }
 
@@ -68,6 +70,7 @@ function createReservationBook(): ReservationBook {
       holds.delete(ref)
     },
     expiredHolds: (nowMs) => [...holds.values()].filter((hold) => hold.expiresAtMs <= nowMs),
+    holds: () => [...holds.values()],
 
     putBooking: (booking) => {
       bookings.set(booking.ref, booking)
@@ -78,6 +81,7 @@ function createReservationBook(): ReservationBook {
       const ref = byKey.get(keyOf(supplier, key))
       return ref === undefined ? undefined : bookings.get(ref)
     },
+    bookings: () => [...bookings.values()],
 
     clear: () => {
       holds.clear()
@@ -109,11 +113,13 @@ export function createMemoryStore(): InventoryStore {
       reservations.removeHold(ref)
     },
     expiredHolds: (nowMs) => reservations.expiredHolds(nowMs),
+    holds: () => reservations.holds(),
     putBooking: (booking) => {
       reservations.putBooking(booking)
     },
     booking: (ref) => reservations.booking(ref),
     bookingByIdempotencyKey: (supplier, key) => reservations.byIdempotencyKey(supplier, key),
+    bookings: () => reservations.bookings(),
 
     driftedPrice: (key) => driftedPrices.get(key),
     setDriftedPrice: (key, priceMinorIdr) => {

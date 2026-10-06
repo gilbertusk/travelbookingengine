@@ -34,6 +34,12 @@ beforeAll(async () => {
       return
     }
 
+    if (req.url === '/putus') {
+      // Permintaan diterima, lalu koneksinya diputus tanpa jawaban.
+      req.socket.destroy()
+      return
+    }
+
     if (req.url === '/istirahat') {
       res.writeHead(503, { 'retry-after': '12' }).end(JSON.stringify({ error: 'UNAVAILABLE' }))
       return
@@ -159,16 +165,45 @@ describe('kegagalan transport', () => {
     }
   })
 
-  test('kegagalan lain dianggap tidak dapat dihubungi, bukan dilempar ulang', () => {
+  test('koneksi yang tidak pernah terbentuk dianggap tidak dapat dihubungi', () => {
+    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']) {
+      expect(classifyTransportFailure('SKY', 'book', 100, { code }).kind).toBe('unavailable')
+    }
+  })
+
+  test('kode di dalam cause dikenali, seperti galat soket yang dibungkus undici', () => {
+    const wrapped = new Error('fetch failed', { cause: { code: 'ECONNREFUSED' } })
+
+    expect(classifyTransportFailure('SKY', 'book', 100, wrapped).kind).toBe('unavailable')
+  })
+
+  test('koneksi yang putus SETELAH terbentuk tidak pasti, bukan tidak dapat dihubungi', () => {
+    // Supplier mungkin sudah menyimpan pemesanan sebelum memutus koneksinya.
+    // Menggolongkannya "pasti belum sampai" membuat book dikirim ulang tanpa
+    // bertanya dan saga mengembalikan dana untuk kamar yang terpesan (Step 20).
     for (const cause of [
-      { code: 'ECONNREFUSED' },
-      { code: 'ENOTFOUND' },
+      { code: 'ECONNRESET' },
+      { code: 'UND_ERR_SOCKET' },
+      { code: 'EPIPE' },
       new Error('tanpa kode'),
       undefined,
       'galat berupa string',
     ]) {
-      expect(classifyTransportFailure('SKY', 'search', 100, cause).kind).toBe('unavailable')
+      const error = classifyTransportFailure('SKY', 'book', 100, cause)
+      expect(error.kind).toBe('upstream_error')
+      if (error.kind !== 'upstream_error') return
+      expect(error.status).toBe(0)
     }
+  })
+
+  test('supplier yang memutus soket di tengah permintaan menghasilkan upstream_error', async () => {
+    const http = createSupplierHttp('SKY', { baseUrl })
+
+    const result = await http.send({ operation: 'book', method: 'POST', path: '/putus' })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('upstream_error')
   })
 })
 
