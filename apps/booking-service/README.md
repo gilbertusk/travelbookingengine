@@ -155,6 +155,12 @@ Harga berubah dijawab **200**, bukan 409: glosarium PRD menyatakan Rate Change k
 4. **Harga saat hold.** Total dari supplier dihitung ulang menjadi harga jual dan dibandingkan dengan harga yang disetujui. Berbeda → kursi dilepas, 409 `PRICE_CHANGED`.
 5. **Simpan.** Batas waktu = yang lebih awal antara lokal dan supplier; kunci waktu lokal dimajukan ke sana.
 
+### Commit HELD yang kalah kunci versi dibaca ulang (Step 22)
+
+Di antara langkah 1 dan 5 pemesanannya dapat berpindah. Yang paling sering memindahkannya bukan pembatalan melainkan **permintaan kembar**: price check dengan kunci idempotensi yang sama menjalankan price check ulang, dan price check ulang menaikkan versi pemesanan walau harganya sama. Versi pertama memperlakukan itu seperti pembatalan — kursi dan hold supplier dibuang untuk harga yang tidak berubah, dan pemanggilnya dijawab "sedang diproses" padahal tidak ada lagi yang memprosesnya. Uji beban idempotensi menemukannya: sembilan dari sepuluh kunci berakhir tanpa hold.
+
+Sekarang commit yang kalah dibaca ulang dan diulang, paling banyak tiga kali. Yang dimaafkan **hanya versi yang bergeser**. Tiga hal tetap membatalkan: harga yang berubah (409 `PRICE_CHANGED`, G2), pemesanan yang tidak lagi menunggu hold, dan saga yang sudah diambil alih pemulih.
+
 ### Kursi sebagai anggota set, bukan angka yang dikurangi
 
 [`infrastructure/redis-hold-store.ts`](src/infrastructure/redis-hold-store.ts). Kursi yang terpakai adalah anggota `SET`. Angka yang dikurangi harus dikembalikan tepat sekali, dan "tepat sekali" di antara dua jalur pelepasan adalah persis masalah yang ingin dihindari; dengan set, pelepasan kedua adalah `SREM` yang tidak menghapus apa-apa.
@@ -241,6 +247,16 @@ Rincian harga disimpan di **satu** kolom JSON non-null `price_lines` (`{ agreed,
 ## Bukti suntikan
 
 Aturan sejak Step 03: setiap penjagaan diuji terhadap pelanggaran yang sengaja disuntikkan. Seluruhnya dipulihkan, dan pemulihannya diperiksa dengan membandingkan berkas terhadap cadangan.
+
+### Step 22
+
+| Penjagaan                                   | Suntikan                              | Akibat      |
+| ------------------------------------------- | ------------------------------------- | ----------- |
+| Hold tidak ditahan untuk harga yang berubah | harga tidak diperiksa saat baca ulang | 1 uji gagal |
+| Saga yang diambil alih tidak dicoba ulang   | kepemilikan saga tidak diperiksa      | 1 uji gagal |
+| Baca ulang berbatas                         | batas dilonggarkan dari 3 ke 50       | 1 uji gagal |
+
+Hasil uji beban konkurensi — M5, M6, dan cacat yang ditemukannya — ada di [docs/evidence/booking-concurrency.md](../../docs/evidence/booking-concurrency.md).
 
 ### Step 19
 

@@ -10,8 +10,11 @@ import {
   type Harness,
 } from '../testing/fakes.js'
 import type { Booking } from '../domain/booking.js'
+import { priceBreakdown, type PriceBreakdown } from '../domain/price.js'
+import { enterStep } from '../domain/saga-state.js'
 import { applyCommand } from '../domain/transitions.js'
 import { placeHold, slotOf } from './place-hold.js'
+import type { BookingDeps } from './ports.js'
 import { acceptPriceChange, startPriceCheck } from './price-check.js'
 
 /** Slot yang dipesan setiap `priceCheckRequest` contoh. */
@@ -29,6 +32,48 @@ async function verified(
 
 async function hold(world: Harness, booking: Booking, unitsLeft = 5) {
   return await placeHold(world.deps, { userId: booking.userId, bookingId: booking.id, unitsLeft })
+}
+
+/**
+ * Price check ulang yang tiba di tengah hold — lewat transisi domain dan
+ * repository sungguhan, persis yang dilakukan permintaan kembar.
+ */
+async function reverify(world: Harness, booking: Booking, verified: PriceBreakdown): Promise<void> {
+  const change = applyCommand(booking, { type: 'verifyPrice', at: world.now(), verified })
+  if (!change.ok) throw new Error('persiapan gagal: verifyPrice ditolak')
+  await world.deps.bookings.save(change.value)
+}
+
+/**
+ * Dependensi yang menjalankan `before` tepat sebelum setiap commit HELD —
+ * commit yang membawa transisi pemesanan. Penyimpanan di baliknya tetap yang
+ * sungguhan; yang ditambahkan hanya titik sela yang tidak dapat dicapai
+ * dengan mengatur jawaban supplier.
+ */
+function beforeHeldCommit(world: Harness, before: () => Promise<void>): BookingDeps {
+  return {
+    ...world.deps,
+    sagas: {
+      ...world.deps.sagas,
+      commit: async (unit) => {
+        if (unit.change !== undefined) await before()
+        return await world.deps.sagas.commit(unit)
+      },
+    },
+  }
+}
+
+/** Rincian harga yang sama, lebih mahal seratus ribu. */
+function pricier(booking: Booking): PriceBreakdown {
+  const raised = priceBreakdown([
+    {
+      kind: 'room_night',
+      description: 'Harga baru',
+      amount: money(booking.price.total.amountMinor + 100_000, 'IDR'),
+    },
+  ])
+  if (!raised.ok) throw new Error('persiapan gagal: rincian harga')
+  return raised.value
 }
 
 describe('hold dua lapis', () => {
@@ -276,6 +321,99 @@ describe('kompensasi setiap langkah', () => {
 
     expect(result.kind).toBe('in_progress')
     expect(world.holds.held(slotOf(booking))).toBe(0)
+  })
+
+  test('price check kembar di tengah hold tidak menggagalkan hold yang harganya tetap', async () => {
+    // Step 22: sepuluh salinan permintaan yang sama. Price check salinan lain
+    // memverifikasi ulang harga dan menaikkan versi pemesanan selagi hold ini
+    // menunggu supplier. Versi pertama membatalkan hold-nya — kursi dan hold
+    // supplier terbuang untuk harga yang tidak berubah sepeser pun — lalu
+    // menjawab "sedang diproses" padahal tidak ada lagi yang memprosesnya.
+    const world = harness()
+    const booking = await verified(world)
+    world.suppliers.nextHold(() => {
+      void reverify(world, booking, booking.price)
+      return {
+        kind: 'ok',
+        value: {
+          holdRef: 'sky-hold-kembar',
+          expiresAt: new Date(world.now().getTime() + 600_000),
+          total: money(2_000_000, 'IDR'),
+        },
+      }
+    })
+
+    const result = await hold(world, booking)
+
+    expect(result.kind).toBe('held')
+    expect(world.holds.held(slotOf(booking))).toBe(1)
+    expect(world.suppliers.holds).toHaveLength(1)
+  })
+
+  test('price check di tengah hold yang MENGUBAH harga tetap membatalkan hold', async () => {
+    // Pasangan uji di atas: yang dimaafkan hanyalah versi yang bergeser,
+    // bukan harga yang bergeser. Hold atas harga yang tidak lagi disetujui
+    // adalah persis yang dilarang G2.
+    const world = harness()
+    const booking = await verified(world)
+    world.suppliers.nextHold(() => {
+      void reverify(world, booking, pricier(booking))
+      return {
+        kind: 'ok',
+        value: {
+          holdRef: 'sky-hold-naik',
+          expiresAt: new Date(world.now().getTime() + 600_000),
+          total: money(2_000_000, 'IDR'),
+        },
+      }
+    })
+
+    const result = await hold(world, booking)
+
+    expect(result.kind).toBe('price_changed')
+    expect(world.holds.held(slotOf(booking))).toBe(0)
+  })
+
+  test('pemesanan yang terus bergeser: commit diulang paling banyak tiga kali, lalu menyerah', async () => {
+    // Tanpa batas, permintaan ini berputar selama ada yang menggeser versinya.
+    const world = harness()
+    const booking = await verified(world)
+    let commits = 0
+    const deps = beforeHeldCommit(world, async () => {
+      commits += 1
+      const current = await world.deps.bookings.findById(booking.id)
+      if (current === undefined) throw new Error('persiapan gagal')
+      await reverify(world, current, current.price)
+    })
+
+    const result = await placeHold(deps, { userId: USER, bookingId: booking.id, unitsLeft: 5 })
+
+    expect(result.kind).toBe('in_progress')
+    expect(commits).toBe(4)
+    expect(world.holds.held(slotOf(booking))).toBe(0)
+  })
+
+  test('saga yang sudah diambil alih pemulih tidak dicoba ulang', async () => {
+    // Sewanya habis: kursi dan hold supplier milik kompensasi pemulih
+    // sekarang. Mengulang commit di sini berarti dua pihak mengurus satu hold.
+    const world = harness()
+    const booking = await verified(world)
+    let commits = 0
+    const deps = beforeHeldCommit(world, async () => {
+      commits += 1
+      const saga = await world.deps.sagas.find(booking.id)
+      if (saga === undefined) throw new Error('persiapan gagal')
+      await world.deps.sagas.commit({
+        bookingId: booking.id,
+        at: world.now(),
+        saga: enterStep(saga, 'holdSupplier', world.now(), 60_000),
+      })
+    })
+
+    const result = await placeHold(deps, { userId: USER, bookingId: booking.id, unitsLeft: 5 })
+
+    expect(result.kind).toBe('in_progress')
+    expect(commits).toBe(1)
   })
 
   test('hold kedua yang sedang berjalan untuk pemesanan yang sama tidak menahan dua kali di supplier', async () => {

@@ -69,15 +69,35 @@ export interface System {
   stop(): Promise<void>
 }
 
-export async function startSystem(): Promise<System> {
+type ServiceKey = 'pricing' | 'supplier' | 'payment' | 'booking'
+
+/**
+ * Penyesuaian untuk uji beban Step 22. Uji saga memakai bawaannya: port acak,
+ * tanpa telemetri.
+ */
+export interface SystemOptions {
+  /**
+   * Port tetap per service. Prometheus di infra/prometheus.yml mengikis port
+   * standar (4004–4007); port acak tidak pernah terlihat di Grafana.
+   */
+  readonly ports?: Partial<Record<ServiceKey, number>>
+  /** Env tambahan untuk SEMUA service — misalnya menyalakan telemetri. */
+  readonly env?: Readonly<Record<string, string>>
+  /** Env tambahan per service, diterapkan setelah `env`. */
+  readonly serviceEnv?: Partial<Record<ServiceKey, Readonly<Record<string, string>>>>
+}
+
+export async function startSystem(options: SystemOptions = {}): Promise<System> {
   const env = infra()
   const midtrans = await startMidtransStub()
+  const portOf = async (key: ServiceKey) => options.ports?.[key] ?? (await freePort())
   const [pricingPort, supplierPort, paymentPort, bookingPort] = await Promise.all([
-    freePort(),
-    freePort(),
-    freePort(),
-    freePort(),
+    portOf('pricing'),
+    portOf('supplier'),
+    portOf('payment'),
+    portOf('booking'),
   ])
+  const extra = (key: ServiceKey) => ({ ...options.env, ...options.serviceEnv?.[key] })
   const url = (db: 'booking' | 'payment' | 'supplier' | 'pricing') =>
     databaseUrl(env.postgresUrlTemplate, db)
 
@@ -88,12 +108,19 @@ export async function startSystem(): Promise<System> {
   }
 
   const first = [
-    startService(spec('pricing-service', pricingPort, { ...common, DATABASE_URL: url('pricing') })),
+    startService(
+      spec('pricing-service', pricingPort, {
+        ...common,
+        DATABASE_URL: url('pricing'),
+        ...extra('pricing'),
+      }),
+    ),
     startService(
       spec('supplier-service', supplierPort, {
         ...common,
         DATABASE_URL: url('supplier'),
         SUPPLIER_BASE_URL: env.mockSupplier.url,
+        ...extra('supplier'),
       }),
     ),
     startService(
@@ -104,6 +131,7 @@ export async function startSystem(): Promise<System> {
         MIDTRANS_CLIENT_KEY: 'SB-Mid-client-saga-it',
         MIDTRANS_SNAP_BASE_URL: midtrans.url,
         MIDTRANS_API_BASE_URL: midtrans.url,
+        ...extra('payment'),
       }),
     ),
   ] as const
@@ -120,6 +148,7 @@ export async function startSystem(): Promise<System> {
     SUPPLIER_SERVICE_URL: supplierService.url,
     PRICING_SERVICE_URL: pricing.url,
     PAYMENT_SERVICE_URL: payment.url,
+    ...extra('booking'),
   })
   const bookingStart = startService(bookingSpec)
   await settleOrCleanUp(midtrans, [bookingStart], [pricing, supplierService, payment])

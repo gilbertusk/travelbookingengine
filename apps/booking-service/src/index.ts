@@ -58,7 +58,10 @@ const logger = createLogger({
   pretty: config.NODE_ENV === 'development',
 })
 
-const prisma = createPrismaClient(config.DATABASE_URL)
+const prisma = createPrismaClient(config.DATABASE_URL, {
+  max: config.DATABASE_POOL_MAX,
+  transactionMaxWaitMs: config.DATABASE_TX_MAX_WAIT_MS,
+})
 const db = bookingDbOf(prisma)
 const redisOptions = { db: config.REDIS_DB, maxRetriesPerRequest: null }
 const redis = new Redis(config.REDIS_URL, redisOptions)

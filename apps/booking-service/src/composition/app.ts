@@ -13,6 +13,7 @@ import type { BookingDeps, Payments } from '../application/ports.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
 import { createBookingRouter } from '../http/booking-routes.js'
+import { databaseBusyHandler } from '../http/busy.js'
 import { createPaymentRouter } from '../http/payment-routes.js'
 import { createStatusRouter, type StatusStreamOptions } from '../http/status-routes.js'
 import type { OutboxRelay } from '../infrastructure/outbox-relay.js'
@@ -63,6 +64,7 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
     app.use(createPaymentRouter(options.deps, options.payments))
   }
 
+  app.use(databaseBusyHandler(options.logger))
   finalizeHttpServer(app, options.logger)
 
   return { app, metrics }

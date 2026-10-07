@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test:integration": "vitest run"
+    "test:integration": "vitest run",
+    "load": "vitest run --config vitest.load.config.ts"
   },
   "devDependencies": {
     "@tbe/booking-service": "workspace:*",

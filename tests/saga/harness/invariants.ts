@@ -200,7 +200,7 @@ async function assertNoOrphanHolds(system: System, holdTtlMs: number): Promise<v
   }
 }
 
-async function orphanHolds(system: System, redis: Redis): Promise<readonly string[]> {
+export async function orphanHolds(system: System, redis: Redis): Promise<readonly string[]> {
   const seats = await localSeats(redis)
   const { holds } = await system.supplier.reservations()
   const supplierOwners = await ownersOfSupplierHolds(

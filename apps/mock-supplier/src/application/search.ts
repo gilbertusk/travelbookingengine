@@ -99,8 +99,10 @@ export function unitsLeftFor(
   ratePlanId: string,
   nights: readonly string[],
 ): number {
+  const stock = deps.store.stockOverride(ratePlanId)
+
   return availableForStay(nights, (date) =>
-    remainingUnits(ratePlanId, date, deps.store.consumedUnits(ratePlanId, date)),
+    remainingUnits(ratePlanId, date, deps.store.consumedUnits(ratePlanId, date), stock),
   )
 }
 

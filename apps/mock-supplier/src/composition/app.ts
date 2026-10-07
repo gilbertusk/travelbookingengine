@@ -85,7 +85,7 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
     res.json({ data: { status: 'alive' }, error: null })
   })
 
-  app.use('/admin', createAdminRouter({ chaos, script, deps }))
+  app.use('/admin', createAdminRouter({ chaos, script, deps, refs: context.refs }))
   app.use('/admin', createCatalogRouter(catalog))
 
   for (const code of SUPPLIER_CODES) {

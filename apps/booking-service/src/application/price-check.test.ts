@@ -130,6 +130,26 @@ describe('harga berubah menghentikan alur (FR-14, US-02)', () => {
     expect(again.price.total).toEqual(money(2_564_100, 'IDR'))
   })
 
+  test('persetujuan yang DIULANG setelah price check ulangnya gagal: diverifikasi, bukan ditolak', async () => {
+    // Step 22: seribu persetujuan serentak. Persetujuan tersimpan, price check
+    // ulangnya gagal (basis data penuh → 503), dan klien mengulang
+    // persetujuan yang SAMA. Versi sebelumnya menolaknya 409
+    // BOOKING_RULE_VIOLATION — pengguna yang sudah menyetujui terjebak.
+    const world = harness()
+    world.suppliers.supplierTotal = money(2_100_000, 'IDR')
+    const booking = checked(await startPriceCheck(world.deps, priceCheckRequest()))
+    world.suppliers.nextPrice({ kind: 'unreachable' })
+    const first = await acceptPriceChange(world.deps, { userId: USER, bookingId: booking.id })
+    expect(first.kind).toBe('retry_later')
+
+    const retried = checked(
+      await acceptPriceChange(world.deps, { userId: USER, bookingId: booking.id }),
+    )
+
+    expect(retried.status === 'PRICE_CHECKED' && retried.priceCheck.kind).toBe('verified')
+    expect(retried.price.total).toEqual(money(2_564_100, 'IDR'))
+  })
+
   test('persetujuan tanpa perubahan harga ditolak domain', async () => {
     const world = harness()
     const booking = checked(await startPriceCheck(world.deps, priceCheckRequest()))

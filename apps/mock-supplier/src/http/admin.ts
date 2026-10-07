@@ -7,7 +7,7 @@ import {
   SUPPLIER_OPERATIONS,
   type FaultScript,
 } from '../application/fault-script.js'
-import type { OperationDeps } from '../application/ports.js'
+import type { OperationDeps, RefIndex } from '../application/ports.js'
 import { reservationSnapshot } from '../application/reservation.js'
 import { SUPPLIER_CODES, SUPPLIER_PROFILES, isSupplierCode } from '../domain/supplier.js'
 
@@ -34,6 +34,11 @@ const failureSchema = z.object({
 
 const driftSchema = z.object({ rate: z.number().min(0).max(1) })
 
+const stockSchema = z.object({
+  rateRef: z.string().min(1).max(200),
+  units: z.number().int().min(0).max(10_000),
+})
+
 const faultSchema = z.object({
   operation: z.enum(SUPPLIER_OPERATIONS),
   mode: z.enum(SCRIPTED_MODES),
@@ -44,6 +49,7 @@ export interface AdminRouterOptions {
   readonly chaos: ChaosRegistry
   readonly script: FaultScript
   readonly deps: OperationDeps
+  readonly refs: RefIndex
 }
 
 export function createAdminRouter(options: AdminRouterOptions): Router {
@@ -52,6 +58,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
   registerGlobalRoutes(router, options)
   registerSupplierRoutes(router, options.chaos)
   registerScriptRoutes(router, options.script)
+  registerStockRoute(router, options)
 
   return router
 }
@@ -160,6 +167,30 @@ function registerScriptRoutes(router: Router, script: FaultScript): void {
     }
 
     res.json({ supplier: code, scripted: script.add(code, parsed.data) })
+  })
+}
+
+function registerStockRoute(router: Router, options: AdminRouterOptions): void {
+  // Uji beban US-04 membutuhkan tepat sepuluh unit; ketersediaan dasar
+  // dibatasi MAX_UNITS_PER_NIGHT. Stok yang ditetapkan menggantikannya untuk
+  // satu rate plan sampai /inventory/reset (Step 22). Rate plan disebut dengan
+  // pengenal versi supplier — yang dilihat pemanggil di jawaban pencarian.
+  router.post('/:supplier/stock', (req, res) => {
+    const code = pathParam(req, 'supplier').toUpperCase()
+    const parsed = stockSchema.safeParse(req.body)
+    if (!isSupplierCode(code)) {
+      res.status(404).json({ error: 'UNKNOWN_SUPPLIER' })
+      return
+    }
+    const ratePlanId = parsed.success
+      ? options.refs.ratePlanIdOf(code, parsed.data.rateRef)
+      : undefined
+    if (!parsed.success || ratePlanId === undefined) {
+      res.status(400).json({ error: 'INVALID_STOCK' })
+      return
+    }
+    options.deps.store.setStockOverride(ratePlanId, parsed.data.units)
+    res.json({ supplier: code, rateRef: parsed.data.rateRef, units: parsed.data.units })
   })
 }
 
