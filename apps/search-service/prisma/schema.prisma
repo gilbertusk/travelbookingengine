@@ -62,6 +62,10 @@ model Property {
   description String?
   photos      String[]
 
+  /// Kontak properti untuk e-voucher (Step 23). Data statis, seperti alamat.
+  phone String?
+  email String?
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

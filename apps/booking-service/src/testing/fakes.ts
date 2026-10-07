@@ -356,6 +356,12 @@ export function priceCheckRequest(
     propertyId: 'prop-bali-001',
     city: 'Denpasar',
     ratePlanRef: 'SKY-RP-DLX-BB',
+    offer: {
+      roomTypeName: 'Deluxe King',
+      ratePlanName: 'Termasuk sarapan',
+      breakfastIncluded: true,
+      cancellationPolicy: { refundable: true as const, freeCancellationDays: 3 },
+    },
     checkIn: '2026-11-10',
     checkOut: '2026-11-12',
     guest: { fullName: 'Sari Wulandari', email: 'sari@example.com', count: 2 },

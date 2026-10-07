@@ -6,6 +6,7 @@ import { createBooking } from '../domain/create-booking.js'
 import type { BookingError } from '../domain/errors.js'
 import { guestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey } from '../domain/idempotency-key.js'
+import { offerTerms, type OfferTermsInput } from '../domain/offer-terms.js'
 import { priceBreakdown } from '../domain/price.js'
 import { stayDates } from '../domain/stay-dates.js'
 import { quoteLive } from './live-quote.js'
@@ -28,6 +29,8 @@ export interface PriceCheckRequest {
   readonly propertyId: string
   readonly city: string
   readonly ratePlanRef: string
+  /** Ketentuan tawaran yang dilihat pengguna — bahan e-voucher (Step 23). */
+  readonly offer: OfferTermsInput
   readonly checkIn: string
   readonly checkOut: string
   readonly guest: { readonly fullName: string; readonly email: string; readonly count: number }
@@ -167,6 +170,9 @@ function draftFor(deps: BookingDeps, request: PriceCheckRequest) {
   const guests = guestDetails(request.guest)
   if (!guests.ok) return err(`data tamu tidak sah: ${guests.error.kind}`)
 
+  const terms = offerTerms(request.offer)
+  if (!terms.ok) return err(`ketentuan tawaran tidak sah: ${terms.error.kind}`)
+
   // Harga awal adalah harga yang DITAMPILKAN — satu baris, karena hasil
   // pencarian hanya membawa totalnya. Rinciannya menyusul dari price check.
   const price = priceBreakdown([
@@ -181,6 +187,7 @@ function draftFor(deps: BookingDeps, request: PriceCheckRequest) {
     propertyId: request.propertyId,
     city: request.city,
     ratePlanRef: request.ratePlanRef,
+    terms: terms.value,
     stay: stay.value,
     guests: guests.value,
     price: price.value,

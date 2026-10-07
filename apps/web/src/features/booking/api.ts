@@ -23,12 +23,26 @@ export interface PriceCheckInput {
   readonly propertyId: string
   readonly city: string
   readonly ratePlanRef: string
+  /**
+   * Ketentuan tawaran yang dilihat pengguna. booking-service menyalinnya
+   * sebagai bahan e-voucher (Step 23); harga tidak termasuk di sini.
+   */
+  readonly offer: OfferTermsInput
   readonly checkIn: string
   readonly checkOut: string
   readonly guests: number
   readonly guest: GuestInput
   /** Harga yang dilihat pengguna. booking-service membandingkannya, tidak mempercayainya. */
   readonly displayedTotal: Money
+}
+
+export interface OfferTermsInput {
+  readonly roomTypeName: string
+  readonly ratePlanName: string
+  readonly breakfastIncluded: boolean
+  readonly cancellationPolicy:
+    | { readonly refundable: false }
+    | { readonly refundable: true; readonly freeCancellationDays?: number }
 }
 
 export async function priceCheck(input: PriceCheckInput): Promise<Booking> {
@@ -40,6 +54,7 @@ export async function priceCheck(input: PriceCheckInput): Promise<Booking> {
       propertyId: input.propertyId,
       city: input.city,
       ratePlanRef: input.ratePlanRef,
+      offer: input.offer,
       checkIn: input.checkIn,
       checkOut: input.checkOut,
       guest: { ...input.guest, count: input.guests },

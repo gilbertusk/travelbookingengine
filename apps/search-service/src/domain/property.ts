@@ -28,6 +28,13 @@ export const propertySchema = z.object({
   amenities: z.array(z.string()),
   description: z.string().optional(),
   photos: z.array(z.string()),
+  /**
+   * Kontak properti untuk e-voucher (Step 23). Opsional: properti yang dibuat
+   * operator dari antrian belum terpetakan belum tentu punya kontak, dan
+   * voucher-nya menyebut tidak ada kontak alih-alih menampilkan string kosong.
+   */
+  phone: z.string().min(1).optional(),
+  email: z.string().min(1).optional(),
 })
 
 export type Property = z.infer<typeof propertySchema>

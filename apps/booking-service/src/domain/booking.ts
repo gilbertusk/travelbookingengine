@@ -1,5 +1,6 @@
 import type { GuestDetails } from './guest-details.js'
 import type { IdempotencyKey } from './idempotency-key.js'
+import type { OfferTerms } from './offer-terms.js'
 import type { PriceBreakdown } from './price.js'
 import type { StayDates } from './stay-dates.js'
 
@@ -122,6 +123,12 @@ export interface BookingBase {
    */
   readonly city: string
   readonly ratePlanRef: string
+  /**
+   * Ketentuan tawaran saat price check (Step 23) — bahan e-voucher. Tidak ada
+   * hanya pada pemesanan yang dibuat sebelum Step 23; voucher-nya menyebut
+   * ketentuan itu tidak tercatat alih-alih menebaknya.
+   */
+  readonly terms?: OfferTerms
   readonly stay: StayDates
   readonly guests: GuestDetails
   /**
@@ -196,6 +203,7 @@ export function baseOf(booking: Booking): BookingBase {
     propertyId: booking.propertyId,
     city: booking.city,
     ratePlanRef: booking.ratePlanRef,
+    ...(booking.terms === undefined ? {} : { terms: booking.terms }),
     stay: booking.stay,
     guests: booking.guests,
     price: booking.price,

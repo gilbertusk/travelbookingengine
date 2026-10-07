@@ -13,6 +13,8 @@ import type { CatalogDeps, CatalogSnapshot } from '../application/ports.js'
  *   Publik   — autocomplete dan halaman properti. Dilayani snapshot di memori.
  *   Operator — antrian properti belum terpetakan. Dilindungi peran operator
  *              di api-gateway, bukan di sini.
+ *   Service  — properti menurut pengenal supplier, untuk voucher-service
+ *              (Step 23). Tidak dirutekan api-gateway sama sekali.
  */
 
 const SUGGEST_MAX_LIMIT = 25
@@ -73,6 +75,10 @@ export function createCatalogRouter(options: CatalogRouterOptions): Router {
   router.get('/catalog/suggest', suggestQuery, suggestHandler(options.deps))
   router.get('/catalog/properties/:slug', propertyHandler(options))
 
+  router.get(
+    '/internal/catalog/properties/by-supplier/:supplierId/:supplierPropertyId',
+    bySupplierHandler(options),
+  )
   router.get('/internal/catalog/unmapped', unmappedHandler(options.deps))
   router.post('/internal/catalog/unmapped/map', mapExistingBody, mapExistingHandler(options))
   router.post('/internal/catalog/unmapped/create', createPropertyBody, createHandler(options))
@@ -110,6 +116,36 @@ function propertyHandler(options: CatalogRouterOptions): RequestHandler {
     const property = snapshot.propertyBySlug(slug)
     if (property === undefined) {
       next(new NotFoundError(`properti ${slug} tidak ditemukan`))
+      return
+    }
+
+    res.json(success(property))
+  }
+}
+
+/**
+ * Properti kanonik menurut pengenal supplier (Step 23).
+ *
+ * Pemesanan menyimpan pengenal properti MILIK SUPPLIER — itu yang dibawa hasil
+ * pencarian sampai ke price check. Voucher membutuhkan nama, alamat, dan
+ * kontak dari katalog, jadi pemetaannya diterjemahkan di sini, dari snapshot
+ * yang sama dengan pencarian.
+ */
+function bySupplierHandler(options: CatalogRouterOptions): RequestHandler {
+  return (req, res, next) => {
+    const snapshot = options.snapshot()
+    if (snapshot === undefined) {
+      next(new NotFoundError('katalog belum termuat'))
+      return
+    }
+
+    const supplierId = String(req.params.supplierId)
+    const supplierPropertyId = String(req.params.supplierPropertyId)
+    const propertyId = snapshot.propertyId(supplierId, supplierPropertyId)
+    const property = propertyId === undefined ? undefined : snapshot.property(propertyId)
+
+    if (property === undefined) {
+      next(new NotFoundError(`properti ${supplierId}/${supplierPropertyId} belum terpetakan`))
       return
     }
 

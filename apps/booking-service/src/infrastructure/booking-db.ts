@@ -71,6 +71,8 @@ export interface BookingStateColumns {
 
 export interface BookingWriteColumns extends BookingIdentityColumns, BookingStateColumns {
   readonly priceLines: JsonObject
+  /** `{ terms: {...} | null }` — lihat schema.prisma. Ditulis sekali, saat dibuat. */
+  readonly offerTerms: JsonObject
 }
 
 /**
@@ -79,6 +81,7 @@ export interface BookingWriteColumns extends BookingIdentityColumns, BookingStat
  */
 export interface BookingRow extends BookingIdentityColumns, BookingStateColumns {
   readonly priceLines: unknown
+  readonly offerTerms: unknown
 }
 
 export interface EventWriteColumns {

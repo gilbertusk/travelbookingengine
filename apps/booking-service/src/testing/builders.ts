@@ -7,6 +7,7 @@ import { guestDetails, type GuestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey, type IdempotencyKey } from '../domain/idempotency-key.js'
 import { priceBreakdown, type PriceBreakdown } from '../domain/price.js'
 import { stayDates, type StayDates } from '../domain/stay-dates.js'
+import type { OfferTerms } from '../domain/offer-terms.js'
 import { applyCommand } from '../domain/transitions.js'
 
 /**
@@ -67,6 +68,14 @@ export function sampleKey(suffix = 'a'): IdempotencyKey {
   return key
 }
 
+/** Ketentuan tawaran contoh — bahan e-voucher (Step 23). */
+export const SAMPLE_TERMS: OfferTerms = {
+  roomTypeName: 'Deluxe King',
+  ratePlanName: 'Termasuk sarapan',
+  breakfastIncluded: true,
+  cancellationPolicy: { refundable: true, freeCancellationDays: 3 },
+}
+
 export function draftChange(
   overrides: { id?: string; key?: IdempotencyKey; userId?: string } = {},
 ): BookingChange<BookingIn<'DRAFT'>> {
@@ -78,6 +87,7 @@ export function draftChange(
       propertyId: 'prop-bali-001',
       city: 'Denpasar',
       ratePlanRef: 'SKY:RP-DLX-BB',
+      terms: SAMPLE_TERMS,
       stay: sampleStay(),
       guests: sampleGuests(),
       price: samplePrice(),

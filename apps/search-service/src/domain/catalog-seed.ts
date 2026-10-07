@@ -30,6 +30,9 @@ export const groundTruthSchema = z.object({
       timezone: z.string().min(1),
       starRating: z.number().int(),
       amenities: z.array(z.string()),
+      /** Kontak properti (Step 23). Opsional: sumber yang lebih tua belum memuatnya. */
+      phone: z.string().min(1).optional(),
+      email: z.string().min(1).optional(),
       offeredBy: z.array(
         z.object({
           supplier: z.string().min(1),
@@ -114,6 +117,8 @@ function toProperty(
     starRating: source.starRating,
     amenities: [...source.amenities],
     photos: [],
+    ...(source.phone === undefined ? {} : { phone: source.phone }),
+    ...(source.email === undefined ? {} : { email: source.email }),
   }
 }
 

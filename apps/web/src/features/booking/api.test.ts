@@ -43,6 +43,12 @@ describe('panggilan alur pemesanan lewat api-gateway', () => {
       propertyId: 'sky-1',
       city: 'Bali',
       ratePlanRef: 'SKY-RP-1',
+      offer: {
+        roomTypeName: 'Deluxe',
+        ratePlanName: 'Tanpa sarapan',
+        breakfastIncluded: false,
+        cancellationPolicy: { refundable: false },
+      },
       checkIn: '2026-11-10',
       checkOut: '2026-11-12',
       guests: 3,
@@ -56,6 +62,7 @@ describe('panggilan alur pemesanan lewat api-gateway', () => {
       method: 'POST',
       body: {
         idempotencyKey: 'web-1',
+        offer: { roomTypeName: 'Deluxe', cancellationPolicy: { refundable: false } },
         guest: { fullName: 'Budi', email: 'budi@example.test', count: 3 },
         displayedTotal: { amountMinor: 2_442_000, currency: 'IDR' },
       },

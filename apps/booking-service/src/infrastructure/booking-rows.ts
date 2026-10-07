@@ -10,6 +10,7 @@ import {
 import type { BookingEvent } from '../domain/events.js'
 import { guestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey } from '../domain/idempotency-key.js'
+import { offerTerms, type OfferTerms } from '../domain/offer-terms.js'
 import { LINE_ITEM_KINDS, priceBreakdown, type PriceBreakdown } from '../domain/price.js'
 import { parseLocalDate, stayDates, type LocalDate } from '../domain/stay-dates.js'
 import type {
@@ -64,6 +65,36 @@ const lineItemsSchema = z.array(
 
 const priceLinesSchema = z.object({ agreed: lineItemsSchema, quoted: lineItemsSchema.nullable() })
 
+const offerTermsSchema = z.object({
+  terms: z
+    .object({
+      roomTypeName: z.string(),
+      ratePlanName: z.string(),
+      breakfastIncluded: z.boolean(),
+      cancellationPolicy: z.discriminatedUnion('refundable', [
+        z.object({ refundable: z.literal(false) }),
+        z.object({
+          refundable: z.literal(true),
+          freeCancellationDays: z.number().optional(),
+        }),
+      ]),
+    })
+    .nullable(),
+})
+
+function offerTermsJson(terms: OfferTerms | undefined): JsonObject {
+  if (terms === undefined) return { terms: null }
+
+  return {
+    terms: {
+      roomTypeName: terms.roomTypeName,
+      ratePlanName: terms.ratePlanName,
+      breakfastIncluded: terms.breakfastIncluded,
+      cancellationPolicy: { ...terms.cancellationPolicy },
+    },
+  }
+}
+
 function lineItemsJson(price: PriceBreakdown): JsonInput {
   return price.lineItems.map((item) => ({
     kind: item.kind,
@@ -117,6 +148,7 @@ export function toRow(booking: Booking): BookingWriteColumns {
     guests: booking.guests.count,
     leadGuestName: booking.guests.leadGuest.fullName,
     leadGuestEmail: booking.guests.leadGuest.email,
+    offerTerms: offerTermsJson(booking.terms),
     idempotencyKey: booking.idempotencyKey,
     createdAt: booking.createdAt,
     ...toStateColumns(booking),
@@ -251,6 +283,7 @@ function baseFromRow(row: BookingRow, read: BookingRowReader): BookingBase {
     propertyId: row.propertyId,
     city: row.city,
     ratePlanRef: row.ratePlanRef,
+    ...termsFromRow(row, read),
     stay: read.check(stay.ok ? stay.value : undefined, 'checkIn/checkOut'),
     guests: read.check(guests.ok ? guests.value : undefined, 'guests'),
     price: agreedPrice(row, read),
@@ -259,6 +292,21 @@ function baseFromRow(row: BookingRow, read: BookingRowReader): BookingBase {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
+}
+
+/**
+ * Ketentuan tawaran disusun ulang lewat konstruktor domain yang sama dengan
+ * jalur tulis. `terms: null` sah — pemesanan sebelum Step 23 — dan menjadi
+ * bidang yang tidak ada, bukan galat.
+ */
+function termsFromRow(row: BookingRow, read: BookingRowReader): { terms?: OfferTerms } {
+  const parsed = offerTermsSchema.safeParse(row.offerTerms)
+  const stored = read.check(parsed.success ? parsed.data : undefined, 'offerTerms')
+  if (stored.terms === null) return {}
+
+  const terms = offerTerms(stored.terms)
+
+  return { terms: read.check(terms.ok ? terms.value : undefined, 'offerTerms.terms') }
 }
 
 function supplierOf(value: string): SupplierCode | undefined {

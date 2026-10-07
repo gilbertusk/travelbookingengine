@@ -166,6 +166,31 @@ describe('halaman properti menurut slug', () => {
   })
 })
 
+describe('properti menurut pengenal supplier (Step 23)', () => {
+  const PATH = '/internal/catalog/properties/by-supplier'
+
+  test('pengenal supplier diterjemahkan ke properti kanonik', async () => {
+    const response = await request((await appWith()).app).get(`${PATH}/SKY/sky-120804930`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.data).toMatchObject({ id: PADMA.id, name: PADMA.name })
+  })
+
+  test('pengenal yang belum terpetakan dijawab 404', async () => {
+    const response = await request((await appWith()).app).get(`${PATH}/ZEPH/zeph-999`)
+
+    expect(response.status).toBe(404)
+  })
+
+  test('katalog yang belum termuat dijawab 404, bukan 500', async () => {
+    const { app } = await appWith({ loaded: false })
+
+    const response = await request(app).get(`${PATH}/SKY/sky-120804930`)
+
+    expect(response.status).toBe(404)
+  })
+})
+
 describe('kesiapan', () => {
   test('tanpa katalog, service menyatakan diri belum siap', async () => {
     const { app } = await appWith({ loaded: false })

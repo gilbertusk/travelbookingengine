@@ -4,6 +4,7 @@ import { BookingRuleError } from './errors.js'
 import type { BookingChange } from './events.js'
 import type { GuestDetails } from './guest-details.js'
 import type { IdempotencyKey } from './idempotency-key.js'
+import type { OfferTerms } from './offer-terms.js'
 import type { PriceBreakdown } from './price.js'
 import type { StayDates } from './stay-dates.js'
 
@@ -27,6 +28,7 @@ export interface CreateBookingInput {
   readonly propertyId: string
   readonly city: string
   readonly ratePlanRef: string
+  readonly terms?: OfferTerms
   readonly stay: StayDates
   readonly guests: GuestDetails
   readonly price: PriceBreakdown

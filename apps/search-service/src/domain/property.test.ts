@@ -26,6 +26,16 @@ describe('baris yang sah', () => {
     expect(propertySchema.safeParse(VALID).success).toBe(true)
   })
 
+  test('kontak properti diterima bila ada', () => {
+    const parsed = propertySchema.safeParse({
+      ...VALID,
+      phone: '+62 361 1234',
+      email: 'a@b.example',
+    })
+
+    expect(parsed.success).toBe(true)
+  })
+
   test('deskripsi boleh tidak ada', () => {
     expect(propertySchema.safeParse(TANPA_DESKRIPSI).success).toBe(true)
   })
@@ -46,6 +56,12 @@ describe('baris yang ditolak', () => {
     // Step 25 menghitung tenggat pembatalan dengannya. Kolom kosong yang lolos
     // di sini menjadi pengembalian dana yang keliru berbulan-bulan kemudian.
     expect(propertySchema.safeParse({ ...VALID, timezone: '' }).success).toBe(false)
+  })
+
+  test('kontak yang berupa string kosong', () => {
+    // Kosong berarti "tidak diketahui", dan itu dinyatakan dengan ketiadaan
+    // bidangnya — voucher membedakan keduanya.
+    expect(propertySchema.safeParse({ ...VALID, phone: '' }).success).toBe(false)
   })
 
   test('kode negara yang bukan dua huruf', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { inState, priceChanged } from '../testing/builders.js'
+import { SAMPLE_TERMS, inState, priceChanged } from '../testing/builders.js'
 import type { BookingRow } from './booking-db.js'
 import { CorruptBookingRowError } from './booking-row-reader.js'
 import { fromDateColumn, fromRow, toDateColumn, toJsonObject, toRow } from './booking-rows.js'
@@ -138,6 +138,40 @@ describe('baris dibaca dengan tidak mempercayai basis data', () => {
     } catch (error) {
       expect(error).toMatchObject({ bookingId: row.id, column: 'paymentId' })
     }
+  })
+})
+
+describe('ketentuan tawaran (Step 23)', () => {
+  test('ketentuan tawaran selamat pulang-pergi lewat baris, di keadaan mana pun', () => {
+    for (const status of ['DRAFT', 'HELD', 'CONFIRMED'] as const) {
+      expect(fromRow(toRow(inState(status))).terms).toEqual(SAMPLE_TERMS)
+    }
+  })
+
+  test('baris sebelum Step 23 dibaca tanpa ketentuan, bukan sebagai galat', () => {
+    const legacy: BookingRow = { ...toRow(inState('CONFIRMED')), offerTerms: { terms: null } }
+
+    const booking = fromRow(legacy)
+
+    expect(booking.terms).toBeUndefined()
+    expect('terms' in booking).toBe(false)
+  })
+
+  test('pemesanan tanpa ketentuan ditulis sebagai terms null', () => {
+    const { terms, ...withoutTerms } = inState('DRAFT')
+
+    expect(terms).toBeDefined()
+    expect(toRow(withoutTerms).offerTerms).toEqual({ terms: null })
+  })
+
+  test.each([
+    ['bukan bentuknya', { roomTypeName: 'Deluxe' }, 'offerTerms'],
+    ['nama kamar kosong', { terms: { ...SAMPLE_TERMS, roomTypeName: '  ' } }, 'offerTerms.terms'],
+  ])('ketentuan yang %s ditolak dengan nama kolomnya', (_name, offerTerms, column) => {
+    const row: BookingRow = { ...toRow(inState('DRAFT')), offerTerms }
+
+    expect(() => fromRow(row)).toThrow(CorruptBookingRowError)
+    expect(() => fromRow(row)).toThrow(column)
   })
 })
 

@@ -24,6 +24,9 @@ interface CatalogEntry {
   name: string
   city: string
   timezone: string
+  countryCode: string
+  phone: string
+  email: string
   offeredBy: CatalogOffer[]
 }
 
@@ -48,6 +51,17 @@ describe('katalog kanonik', () => {
     const properties = await fetchCatalog()
 
     expect(properties.every((property) => property.timezone.length > 0)).toBe(true)
+  })
+
+  test('setiap properti membawa kontak untuk e-voucher, dengan kode negaranya', async () => {
+    // Step 23: voucher wajib memuat kontak properti.
+    const properties = await fetchCatalog()
+    const dial: Record<string, string> = { ID: '+62', SG: '+65', MY: '+60', TH: '+66' }
+
+    for (const property of properties) {
+      expect(property.phone.startsWith(`${dial[property.countryCode] ?? '?'} `)).toBe(true)
+      expect(property.email).toMatch(/^reservasi@[a-z0-9-]+.example$/)
+    }
   })
 
   test('jawabannya sama setiap kali ditanya', async () => {

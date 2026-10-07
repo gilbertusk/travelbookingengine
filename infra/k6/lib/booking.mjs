@@ -63,6 +63,14 @@ export function priceChecked(userId, idempotencyKey, guests = 2) {
   const body = {
     idempotencyKey,
     ...STAY,
+    // Ketentuan tawaran sebagai bahan e-voucher (Step 23). Uji beban tidak
+    // memeriksanya; nilainya cukup sah.
+    offer: {
+      roomTypeName: 'Kamar Uji Beban',
+      ratePlanName: 'Tarif Uji Beban',
+      breakfastIncluded: false,
+      cancellationPolicy: { refundable: false },
+    },
     guest: { fullName: 'Tamu Uji Beban', email: 'beban@example.test', count: guests },
     displayedTotal: { amountMinor: 1, currency: 'IDR' },
   }
