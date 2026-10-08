@@ -66,6 +66,17 @@ export function createMinioStorage(options: MinioOptions): VoucherStorage & {
       })
     },
 
+    async read(objectKey) {
+      return await upstream('membaca voucher', async () => {
+        const stream = await internal.getObject(bucket, objectKey)
+        const chunks: Buffer[] = []
+        for await (const chunk of stream) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+        }
+        return new Uint8Array(Buffer.concat(chunks))
+      })
+    },
+
     async signedUrl(objectKey, ttlSeconds) {
       return await upstream('menandatangani URL voucher', async () => {
         // Nama berkas yang ramah untuk pengunduh; kunci objeknya sendiri acak.

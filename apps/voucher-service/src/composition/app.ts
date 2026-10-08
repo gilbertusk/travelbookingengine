@@ -9,6 +9,7 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { VoucherDeps } from '../application/ports.js'
+import { createInternalRouter } from '../http/internal-routes.js'
 import { createVoucherRouter } from '../http/voucher-routes.js'
 
 /**
@@ -43,6 +44,7 @@ export function createVoucherHttpApp(options: VoucherHttpOptions): Express {
     ),
   )
   app.use(createVoucherRouter(options.deps))
+  app.use(createInternalRouter(options.deps))
 
   finalizeHttpServer(app, options.logger)
 

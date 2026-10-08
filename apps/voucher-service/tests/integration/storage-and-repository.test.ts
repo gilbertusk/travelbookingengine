@@ -5,7 +5,7 @@ import { GenericContainer, Wait } from 'testcontainers'
 import { Client } from 'minio'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { issueVoucher } from '../../src/application/issue-voucher.js'
-import { voucherLink } from '../../src/application/voucher-access.js'
+import { voucherDocument, voucherLink } from '../../src/application/voucher-access.js'
 import type { VoucherDeps } from '../../src/application/ports.js'
 import type { Voucher } from '../../src/domain/voucher.js'
 import { createMinioStorage } from '../../src/infrastructure/minio-storage.js'
@@ -159,6 +159,14 @@ describe('alur sungguhan: PDF ke MinIO, metadata ke Postgres', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('application/pdf')
     expect(Buffer.from(body.subarray(0, 5)).toString('latin1')).toBe('%PDF-')
+  })
+
+  test('isi berkas dibaca kembali utuh untuk lampiran surel (Step 24)', async () => {
+    const pdf = await voucherDocument(realDeps(), BOOKING_ID)
+    const stored = await prisma.voucher.findUnique({ where: { bookingId: BOOKING_ID } })
+
+    expect(pdf?.byteLength).toBe(stored?.sizeBytes)
+    expect(Buffer.from(pdf?.subarray(0, 5) ?? []).toString('latin1')).toBe('%PDF-')
   })
 
   test('URL yang tanda tangannya diubah ditolak MinIO', async () => {

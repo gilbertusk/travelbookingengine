@@ -140,6 +140,11 @@ export function fakeStorage(): FakeStorage {
       objects.delete(key)
       await Promise.resolve()
     },
+    async read(key) {
+      const pdf = objects.get(key)
+      if (pdf === undefined) throw new Error(`objek ${key} tidak ada`)
+      return await Promise.resolve(pdf)
+    },
     async signedUrl(key, ttl) {
       fake.signed.push({ key, ttl })
       return await Promise.resolve(
