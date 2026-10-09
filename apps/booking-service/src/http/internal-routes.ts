@@ -6,7 +6,7 @@ import type { Booking } from '../domain/booking.js'
 import { bookingParams } from './booking-routes.js'
 
 /**
- * Antarmuka antar-service (Step 23).
+ * Antarmuka antar-service (Step 23, Step 24).
  *
  * Awalan `/internal` TIDAK dirutekan api-gateway — daftar rutenya hanya
  * memuat awalan publik — sehingga rute ini hanya dapat dicapai dari jaringan
@@ -18,19 +18,28 @@ import { bookingParams } from './booking-routes.js'
 export function createInternalRouter(deps: BookingDeps): Router {
   const router = Router()
 
-  router.get('/internal/bookings/:id/voucher-source', bookingParams, voucherSourceHandler(deps))
+  router.get(
+    '/internal/bookings/:id/voucher-source',
+    bookingParams,
+    viewHandler(deps, voucherSourceView),
+  )
+  router.get(
+    '/internal/bookings/:id/notification-source',
+    bookingParams,
+    viewHandler(deps, notificationSourceView),
+  )
 
   return router
 }
 
-function voucherSourceHandler(deps: BookingDeps): RequestHandler {
+function viewHandler(deps: BookingDeps, view: (booking: Booking) => object): RequestHandler {
   return (_req, res, next) => {
     void deps.bookings.findById(bookingParams.value(res).id).then((booking) => {
       if (booking === undefined) {
         next(new NotFoundError('Pemesanan tidak ditemukan'))
         return
       }
-      res.json(success(voucherSourceView(booking)))
+      res.json(success(view(booking)))
     }, next)
   }
 }
@@ -69,5 +78,33 @@ export function voucherSourceView(booking: Booking) {
       })),
     },
     terms: booking.terms ?? null,
+  }
+}
+
+/**
+ * Bahan surel pemberitahuan (Step 24).
+ *
+ * Satu-satunya bentuk yang MEMBAWA surel tamu utama: alamat itu tujuan
+ * pemberitahuan, dan pemesanan adalah satu-satunya tempat ia tercatat —
+ * peristiwa Kafka sengaja tidak membawanya. Selebihnya hanya yang disebut
+ * surel: rincian harga, ketentuan lengkap, dan pengenal properti supplier
+ * tidak ikut, karena setiap bidang tambahan adalah data yang harus dijaga
+ * (NFR-15) tanpa ada yang membacanya.
+ */
+export function notificationSourceView(booking: Booking) {
+  return {
+    id: booking.id,
+    userId: booking.userId,
+    status: booking.status,
+    supplierRef: booking.supplierRef ?? null,
+    checkIn: booking.stay.checkIn,
+    checkOut: booking.stay.checkOut,
+    guestCount: booking.guests.count,
+    leadGuest: {
+      fullName: booking.guests.leadGuest.fullName,
+      email: booking.guests.leadGuest.email,
+    },
+    roomTypeName: booking.terms?.roomTypeName ?? null,
+    total: toJson(booking.price.total),
   }
 }

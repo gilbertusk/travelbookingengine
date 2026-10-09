@@ -53,3 +53,21 @@ export async function voucherLink(
 
   return { kind: 'pending' }
 }
+
+/**
+ * Isi berkas voucher untuk service lain (Step 24): notification-service
+ * melampirkannya pada surel konfirmasi.
+ *
+ * Tidak ada pemeriksaan kepemilikan di sini. Pemanggilnya service di jaringan
+ * internal yang mengirim surel ke tamu pemesanan itu sendiri; kunci objek
+ * tetap tidak pernah keluar dari service ini.
+ */
+export async function voucherDocument(
+  deps: VoucherDeps,
+  bookingId: string,
+): Promise<Uint8Array | undefined> {
+  const voucher = await deps.vouchers.findByBookingId(bookingId)
+  if (voucher === undefined) return undefined
+
+  return await deps.storage.read(voucher.objectKey)
+}

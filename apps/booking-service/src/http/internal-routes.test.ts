@@ -76,3 +76,61 @@ describe('GET /internal/bookings/:id/voucher-source', () => {
     expect(response.status).toBe(400)
   })
 })
+
+describe('GET /internal/bookings/:id/notification-source', () => {
+  test('membawa alamat surel tamu utama, karena itulah tujuan pemberitahuan', async () => {
+    const world = sagaWorld()
+    const paid = await world.paid()
+    await world.supplierConfirmed(paid)
+
+    const response = await request(app(world)).get(
+      `/internal/bookings/${paid.id}/notification-source`,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.body.data).toMatchObject({
+      id: paid.id,
+      userId: USER,
+      status: 'CONFIRMED',
+      checkIn: '2026-11-10',
+      checkOut: '2026-11-12',
+      guestCount: 2,
+      leadGuest: { fullName: 'Sari Wulandari', email: 'sari@example.com' },
+      roomTypeName: priceCheckRequest().offer.roomTypeName,
+      total: { amountMinor: expect.any(Number), currency: 'IDR' },
+    })
+    expect(response.body.data.supplierRef).toEqual(expect.any(String))
+  })
+
+  test('tidak membawa rincian harga, ketentuan, maupun pengenal supplier yang tidak dipakai surel', async () => {
+    const world = sagaWorld()
+    const paid = await world.paid()
+
+    const response = await request(app(world)).get(
+      `/internal/bookings/${paid.id}/notification-source`,
+    )
+
+    expect(Object.keys(response.body.data).sort()).toEqual(
+      [
+        'checkIn',
+        'checkOut',
+        'guestCount',
+        'id',
+        'leadGuest',
+        'roomTypeName',
+        'status',
+        'supplierRef',
+        'total',
+        'userId',
+      ].sort(),
+    )
+  })
+
+  test('pemesanan yang tidak ada dijawab 404', async () => {
+    const response = await request(app(sagaWorld())).get(
+      '/internal/bookings/00000000-0000-4000-8000-000000000000/notification-source',
+    )
+
+    expect(response.status).toBe(404)
+  })
+})

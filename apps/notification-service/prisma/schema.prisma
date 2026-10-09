@@ -1,0 +1,90 @@
+// Skema notification-service.
+//
+// Satu tabel: catatan setiap pemberitahuan, dari dicatat sampai terkirim,
+// gagal, atau masuk dead letter. Tabel ini sekaligus antrian penghantar:
+// pemberitahuan yang jatuh tempo diambil dengan FOR UPDATE SKIP LOCKED.
+//
+// Batasan yang memikul deduplikasi adalah `dedupe_key` UNIK. Pemeriksaan
+// "sudah ada?" di kode tidak ada sama sekali — baris kedua ditolak di sini.
+//
+// Yang TIDAK disimpan: alamat surel dan nama tamu. Keduanya dibaca dari
+// booking-service tepat sebelum surel disusun. `recipient_key` adalah SHA-256
+// alamat, cukup untuk pembatasan laju per penerima.
+//
+// Waktu bertipe TIMESTAMPTZ (CONVENTIONS.md bagian 9).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NotificationType {
+  booking_confirmed
+  booking_failed
+  booking_cancelled
+  refund_completed
+  manual_review
+
+  @@map("notification_type")
+}
+
+enum NotificationChannel {
+  email
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+  DEAD
+
+  @@map("notification_status")
+}
+
+enum NotificationSource {
+  event
+  command
+
+  @@map("notification_source")
+}
+
+model Notification {
+  id              String              @id @db.Uuid
+  bookingId       String              @map("booking_id") @db.Uuid
+  /// Kosong sampai pemesanan dibaca, bila pemicunya tidak membawa userId.
+  userId          String?             @map("user_id") @db.Uuid
+  type            NotificationType
+  channel         NotificationChannel @default(email)
+  status          NotificationStatus  @default(PENDING)
+  dedupeKey       String              @unique @map("dedupe_key")
+  source          NotificationSource
+  /// eventId pesan pemicu — jejak sebab-akibat.
+  sourceMessageId String              @map("source_message_id") @db.Uuid
+  /// correlationId pemicu, dipulihkan saat surel dikirim supaya log tersambung.
+  correlationId   String              @map("correlation_id")
+  /// Fakta pemicu yang disebut surel: alasan dan nilai uang. Tanpa data pribadi.
+  context         Json
+
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @map("next_attempt_at") @db.Timestamptz(3)
+  /// Sewa penghantar. Baris SENDING yang sewanya habis diambil lagi.
+  leaseUntil    DateTime? @map("lease_until") @db.Timestamptz(3)
+  recipientKey  String?   @map("recipient_key")
+  /// Kode galat terakhir (mis. `smtp_550`), tidak pernah teks balasan server.
+  lastError     String?   @map("last_error")
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(3)
+  createdAt     DateTime  @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @map("updated_at") @db.Timestamptz(3)
+
+  @@index([recipientKey, sentAt])
+  @@index([bookingId])
+  @@map("notifications")
+}

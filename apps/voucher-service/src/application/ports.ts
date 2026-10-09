@@ -38,6 +38,8 @@ export interface VoucherRepository {
 export interface VoucherStorage {
   put(objectKey: string, pdf: Uint8Array): Promise<void>
   remove(objectKey: string): Promise<void>
+  /** Isi berkas, untuk dilampirkan notification-service (Step 24). */
+  read(objectKey: string): Promise<Uint8Array>
   /** URL bertanda tangan untuk mengunduh, berlaku `ttlSeconds` detik. */
   signedUrl(objectKey: string, ttlSeconds: number): Promise<string>
 }
