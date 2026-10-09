@@ -11,8 +11,23 @@ import type { BookingDb } from './booking-db.js'
  * prisma.config.ts.
  */
 
-export function createPrismaClient(connectionString: string): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
+export interface PoolOptions {
+  /** Koneksi maksimum di kolam. Bawaan pg: 10. */
+  readonly max?: number
+  /** Batas menunggu koneksi untuk memulai transaksi. Bawaan Prisma: 2 detik. */
+  readonly transactionMaxWaitMs?: number
+}
+
+export function createPrismaClient(connectionString: string, pool: PoolOptions = {}): PrismaClient {
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString,
+      ...(pool.max === undefined ? {} : { max: pool.max }),
+    }),
+    ...(pool.transactionMaxWaitMs === undefined
+      ? {}
+      : { transactionOptions: { maxWait: pool.transactionMaxWaitMs } }),
+  })
 }
 
 export function prismaResource(client: PrismaClient): ManagedResource {

@@ -27,8 +27,13 @@ export function baseAvailability(ratePlanId: string, date: string): number {
  * Ketersediaan sebenarnya untuk satu malam setelah dikurangi unit yang sedang
  * ditahan dan yang sudah terjual.
  */
-export function remainingUnits(ratePlanId: string, date: string, consumed: number): number {
-  return Math.max(baseAvailability(ratePlanId, date) - consumed, 0)
+export function remainingUnits(
+  ratePlanId: string,
+  date: string,
+  consumed: number,
+  base: number = baseAvailability(ratePlanId, date),
+): number {
+  return Math.max(base - consumed, 0)
 }
 
 /**

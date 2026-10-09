@@ -1,0 +1,64 @@
+{
+  "scenario": "booking-idempotency",
+  "at": "2026-10-07T02:58:43.183Z",
+  "config": {
+    "keys": 50,
+    "copies": 10
+  },
+  "k6": {
+    "httpRequests": 2774
+  },
+  "statuses": {
+    "CONFIRMED": 50
+  },
+  "paymentToConfirmation": {
+    "count": 50,
+    "p50Ms": 885,
+    "p95Ms": 1741,
+    "maxMs": 1840
+  },
+  "failureToRefund": {
+    "count": 0,
+    "p50Ms": null,
+    "p95Ms": null,
+    "maxMs": null
+  },
+  "reviewReasons": {},
+  "checks": [
+    {
+      "name": "M5: CONFIRMED sama dengan ketersediaan awal",
+      "ok": true,
+      "detail": "50 CONFIRMED, ketersediaan 50"
+    },
+    {
+      "name": "Tidak ada booking reference supplier yang ganda",
+      "ok": true,
+      "detail": "nol ganda"
+    },
+    {
+      "name": "M6: setiap pembayaran berhasil berakhir terkonfirmasi atau direfund",
+      "ok": true,
+      "detail": "50 pembayaran berhasil, 0 direfund, 0 ditinjau manusia"
+    },
+    {
+      "name": "Tidak ada pemesanan berhenti sambil memegang kamar atau uang",
+      "ok": true,
+      "detail": "nol HELD, PAID, atau FAILED; 0 pra-hold (DRAFT/PRICE_CHECKED) tidak dibersihkan siapa pun"
+    },
+    {
+      "name": "Tidak ada hold yatim di Redis maupun di supplier",
+      "ok": true,
+      "detail": "nol"
+    },
+    {
+      "name": "Pemesanan di mock-supplier cocok dengan CONFIRMED",
+      "ok": true,
+      "detail": "supplier 50, kita 50"
+    },
+    {
+      "name": "Satu pemesanan per kunci, satu pembayaran per pemesanan",
+      "ok": true,
+      "detail": "50 kunci, 0 kunci dengan pemesanan ganda, 0 pemesanan dengan pembayaran ganda"
+    }
+  ]
+}

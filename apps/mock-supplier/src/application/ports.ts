@@ -50,6 +50,13 @@ export interface InventoryStore {
   bookingByIdempotencyKey(supplier: SupplierCode, key: string): Booking | undefined
   bookings(): readonly Booking[]
 
+  /**
+   * Stok yang ditetapkan panel kendali untuk satu rate plan (Step 22),
+   * menggantikan ketersediaan dasar di setiap malam.
+   */
+  stockOverride(ratePlanId: string): number | undefined
+  setStockOverride(ratePlanId: string, units: number): void
+
   driftedPrice(key: string): number | undefined
   setDriftedPrice(key: string, priceMinorIdr: number): void
 

@@ -37,6 +37,19 @@ describe('konfigurasi', () => {
     ).toThrow(/SAGA_STEP_LEASE_MS/)
   })
 
+  test('batas tunggu koneksi yang menghabiskan sewa langkah saga ditolak', () => {
+    expect(() =>
+      loadConfig({ ...REQUIRED, DATABASE_TX_MAX_WAIT_MS: '30000', SAGA_STEP_LEASE_MS: '60000' }),
+    ).toThrow(/DATABASE_TX_MAX_WAIT_MS/)
+  })
+
+  test('kolam koneksi dan batas tunggunya punya bawaan untuk lonjakan (Step 22)', () => {
+    const config = loadConfig(REQUIRED)
+
+    expect(config.DATABASE_POOL_MAX).toBe(20)
+    expect(config.DATABASE_TX_MAX_WAIT_MS).toBe(5_000)
+  })
+
   test('batas menunggu saga yang lebih pendek dari jenjang percobaan perintah ditolak', () => {
     // Menyerah sebelum supplier-service selesai mencoba berarti NEEDS_REVIEW
     // untuk pemesanan yang masih dikerjakan.

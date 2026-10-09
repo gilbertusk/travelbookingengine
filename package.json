@@ -34,7 +34,8 @@
     "topics:create": "pnpm --filter @tbe/messaging build && pnpm --filter @tbe/messaging topics:create",
     "loadtest:search": "node infra/k6/run.mjs baseline",
     "loadtest:search:degraded": "node infra/k6/run.mjs degraded",
-    "loadtest:cache": "node infra/k6/run.mjs cache"
+    "loadtest:cache": "node infra/k6/run.mjs cache",
+    "loadtest:booking": "pnpm --filter @tbe/saga-tests load"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

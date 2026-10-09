@@ -1,0 +1,66 @@
+{
+  "scenario": "booking-contention",
+  "at": "2026-10-07T02:56:14.083Z",
+  "config": {
+    "vus": 1000,
+    "units": 10
+  },
+  "k6": {
+    "holdP95Ms": 5200,
+    "holdP99Ms": 5220,
+    "holdMaxMs": 5237,
+    "held": 10,
+    "soldOut": 990,
+    "paymentsSent": 10,
+    "httpRequests": 3588
+  },
+  "statuses": {
+    "PRICE_CHECKED": 990,
+    "CONFIRMED": 10
+  },
+  "paymentToConfirmation": {
+    "count": 10,
+    "p50Ms": 191,
+    "p95Ms": 481,
+    "maxMs": 481
+  },
+  "failureToRefund": {
+    "count": 0,
+    "p50Ms": null,
+    "p95Ms": null,
+    "maxMs": null
+  },
+  "reviewReasons": {},
+  "checks": [
+    {
+      "name": "M5: CONFIRMED sama dengan ketersediaan awal",
+      "ok": true,
+      "detail": "10 CONFIRMED, ketersediaan 10"
+    },
+    {
+      "name": "Tidak ada booking reference supplier yang ganda",
+      "ok": true,
+      "detail": "nol ganda"
+    },
+    {
+      "name": "M6: setiap pembayaran berhasil berakhir terkonfirmasi atau direfund",
+      "ok": true,
+      "detail": "10 pembayaran berhasil, 0 direfund, 0 ditinjau manusia"
+    },
+    {
+      "name": "Tidak ada pemesanan berhenti sambil memegang kamar atau uang",
+      "ok": true,
+      "detail": "nol HELD, PAID, atau FAILED; 990 pra-hold (DRAFT/PRICE_CHECKED) tidak dibersihkan siapa pun"
+    },
+    {
+      "name": "Tidak ada hold yatim di Redis maupun di supplier",
+      "ok": true,
+      "detail": "nol"
+    },
+    {
+      "name": "Pemesanan di mock-supplier cocok dengan CONFIRMED",
+      "ok": true,
+      "detail": "supplier 10, kita 10"
+    }
+  ]
+}

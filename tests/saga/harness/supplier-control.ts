@@ -76,6 +76,23 @@ export interface SupplierControl {
    * Pergeseran harga tetap diuji, di Step 17, dengan sengaja.
    */
   reset(): Promise<void>
+  /** Mengosongkan hold, pemesanan, dan stok di mock-supplier — antara skenario uji beban. */
+  resetInventory(): Promise<void>
+  /** Stok tetap untuk satu rate plan SKY, melampaui batas dasar (Step 22). */
+  setSkyStock(rateRef: string, units: number): Promise<void>
+  /**
+   * SKY "mati" lewat panel kendali: koneksi diterima lalu diputus. Sejak Step
+   * 20 digolongkan TIDAK PASTI — bedanya dengan kontainer yang dihentikan.
+   */
+  panelDown(): Promise<void>
+  /**
+   * SKY menjawab 503 untuk SETIAP permintaan. Berbeda dari `panelDown`:
+   * jawaban 503 adalah kepastian bahwa permintaannya tidak dikerjakan, jadi
+   * pemesanan yang gagal dikonfirmasi berakhir di refund (US-03), bukan di
+   * peninjauan (US-05). `panelUp` tidak mengembalikannya — pakai `reset`.
+   */
+  panelRefuse(): Promise<void>
+  panelUp(): Promise<void>
   /**
    * Hold lalu book LANGSUNG di SKY, di luar saga, dengan kunci idempotensi
    * pemesanan — pemesanan supplier yang tidak pernah diketahui saga. Bentuk
@@ -150,6 +167,21 @@ export function createSupplierControl(mock: {
       )
       if (!booked.ok) throw new Error(`book langsung di SKY gagal: ${booked.error.kind}`)
       return booked.value.bookingReference
+    },
+    async resetInventory() {
+      await call('POST', '/admin/inventory/reset', {})
+    },
+    async setSkyStock(rateRef, units) {
+      await call('POST', '/admin/sky/stock', { rateRef, units })
+    },
+    async panelDown() {
+      await call('POST', '/admin/sky/down', {})
+    },
+    async panelUp() {
+      await call('POST', '/admin/sky/up', {})
+    },
+    async panelRefuse() {
+      await call('POST', '/admin/sky/failure', { rate: 1, mode: 'unavailable' })
     },
     async reset() {
       await call('POST', '/admin/reset', {})

@@ -95,8 +95,13 @@ export function createMemoryStore(): InventoryStore {
   const ledger = createConsumptionLedger()
   const reservations = createReservationBook()
   const driftedPrices = new Map<string, number>()
+  const stock = new Map<string, number>()
 
   return {
+    stockOverride: (ratePlanId) => stock.get(ratePlanId),
+    setStockOverride: (ratePlanId, units) => {
+      stock.set(ratePlanId, units)
+    },
     consumedUnits: (ratePlanId, date) => ledger.units(ratePlanId, date),
     consume: (ratePlanId, nights, units) => {
       ledger.adjust(ratePlanId, nights, units)
@@ -130,6 +135,7 @@ export function createMemoryStore(): InventoryStore {
       ledger.clear()
       reservations.clear()
       driftedPrices.clear()
+      stock.clear()
     },
   }
 }

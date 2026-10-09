@@ -178,42 +178,99 @@ async function saveHold(
   saga: SagaState,
   held: { readonly holdRef: string; readonly heldUntil: Date },
 ): Promise<HoldResult> {
+  const { deps } = attempt
+  let booking = attempt.booking
+
+  for (let rereads = 0; ; rereads += 1) {
+    const at = deps.clock.now()
+    const change = applyCommand(booking, { type: 'hold', at, ...held })
+
+    // Hold supplier yang sudah kedaluwarsa saat tiba, misalnya.
+    if (!change.ok) {
+      await abort(attempt, saga, {
+        stoppedAt: 'holdSupplier',
+        through: 'holdSupplier',
+        reason: change.error.message,
+      })
+      return { kind: 'refused', error: change.error }
+    }
+
+    const outcome = await deps.sagas.commit({
+      bookingId: booking.id,
+      at,
+      change: change.value,
+      saga: awaitReply(saga, 'awaitPayment', at, undefined),
+    })
+    if (outcome === 'committed') {
+      await deps.holds.shorten(booking.id, held.heldUntil)
+      return { kind: 'held', booking: change.value.booking }
+    }
+
+    const fresh = rereads < MAX_HOLD_REREADS ? await rereadForHold(attempt, saga) : 'moved'
+    if (typeof fresh !== 'string') {
+      booking = fresh
+      continue
+    }
+
+    // Pemesanan berpindah oleh pihak lain di antara langkah 1 dan 5 —
+    // dibatalkan pengguna, harganya berubah, atau saganya diambil alih
+    // pemulih. Pemesanan yang dikembalikan adalah yang dikenal permintaan
+    // ini; keadaan yang menang dibaca klien lewat GET.
+    const changed = fresh === 'price_changed'
+    await abort(attempt, saga, {
+      stoppedAt: 'holdSupplier',
+      through: 'holdSupplier',
+      reason: changed ? 'harga berubah di tengah hold' : 'pemesanan berpindah di tengah hold',
+    })
+    return changed ? { kind: 'price_changed', booking } : { kind: 'in_progress', booking }
+  }
+}
+
+/**
+ * Berapa kali commit HELD boleh diulang di atas pemesanan yang dibaca ulang.
+ *
+ * Tiga: setiap pengulangan hanya satu baca dan satu tulis ke basis data,
+ * sedangkan yang menggeser versinya — price check kembar — butuh satu
+ * perjalanan ke supplier per geseran. Pemesanan yang masih bergeser setelah
+ * tiga kali baca ulang sedang diperebutkan sesuatu yang bukan permintaan
+ * kembar, dan menyerah lebih jujur daripada berputar.
+ */
+const MAX_HOLD_REREADS = 3
+
+/**
+ * Pemesanan terbaru, bila hold yang sudah diambil MASIH sah di atasnya.
+ *
+ * Commit HELD yang kalah kunci versi belum tentu berarti hold-nya salah.
+ * Permintaan kembar (FR-18) — klik ganda, tab ganda, klien yang mengulang —
+ * menjalankan price check ulang, dan price check ulang yang menemukan harga
+ * yang SAMA tetap menaikkan versi pemesanan. Versi pertama memperlakukan itu
+ * seperti pembatalan: hold lokal dan hold supplier dibuang untuk harga yang
+ * tidak berubah, dan pemanggilnya dijawab "sedang diproses" padahal tidak
+ * ada lagi yang memprosesnya. Uji beban Step 22 menemukannya: sepuluh salinan
+ * per kunci, dan sembilan dari sepuluh kunci berakhir tanpa hold sama sekali.
+ *
+ * Yang dimaafkan HANYA versi yang bergeser. Tiga hal tetap membatalkan:
+ *
+ * - saganya sudah bukan milik permintaan ini — sewanya habis dan pemulih
+ *   mengambil alih, jadi kursinya milik kompensasi pemulih;
+ * - pemesanannya tidak lagi menunggu hold — dibatalkan, misalnya;
+ * - harganya berubah. Hold supplier diambil untuk harga yang disetujui saat
+ *   permintaan ini mulai; menahannya untuk harga lain melanggar G2.
+ */
+async function rereadForHold(
+  attempt: Attempt,
+  saga: SagaState,
+): Promise<Booking | 'moved' | 'price_changed'> {
   const { deps, booking } = attempt
-  const at = deps.clock.now()
-  const change = applyCommand(booking, { type: 'hold', at, ...held })
 
-  // Hold supplier yang sudah kedaluwarsa saat tiba, misalnya.
-  if (!change.ok) {
-    await abort(attempt, saga, {
-      stoppedAt: 'holdSupplier',
-      through: 'holdSupplier',
-      reason: change.error.message,
-    })
-    return { kind: 'refused', error: change.error }
-  }
+  const current = await deps.sagas.find(booking.id)
+  if (current?.version !== saga.version) return 'moved'
 
-  const waiting = awaitReply(saga, 'awaitPayment', at, undefined)
-  const outcome = await deps.sagas.commit({
-    bookingId: booking.id,
-    at,
-    change: change.value,
-    saga: waiting,
-  })
+  const fresh = await deps.bookings.findById(booking.id)
+  if (fresh?.status !== 'PRICE_CHECKED') return 'moved'
 
-  // Pemesanan berpindah oleh pihak lain di antara langkah 1 dan 5 —
-  // dibatalkan pengguna, misalnya. Pemesanan yang dikembalikan adalah yang
-  // dikenal permintaan ini; keadaan yang menang dibaca klien lewat GET.
-  if (outcome !== 'committed') {
-    await abort(attempt, saga, {
-      stoppedAt: 'holdSupplier',
-      through: 'holdSupplier',
-      reason: 'pemesanan berpindah di tengah hold',
-    })
-    return { kind: 'in_progress', booking }
-  }
-
-  await deps.holds.shorten(booking.id, held.heldUntil)
-  return { kind: 'held', booking: change.value.booking }
+  const approved = isSameAmount(fresh.price.total, booking.price.total)
+  return approved && fresh.priceCheck.kind !== 'changed' ? fresh : 'price_changed'
 }
 
 interface Abort {

@@ -53,6 +53,22 @@ const envSchema = baseEnvSchema
     SUPPLIER_SERVICE_URL: z.string().min(1).default('http://localhost:4004'),
     PRICING_SERVICE_URL: z.string().min(1).default('http://localhost:4005'),
     PAYMENT_SERVICE_URL: z.string().min(1).default('http://localhost:4007'),
+    /**
+     * Ukuran kolam koneksi Postgres per instance. Bawaan pg adalah 10, dan uji
+     * beban Step 22 menghabiskannya: seribu price check serentak, transaksi
+     * yang tidak mendapat koneksi dalam batas tunggu, dan hold yang gagal di
+     * TENGAH saga — kursinya tertahan sampai sewa habis dan pemulih
+     * mengompensasinya. Dua puluh per instance tetap jauh di bawah batas
+     * koneksi Postgres bawaan (100) untuk beberapa instance sekaligus.
+     */
+    DATABASE_POOL_MAX: z.coerce.number().int().positive().max(200).default(20),
+    /**
+     * Batas menunggu koneksi untuk memulai transaksi. Bawaan Prisma 2 detik —
+     * terlalu pendek untuk lonjakan; permintaan yang menunggu sebentar lebih
+     * baik daripada langkah saga yang gagal setengah jalan. Dibatasi oleh sewa
+     * saga (lihat superRefine).
+     */
+    DATABASE_TX_MAX_WAIT_MS: positiveMs(5_000),
     /** Batas waktu satu panggilan ke supplier-service atau pricing-service. */
     UPSTREAM_TIMEOUT_MS: positiveMs(5_000),
 
@@ -91,6 +107,16 @@ const envSchema = baseEnvSchema
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318/v1/traces'),
   })
   .superRefine((env, context) => {
+    // Satu langkah hold memulai lebih dari satu transaksi. Menunggu koneksi
+    // dua kali saja tidak boleh menghabiskan sewa: pemulih akan mengambil
+    // alih langkah yang prosesnya masih hidup.
+    if (2 * env.DATABASE_TX_MAX_WAIT_MS >= env.SAGA_STEP_LEASE_MS) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATABASE_TX_MAX_WAIT_MS'],
+        message: 'dua kali batas tunggu harus lebih pendek dari SAGA_STEP_LEASE_MS',
+      })
+    }
     // Hold memanggil dua service berurutan; sewa minimal tiga kali batas
     // waktunya memberi ruang untuk keduanya dan untuk basis data.
     if (env.SAGA_STEP_LEASE_MS <= 3 * env.UPSTREAM_TIMEOUT_MS) {

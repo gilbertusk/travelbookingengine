@@ -82,6 +82,13 @@ export async function acceptPriceChange(
   const booking = await loadOwned(deps, request.userId, request.bookingId)
   if (booking === undefined) return { kind: 'not_found' }
 
+  // Persetujuan yang diulang: sudah tersimpan, price check ulangnya yang belum
+  // berhasil. Yang tersisa hanyalah price check itu — menolak pengulangan
+  // menjebak pengguna yang jawabannya hilang atau dijawab 503 (Step 22).
+  if (booking.status === 'PRICE_CHECKED' && booking.priceCheck.kind === 'accepted') {
+    return await checkPrice(deps, booking)
+  }
+
   const accepted = await persist(deps, booking, { type: 'acceptPrice', at: deps.clock.now() })
   if (!accepted.ok) return { kind: 'refused', error: accepted.error }
 
