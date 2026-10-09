@@ -58,6 +58,9 @@ export class PaymentRejectedError extends AppError {
  * sementara yang dibutuhkan adalah manusia.
  */
 export class RefundRefusedError extends AppError {
+  /** Jenis penolakannya — diumumkan apa adanya di `payment.refund_failed`. */
+  readonly why: string
+
   constructor(paymentId: string, requestId: string, why: string) {
     super({
       code: 'REFUND_REFUSED',
@@ -65,5 +68,6 @@ export class RefundRefusedError extends AppError {
       message: `Refund ${requestId} tidak dapat diselesaikan: ${why}`,
       details: { paymentId, requestId, why },
     })
+    this.why = why
   }
 }

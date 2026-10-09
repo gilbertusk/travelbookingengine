@@ -69,6 +69,8 @@ const skyPriceCheckResponse = z.object({
   rateId: z.string().min(1),
   price: skyMoney,
   changed: z.boolean(),
+  refundable: z.boolean(),
+  freeCancellationDays: z.number().int().nonnegative().optional(),
 })
 
 const skyHoldResponse = z.object({
@@ -164,6 +166,10 @@ async function priceCheck(
     supplierRatePlanId: decoded.value.rateId,
     total: money(decoded.value.price.amount, 'IDR'),
     changed: decoded.value.changed,
+    cancellationPolicy: cancellationPolicy(
+      decoded.value.refundable,
+      decoded.value.freeCancellationDays,
+    ),
   })
 }
 

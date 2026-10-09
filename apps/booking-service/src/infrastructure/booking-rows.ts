@@ -4,6 +4,7 @@ import {
   SUPPLIER_CODES,
   type Booking,
   type BookingBase,
+  type CancellationRequest,
   type PriceCheck,
   type SupplierCode,
 } from '../domain/booking.js'
@@ -12,6 +13,7 @@ import { guestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey } from '../domain/idempotency-key.js'
 import { offerTerms, type OfferTerms } from '../domain/offer-terms.js'
 import { LINE_ITEM_KINDS, priceBreakdown, type PriceBreakdown } from '../domain/price.js'
+import { refundSchedule, type RefundSchedule } from '../domain/refund-schedule.js'
 import { parseLocalDate, stayDates, type LocalDate } from '../domain/stay-dates.js'
 import type {
   BookingRow,
@@ -82,6 +84,21 @@ const offerTermsSchema = z.object({
     .nullable(),
 })
 
+const refundScheduleSchema = z.object({
+  tiers: z.array(z.object({ minHoursBefore: z.number(), percent: z.number() })).nullable(),
+})
+
+function refundScheduleJson(schedule: RefundSchedule | undefined): JsonObject {
+  if (schedule === undefined) return { tiers: null }
+
+  return {
+    tiers: schedule.tiers.map((tier) => ({
+      minHoursBefore: tier.minHoursBefore,
+      percent: tier.percent,
+    })),
+  }
+}
+
 function offerTermsJson(terms: OfferTerms | undefined): JsonObject {
   if (terms === undefined) return { terms: null }
 
@@ -107,11 +124,17 @@ function quoteOf(booking: Booking): PriceBreakdown | undefined {
   return booking.priceCheck?.kind === 'changed' ? booking.priceCheck.quoted : undefined
 }
 
-export function toStateColumns(booking: Booking): BookingStateColumns & { priceLines: JsonObject } {
+export function toStateColumns(
+  booking: Booking,
+): BookingStateColumns & { priceLines: JsonObject; refundSchedule: JsonObject } {
   const quote = quoteOf(booking)
+  const request = booking.cancellationRequest
+  const stage = booking.cancellationStage
+  const settlement = booking.cancellationSettlement
 
   return {
     status: booking.status,
+    refundSchedule: refundScheduleJson(booking.refundSchedule),
     amountMinor: booking.price.total.amountMinor,
     currency: booking.price.total.currency,
     priceLines: {
@@ -125,11 +148,19 @@ export function toStateColumns(booking: Booking): BookingStateColumns & { priceL
     heldUntil: booking.heldUntil ?? null,
     paymentId: booking.paymentId ?? null,
     supplierRef: booking.supplierRef ?? null,
-    refundId: booking.refundId ?? null,
+    // Dua sumber refund_id yang tidak pernah hadir bersama: refund kompensasi
+    // (REFUNDED) dan refund pembatalan oleh pengguna (CANCELLED, Step 25).
+    refundId: booking.refundId ?? (settlement?.kind === 'refunded' ? settlement.refundId : null),
     failureReason: booking.failure?.reason ?? null,
     cancellation: booking.cancellation ?? null,
     reviewReason: booking.review?.reason ?? null,
     reviewFrom: booking.review?.from ?? null,
+    cancelRefundMinor: request?.refund.amountMinor ?? null,
+    cancelRefundCurrency: request?.refund.currency ?? null,
+    cancelRefundPercent: request?.percent ?? null,
+    cancelRequestedAt: request?.requestedAt ?? null,
+    cancelStep: stage?.step ?? null,
+    cancelDeadlineAt: stage?.deadlineAt ?? null,
     version: booking.version,
     updatedAt: booking.updatedAt,
   }
@@ -198,6 +229,8 @@ function toJsonInput(key: string, value: unknown): JsonInput {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value
   }
+  // Jenjang pengembalian (Step 25) adalah larik pertama di peristiwa domain.
+  if (Array.isArray(value)) return value.map((item: unknown) => toJsonInput(key, item))
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     return toJsonObject(value)
   }
@@ -223,7 +256,19 @@ export function fromRow(row: BookingRow): Booking {
         heldUntil: read.required('heldUntil'),
       }
     case 'CANCELLED':
-      return { ...base, status: 'CANCELLED', cancellation: read.required('cancellation') }
+      return cancelledFromRow(row, base, read)
+    case 'CANCELLING':
+      return {
+        ...base,
+        status: 'CANCELLING',
+        paymentId: read.required('paymentId'),
+        supplierRef: read.required('supplierRef'),
+        cancellationRequest: cancellationRequestOf(read),
+        cancellationStage: {
+          step: read.required('cancelStep'),
+          deadlineAt: read.required('cancelDeadlineAt'),
+        },
+      }
     case 'PAID':
     case 'CONFIRMED':
     case 'FAILED':
@@ -264,6 +309,50 @@ function paidFromRow(
   }
 }
 
+/**
+ * Dua bentuk CANCELLED, dibedakan oleh pembayarannya. Yang tanpa pembayaran
+ * dibatalkan sebelum uang berpindah; yang dengan pembayaran dibatalkan
+ * pengguna setelah terkonfirmasi (Step 25) dan wajib membawa persetujuan
+ * beserta penyelesaiannya.
+ */
+function cancelledFromRow(row: BookingRow, base: BookingBase, read: BookingRowReader): Booking {
+  const cancellation = read.required('cancellation')
+  if (row.paymentId === null) return { ...base, status: 'CANCELLED', cancellation }
+
+  const request = cancellationRequestOf(read)
+  const due = request.refund.amountMinor > 0
+  // Ada dana yang wajib kembali tetapi tidak ada refund yang tercatat — atau
+  // sebaliknya — adalah baris yang tidak dapat dipercaya, bukan keadaan sah.
+  if (due !== (row.refundId !== null)) {
+    throw new CorruptBookingRowError(read.id, 'refundId', 'tidak sesuai nilai pengembalian')
+  }
+
+  return {
+    ...base,
+    status: 'CANCELLED',
+    cancellation,
+    paymentId: row.paymentId,
+    supplierRef: read.required('supplierRef'),
+    cancellationRequest: request,
+    cancellationSettlement:
+      row.refundId === null
+        ? { kind: 'nothing_due' }
+        : { kind: 'refunded', refundId: row.refundId },
+  }
+}
+
+function cancellationRequestOf(read: BookingRowReader): CancellationRequest {
+  return {
+    refund: read.money(
+      read.required('cancelRefundMinor'),
+      read.required('cancelRefundCurrency'),
+      'cancelRefundMinor/cancelRefundCurrency',
+    ),
+    percent: read.required('cancelRefundPercent'),
+    requestedAt: read.required('cancelRequestedAt'),
+  }
+}
+
 function baseFromRow(row: BookingRow, read: BookingRowReader): BookingBase {
   const stay = stayDates({
     checkIn: read.check(fromDateColumn(row.checkIn), 'checkIn'),
@@ -284,6 +373,7 @@ function baseFromRow(row: BookingRow, read: BookingRowReader): BookingBase {
     city: row.city,
     ratePlanRef: row.ratePlanRef,
     ...termsFromRow(row, read),
+    ...scheduleFromRow(row, read),
     stay: read.check(stay.ok ? stay.value : undefined, 'checkIn/checkOut'),
     guests: read.check(guests.ok ? guests.value : undefined, 'guests'),
     price: agreedPrice(row, read),
@@ -307,6 +397,20 @@ function termsFromRow(row: BookingRow, read: BookingRowReader): { terms?: OfferT
   const terms = offerTerms(stored.terms)
 
   return { terms: read.check(terms.ok ? terms.value : undefined, 'offerTerms.terms') }
+}
+
+/** Jadwal disusun ulang lewat validasi domain yang sama: jenjang rusak menjadi galat. */
+function scheduleFromRow(
+  row: BookingRow,
+  read: BookingRowReader,
+): { refundSchedule?: RefundSchedule } {
+  const parsed = refundScheduleSchema.safeParse(row.refundSchedule)
+  const stored = read.check(parsed.success ? parsed.data : undefined, 'refundSchedule')
+  if (stored.tiers === null) return {}
+
+  const schedule = refundSchedule(stored.tiers)
+
+  return { refundSchedule: read.check(schedule.ok ? schedule.value : undefined, 'refundSchedule') }
 }
 
 function supplierOf(value: string): SupplierCode | undefined {

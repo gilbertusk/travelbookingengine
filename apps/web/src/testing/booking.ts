@@ -45,6 +45,8 @@ export function sampleStatus(overrides: Partial<BookingStatusView> = {}): Bookin
     supplierRef: null,
     failureReason: null,
     refund: null,
+    review: null,
+    cancellation: null,
     saga: { phase: 'running', step: 'confirmSupplier' },
     serverTime: '2026-10-06T10:00:01.000Z',
     ...overrides,

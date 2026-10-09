@@ -40,6 +40,7 @@ const EVERY_TEMPLATE: readonly [NotificationContext, BookingSnapshot][] = [
   [{ type: 'manual_review', concern: 'room' }, booking({ status: 'NEEDS_REVIEW' })],
   [{ type: 'manual_review', concern: 'refund' }, booking({ status: 'NEEDS_REVIEW' })],
   [{ type: 'manual_review', concern: 'unspecified' }, booking({ status: 'NEEDS_REVIEW' })],
+  [{ type: 'manual_review', concern: 'cancellation' }, booking({ status: 'NEEDS_REVIEW' })],
   [
     { type: 'booking_cancelled', reason: 'user_request', refund: null },
     booking({ status: 'CANCELLED' }),
@@ -180,6 +181,21 @@ describe('surel pemeriksaan manual (NEEDS_REVIEW)', () => {
 
     expect(email.text).toMatch(/pengembalian dana/i)
     expect(email.text).not.toMatch(/kepastian dari penyedia/)
+  })
+
+  test('pemeriksaan pembatalan tidak menyebut pemesanan belum terkonfirmasi (Step 25)', () => {
+    // Pengguna meminta pembatalan; kalimat "belum terkonfirmasi, jangan
+    // dipakai check-in" bagi pemesanan yang sedang ia batalkan menyesatkan.
+    const email = composed(
+      { type: 'manual_review', concern: 'cancellation' },
+      booking({ status: 'NEEDS_REVIEW' }),
+    )
+
+    expect(email.text).toMatch(/pembatalan/i)
+    expect(email.text).not.toMatch(/belum terkonfirmasi/)
+    // Pengembalian bisa sebagian sesuai kebijakan; surel tidak menjanjikan penuh.
+    expect(email.text).not.toMatch(/dikembalikan penuh/)
+    expect(firstSentence(email)).toMatch(/aman|kami terima/)
   })
 
   test('ditolak bila pemeriksaannya sudah selesai sebelum surel dikirim', () => {

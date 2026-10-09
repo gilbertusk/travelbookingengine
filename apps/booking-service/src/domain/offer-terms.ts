@@ -75,11 +75,12 @@ export function offerTerms(input: OfferTermsInput): Result<OfferTerms, OfferTerm
     roomTypeName: input.roomTypeName.trim(),
     ratePlanName: input.ratePlanName.trim(),
     breakfastIncluded: input.breakfastIncluded,
-    cancellationPolicy: copyPolicy(policy),
+    cancellationPolicy: cancellationPolicyOf(policy),
   })
 }
 
-function copyPolicy(policy: CancellationPolicyInput): CancellationPolicy {
+/** Salinan kebijakan tanpa bidang kosong — bentuk yang sama dari peramban maupun supplier. */
+export function cancellationPolicyOf(policy: CancellationPolicyInput): CancellationPolicy {
   if (!policy.refundable) return { refundable: false }
 
   return policy.freeCancellationDays === undefined

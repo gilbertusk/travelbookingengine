@@ -42,5 +42,15 @@ export function createKafkaPaymentEvents(publisher: EventPublisher): PaymentEven
         amount: { amountMinor: input.amount.amountMinor, currency: input.amount.currency },
       })
     },
+
+    async refundFailed(input) {
+      await publisher.publish('payment.refund_failed', {
+        refundRequestId: input.refundRequestId,
+        paymentId: input.paymentId,
+        bookingId: input.bookingId,
+        amount: { amountMinor: input.amount.amountMinor, currency: input.amount.currency },
+        reason: input.reason,
+      })
+    },
   }
 }

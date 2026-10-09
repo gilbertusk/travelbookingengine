@@ -68,7 +68,12 @@ const lunaSearchResponse = z.object({
 
 const lunaRateResponse = z.object({
   ok: z.literal(true),
-  data: z.object({ pid: z.string().min(1), amt: z.number().int(), chg: z.boolean() }),
+  data: z.object({
+    pid: z.string().min(1),
+    amt: z.number().int(),
+    chg: z.boolean(),
+    ref: lunaBoolean,
+  }),
 })
 
 const lunaHoldResponse = z.object({
@@ -181,6 +186,7 @@ async function priceCheck(
     supplierRatePlanId: decoded.value.data.pid,
     total: money(decoded.value.data.amt, 'IDR'),
     changed: decoded.value.data.chg,
+    cancellationPolicy: cancellationPolicy(decoded.value.data.ref),
   })
 }
 

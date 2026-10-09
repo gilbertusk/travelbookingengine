@@ -1,11 +1,13 @@
+import type { Money } from '@tbe/money'
 import type { GuestDetails } from './guest-details.js'
 import type { IdempotencyKey } from './idempotency-key.js'
 import type { OfferTerms } from './offer-terms.js'
 import type { PriceBreakdown } from './price.js'
+import type { RefundSchedule } from './refund-schedule.js'
 import type { StayDates } from './stay-dates.js'
 
 /**
- * Pemesanan sebagai union diskriminan sepuluh keadaan.
+ * Pemesanan sebagai union diskriminan sebelas keadaan.
  *
  * CONVENTIONS.md bagian 3. Yang dibeli dengan bentuk ini bukan kerapian: keadaan
  * CONFIRMED WAJIB membawa booking reference supplier, dan keadaan DRAFT TIDAK
@@ -28,6 +30,8 @@ export const BOOKING_STATUSES = [
   'HELD',
   'PAID',
   'CONFIRMED',
+  /** Pembatalan oleh pengguna sedang berjalan (Step 25). */
+  'CANCELLING',
   'FAILED',
   'REFUNDED',
   'CANCELLED',
@@ -38,16 +42,24 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number]
 
 /**
- * Keadaan final: tidak punya satu pun transisi keluar.
+ * Keadaan final: tidak punya satu pun transisi keluar yang dijalankan SISTEM.
  *
  * Lima, sesuai step doc — dan sesuai NFR-06, yang menyebut tiga akhir yang sah:
  * terkonfirmasi, dibatalkan dengan dana kembali, atau ditandai untuk peninjauan
  * manual. CANCELLED dan EXPIRED adalah "dibatalkan" yang tidak pernah memungut
  * uang; REFUNDED adalah "dibatalkan" yang sudah memungut dan mengembalikannya.
  *
+ * Step 25 mengubah definisinya, dan ini disengaja (lihat ADR-0004). CONFIRMED
+ * kini punya SATU jalan keluar: permintaan pembatalan dari pengguna (FR-27).
+ * Ia tetap final bagi saga — tidak ada peristiwa, batas waktu, atau pemulihan
+ * yang memindahkannya — dan tetap akhir yang sah bagi NFR-06; hanya pemiliknya
+ * yang dapat membukanya lagi. Perintah semacam itu didaftar di
+ * USER_INITIATED_COMMANDS (transitions.ts).
+ *
  * Daftar ini TIDAK dipercaya begitu saja. transitions.test.ts memeriksanya
  * terhadap tabel transisi dari dua arah: setiap keadaan di sini tidak punya
- * transisi keluar, DAN setiap keadaan tanpa transisi keluar ada di sini.
+ * transisi keluar selain permintaan pengguna, DAN setiap keadaan tanpa
+ * transisi keluar sistem ada di sini.
  */
 export const FINAL_STATUSES = [
   'CONFIRMED',
@@ -105,10 +117,45 @@ export interface Failure {
 }
 
 export interface Review {
-  /** Keadaan asal. Menentukan apa yang harus diperiksa manusia lebih dulu. */
-  readonly from: 'PAID' | 'FAILED'
+  /**
+   * Keadaan asal. Menentukan apa yang harus diperiksa manusia lebih dulu:
+   * kamar (PAID), refund kompensasi (FAILED), atau refund pembatalan oleh
+   * pengguna yang kamarnya mungkin sudah lepas (CANCELLING).
+   */
+  readonly from: 'PAID' | 'FAILED' | 'CANCELLING'
   readonly reason: string
 }
+
+/**
+ * Permintaan pembatalan oleh pengguna, sebagaimana DISETUJUI saat diminta
+ * (Step 25). Nilainya dihitung dari jadwal pengembalian yang tersimpan saat
+ * memesan, terhadap waktu permintaan — bukan waktu supplier menjawab. Pengguna
+ * yang menekan tombol enam hari sebelum menginap tidak kehilangan jenjangnya
+ * karena supplier baru menjawab satu jam kemudian.
+ */
+export interface CancellationRequest {
+  readonly refund: Money
+  readonly percent: number
+  readonly requestedAt: Date
+}
+
+/**
+ * Langkah pembatalan yang sedang ditunggu, dengan batas waktunya.
+ *
+ * - `supplier`: `supplier.cancel` sudah terkirim; menunggu kepastian kamarnya
+ *   lepas. Belum ada uang yang bergerak, dan pembatalan masih dapat gagal
+ *   kembali ke CONFIRMED.
+ * - `refund`: kamar sudah lepas di supplier; `payment.refund` sudah terkirim.
+ *   Tidak ada jalan kembali ke CONFIRMED dari sini.
+ */
+export interface CancellationStage {
+  readonly step: 'supplier' | 'refund'
+  readonly deadlineAt: Date
+}
+
+/** Penyelesaian uang pembatalan: refund yang sudah tuntas, atau memang tidak ada yang kembali. */
+export type CancellationSettlement =
+  { readonly kind: 'nothing_due' } | { readonly kind: 'refunded'; readonly refundId: string }
 
 /** Bidang yang dimiliki pemesanan di setiap keadaan. */
 export interface BookingBase {
@@ -129,6 +176,14 @@ export interface BookingBase {
    * ketentuan itu tidak tercatat alih-alih menebaknya.
    */
   readonly terms?: OfferTerms
+  /**
+   * Jadwal pengembalian saat pembatalan (Step 25), dari kebijakan yang dijawab
+   * SUPPLIER saat price check — bukan dari peramban. Disimpan saat itu dan
+   * tidak diturunkan ulang: yang mengikat adalah kebijakan yang disepakati
+   * saat memesan. Tidak ada hanya pada pemesanan sebelum Step 25, yang
+   * pembatalannya diserahkan ke manusia alih-alih ditebak.
+   */
+  readonly refundSchedule?: RefundSchedule
   readonly stay: StayDates
   readonly guests: GuestDetails
   /**
@@ -159,6 +214,9 @@ export interface StateFields {
   readonly refundId: string
   readonly cancellation: CancellationReason
   readonly review: Review
+  readonly cancellationRequest: CancellationRequest
+  readonly cancellationStage: CancellationStage
+  readonly cancellationSettlement: CancellationSettlement
 }
 
 type StateField = keyof StateFields
@@ -175,9 +233,22 @@ export type Booking =
   | State<'HELD', 'holdRef' | 'heldUntil'>
   | State<'PAID', 'paymentId'>
   | State<'CONFIRMED', 'paymentId' | 'supplierRef'>
+  | State<'CANCELLING', 'paymentId' | 'supplierRef' | 'cancellationRequest' | 'cancellationStage'>
   | State<'FAILED', 'paymentId' | 'failure'>
   | State<'REFUNDED', 'paymentId' | 'failure' | 'refundId'>
+  // Dua bentuk CANCELLED. Yang pertama dibatalkan SEBELUM uang berpindah, dan
+  // larangan `?: never` menjaga ia tidak membawa pembayaran. Yang kedua
+  // dibatalkan pengguna SETELAH terkonfirmasi (Step 25): ia wajib menyebut
+  // pembayaran, booking reference yang dibatalkan, dan penyelesaian uangnya.
   | State<'CANCELLED', 'cancellation'>
+  | State<
+      'CANCELLED',
+      | 'cancellation'
+      | 'paymentId'
+      | 'supplierRef'
+      | 'cancellationRequest'
+      | 'cancellationSettlement'
+    >
   // Hold yang kedaluwarsa tetap membawa rujukannya: pelepasan hold di supplier
   // (Step 17) membutuhkan token itu SETELAH keadaan berpindah.
   | State<'EXPIRED', 'holdRef' | 'heldUntil'>
@@ -204,6 +275,7 @@ export function baseOf(booking: Booking): BookingBase {
     city: booking.city,
     ratePlanRef: booking.ratePlanRef,
     ...(booking.terms === undefined ? {} : { terms: booking.terms }),
+    ...(booking.refundSchedule === undefined ? {} : { refundSchedule: booking.refundSchedule }),
     stay: booking.stay,
     guests: booking.guests,
     price: booking.price,

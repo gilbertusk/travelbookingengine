@@ -4,5 +4,6 @@
     "value": "267.83",
     "currency_code": "USD"
   },
-  "rate_changed": false
+  "rate_changed": false,
+  "is_refundable": true
 }

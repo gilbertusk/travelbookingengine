@@ -85,6 +85,19 @@ describe('kebijakan pemberitahuan', () => {
     })
   })
 
+  test('refund pembatalan oleh pengguna yang gagal menjadi pemeriksaan pembatalan (Step 25)', () => {
+    const decision = decideNow({
+      kind: 'booking_failed',
+      bookingId: BOOKING,
+      stage: 'cancellation',
+      requiresManualReview: true,
+    })
+
+    expect(decision).toMatchObject({
+      request: { context: { type: 'manual_review', concern: 'cancellation' } },
+    })
+  })
+
   test('pembatalan membawa alasan dan nilai pengembaliannya', () => {
     const refund = { amountMinor: 1_221_000, currency: 'IDR' } as const
 

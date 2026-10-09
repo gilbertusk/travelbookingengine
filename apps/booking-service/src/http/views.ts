@@ -1,6 +1,7 @@
 import { subtract, toJson, type Money, type MoneyJson } from '@tbe/money'
 import type { StatusSnapshot } from '../application/booking-status.js'
 import { isFinal, type Booking } from '../domain/booking.js'
+import { cancellationView } from './cancellation-views.js'
 
 /**
  * Bentuk pemesanan yang dikirim ke klien.
@@ -36,6 +37,7 @@ export function bookingView(booking: Booking, now: Date) {
     },
     heldUntil: booking.heldUntil?.toISOString() ?? null,
     priceCheck: priceCheckView(booking),
+    cancellation: cancellationView(booking),
     serverTime: now.toISOString(),
   }
 }
@@ -95,6 +97,8 @@ export function statusView(snapshot: StatusSnapshot, now: Date) {
     supplierRef: booking.supplierRef ?? null,
     failureReason: booking.failure?.reason ?? null,
     refund: refundStatus(booking),
+    review: reviewConcern(booking),
+    cancellation: cancellationView(booking),
     saga: saga === undefined ? null : { phase: saga.phase, step: saga.step },
     serverTime: now.toISOString(),
   }
@@ -104,11 +108,32 @@ export function statusView(snapshot: StatusSnapshot, now: Date) {
  * `pending`: refund sudah diminta dan belum dikonfirmasi. `review`: uang
  * pengguna sedang ditangani manusia — refund gagal, atau status supplier tidak
  * pasti dan TIDAK ada refund otomatis (US-05).
+ *
+ * Pembatalan oleh pengguna (Step 25): `pending` hanya setelah supplier
+ * membatalkan dan refund terkirim; sebelum itu belum ada uang yang bergerak.
+ * Pembatalan tanpa dana kembali tidak punya status refund sama sekali.
  */
+/**
+ * Apa yang diperiksa manusia, untuk kalimat yang jujur di layar: kamar yang
+ * belum pasti (dari PAID), refund kompensasi (dari FAILED), atau pembatalan
+ * oleh pengguna yang tidak tuntas (dari CANCELLING, Step 25).
+ */
+const REVIEW_CONCERNS = {
+  PAID: 'room',
+  FAILED: 'refund',
+  CANCELLING: 'cancellation',
+} as const
+
+function reviewConcern(booking: Booking): 'room' | 'refund' | 'cancellation' | null {
+  return booking.review === undefined ? null : REVIEW_CONCERNS[booking.review.from]
+}
+
 function refundStatus(booking: Booking): 'pending' | 'completed' | 'review' | null {
   if (booking.status === 'FAILED') return 'pending'
   if (booking.status === 'REFUNDED') return 'completed'
   if (booking.status === 'NEEDS_REVIEW') return 'review'
+  if (booking.cancellationStage?.step === 'refund') return 'pending'
+  if (booking.cancellationSettlement?.kind === 'refunded') return 'completed'
 
   return null
 }

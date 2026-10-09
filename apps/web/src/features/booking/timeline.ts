@@ -40,8 +40,15 @@ export interface Outcome {
   readonly money?: string
 }
 
+/** Pemesanan yang pernah terkonfirmasi lalu dibatalkan pengguna (Step 25). */
+function wasConfirmed(view: BookingStatusView): boolean {
+  return view.status === 'CONFIRMED' || view.cancellation !== null
+}
+
 export function stagesOf(view: BookingStatusView): readonly Stage[] {
-  const paid = !['DRAFT', 'PRICE_CHECKED', 'HELD', 'EXPIRED', 'CANCELLED'].includes(view.status)
+  const paid =
+    view.cancellation !== null ||
+    !['DRAFT', 'PRICE_CHECKED', 'HELD', 'EXPIRED', 'CANCELLED'].includes(view.status)
 
   const payment: Stage = paid
     ? { key: 'payment', label: 'Pembayaran diterima', state: 'done' }
@@ -58,7 +65,7 @@ export function stagesOf(view: BookingStatusView): readonly Stage[] {
   const confirmed: Stage = {
     key: 'confirmed',
     label: 'Pemesanan dikonfirmasi',
-    state: view.status === 'CONFIRMED' ? 'done' : 'pending',
+    state: wasConfirmed(view) ? 'done' : 'pending',
     ...(view.supplierRef === null ? {} : { detail: `Kode pemesanan ${view.supplierRef}` }),
   }
   const voucher: Stage = {
@@ -83,7 +90,7 @@ function confirmingStage(view: BookingStatusView, paid: boolean): Stage {
       detail: 'Biasanya selesai dalam satu menit.',
     }
   }
-  if (view.status === 'CONFIRMED') return { key: 'confirming', label, state: 'done' }
+  if (wasConfirmed(view)) return { key: 'confirming', label, state: 'done' }
 
   return { key: 'confirming', label, state: 'stopped' }
 }
@@ -147,10 +154,47 @@ const OUTCOMES: Readonly<Record<BookingStatus, Outcome>> = {
     body: 'Pembayaran tidak berhasil atau kamar tidak lagi tersedia.',
     money: 'Tidak ada dana yang ditagih untuk pemesanan ini.',
   },
+  CANCELLING: {
+    tone: 'waiting',
+    title: 'Pembatalan sedang diproses',
+    body: 'Kami sedang membatalkan kamarmu di penyedia. Halaman ini akan berubah sendiri.',
+    money:
+      'Dana yang kembali sesuai kebijakan pembatalan dikirim setelah penyedia membatalkan kamarnya.',
+  },
   DRAFT: NOT_PAID,
   PRICE_CHECKED: NOT_PAID,
 }
 
+/**
+ * Pembatalan oleh pengguna setelah terkonfirmasi (Step 25). CANCELLED yang
+ * sama dengan pembatalan sebelum bayar akan berbohong di sini — "tidak ada
+ * dana yang ditagih" untuk pemesanan yang sudah dibayar.
+ */
+function cancelledByUser(refundMinor: number): Outcome {
+  return {
+    tone: 'refund',
+    title: 'Pemesanan dibatalkan',
+    body: 'Pemesanan ini sudah dibatalkan sesuai permintaanmu.',
+    money:
+      refundMinor > 0
+        ? 'Pengembalian dana sudah dikirim ke metode pembayaran yang kamu pakai.'
+        : 'Sesuai kebijakan pembatalan rate plan ini, tidak ada dana yang dikembalikan.',
+  }
+}
+
+const CANCELLATION_REVIEW: Outcome = {
+  tone: 'review',
+  title: 'Pembatalanmu sedang kami periksa',
+  body: `Permintaan pembatalanmu sudah kami terima, tetapi penyelesaiannya tertunda. Kami menghubungimu lewat surel dalam ${REVIEW_CONTACT_WITHIN}.`,
+  money:
+    'Pembayaranmu tercatat dan aman. Dana yang menjadi hakmu sesuai kebijakan pembatalan tetap akan dikembalikan.',
+}
+
 export function outcomeOf(view: BookingStatusView): Outcome {
+  if (view.status === 'CANCELLED' && view.cancellation !== null) {
+    return cancelledByUser(view.cancellation.refund.amountMinor)
+  }
+  if (view.status === 'NEEDS_REVIEW' && view.review === 'cancellation') return CANCELLATION_REVIEW
+
   return OUTCOMES[view.status]
 }

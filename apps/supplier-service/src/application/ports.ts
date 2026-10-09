@@ -109,6 +109,27 @@ export interface ConfirmReplies {
   }): Promise<void>
 }
 
+/**
+ * Jawaban atas `supplier.cancel` untuk saga pembatalan (Step 25).
+ *
+ * Terpisah dari [ConfirmReplies] karena dua perintah itu tidak saling tahu,
+ * walau keduanya terbit lewat topik yang sama.
+ */
+export interface CancelReplies {
+  cancelled(reply: {
+    readonly bookingId: string
+    readonly supplier: SupplierCode
+    readonly supplierRef: string
+  }): Promise<void>
+  cancelFailed(reply: {
+    readonly bookingId: string
+    readonly supplier: SupplierCode
+    readonly supplierRef: string
+    readonly outcome: 'refused' | 'uncertain'
+    readonly reason: string
+  }): Promise<void>
+}
+
 export interface SupplierMetrics {
   observeRequest(params: {
     readonly supplier: SupplierCode

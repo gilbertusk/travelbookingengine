@@ -1,5 +1,13 @@
 import type { Money } from '@tbe/money'
-import type { Booking, CancellationReason, Review, SupplierCode } from './booking.js'
+import type {
+  Booking,
+  CancellationReason,
+  CancellationSettlement,
+  Review,
+  SupplierCode,
+} from './booking.js'
+import type { CancellationQuote } from './commands.js'
+import type { RefundTier } from './refund-schedule.js'
 import type { StayDates } from './stay-dates.js'
 
 /**
@@ -43,7 +51,15 @@ export interface BookingCreated extends EventBase {
   readonly amount: Money
 }
 
-export interface PriceVerified extends EventBase {
+/**
+ * Jenjang pengembalian yang berlaku sejak price check ini (Step 25), dicatat di
+ * jejak audit bersama harganya: keduanya dijawab supplier pada saat yang sama.
+ */
+interface ScheduleSnapshot {
+  readonly refundTiers: readonly RefundTier[]
+}
+
+export interface PriceVerified extends EventBase, ScheduleSnapshot {
   readonly type: 'PriceVerified'
   readonly amount: Money
 }
@@ -57,7 +73,7 @@ export interface PriceVerified extends EventBase {
  * menuntut harga yang sudah disetujui DAN diverifikasi ulang. Lihat
  * contract-payloads.test.ts, yang memeriksa kesepakatan keduanya.
  */
-export interface PriceChanged extends EventBase {
+export interface PriceChanged extends EventBase, ScheduleSnapshot {
   readonly type: 'PriceChanged'
   readonly previousAmount: Money
   readonly newAmount: Money
@@ -117,6 +133,37 @@ export interface ReviewRequired extends EventBase {
   readonly reason: string
 }
 
+/** Pengguna meminta pembatalan (Step 25). Membawa seluruh dasar perhitungannya. */
+export interface CancellationRequested extends EventBase {
+  readonly type: 'CancellationRequested'
+  readonly paymentId: string
+  readonly supplierRef: string
+  readonly quote: CancellationQuote
+  readonly replyBy: Date
+}
+
+export interface SupplierCancellationConfirmed extends EventBase {
+  readonly type: 'SupplierCancellationConfirmed'
+  readonly supplierRef: string
+  readonly refund: Money
+  readonly refundBy: Date
+}
+
+/** Supplier tidak dapat membatalkan; kamar masih terpesan dan pemesanan kembali aktif. */
+export interface CancellationRestored extends EventBase {
+  readonly type: 'CancellationRestored'
+  readonly supplierRef: string
+  readonly reason: string
+}
+
+export interface CancellationCompleted extends EventBase {
+  readonly type: 'CancellationCompleted'
+  readonly paymentId: string
+  readonly supplierRef: string
+  readonly refund: Money
+  readonly settlement: CancellationSettlement
+}
+
 export type BookingEvent =
   | BookingCreated
   | PriceVerified
@@ -130,6 +177,10 @@ export type BookingEvent =
   | BookingRefunded
   | BookingCancelled
   | ReviewRequired
+  | CancellationRequested
+  | SupplierCancellationConfirmed
+  | CancellationRestored
+  | CancellationCompleted
 
 export type BookingEventType = BookingEvent['type']
 
@@ -151,6 +202,10 @@ export const BOOKING_EVENT_TYPES = [
   'BookingRefunded',
   'BookingCancelled',
   'ReviewRequired',
+  'CancellationRequested',
+  'SupplierCancellationConfirmed',
+  'CancellationRestored',
+  'CancellationCompleted',
 ] as const satisfies readonly BookingEventType[]
 
 /**

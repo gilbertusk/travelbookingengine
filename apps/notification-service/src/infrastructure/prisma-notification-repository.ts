@@ -31,7 +31,7 @@ const contextSchema: z.ZodType<NotificationContext> = z.discriminatedUnion('type
   z.object({ type: z.literal('booking_failed') }),
   z.object({
     type: z.literal('manual_review'),
-    concern: z.enum(['room', 'refund', 'unspecified']),
+    concern: z.enum(['room', 'refund', 'cancellation', 'unspecified']),
   }),
   z.object({
     type: z.literal('booking_cancelled'),

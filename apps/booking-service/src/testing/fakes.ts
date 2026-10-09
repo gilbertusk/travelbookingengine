@@ -12,11 +12,15 @@ import type {
   PaymentStartRequest,
   Pricing,
   PricingRequest,
+  PropertyDirectory,
   RatePlanStay,
   SupplierAnswer,
   SupplierHold,
+  SupplierPrice,
   SupplierQuotes,
+  TimeZoneAnswer,
 } from '../application/ports.js'
+import type { CancellationPolicy } from '../domain/offer-terms.js'
 import type { SellQuote } from '../domain/sell-price.js'
 import { createPrismaBookingRepository } from '../infrastructure/prisma-booking-repository.js'
 import { createPrismaSagaStore } from '../infrastructure/prisma-saga-store.js'
@@ -144,14 +148,16 @@ type Answer<T> = SupplierAnswer<T> | ((request: RatePlanStay) => SupplierAnswer<
 export interface ScriptedSuppliers extends SupplierQuotes {
   readonly priceChecks: RatePlanStay[]
   readonly holds: RatePlanStay[]
-  nextPrice(answer: Answer<{ readonly total: Money }>): void
+  nextPrice(answer: Answer<SupplierPrice>): void
   nextHold(answer: Answer<SupplierHold>): void
   /** Harga supplier yang dijawab bila tidak ada jawaban terjadwal. */
   supplierTotal: Money
+  /** Kebijakan pembatalan yang dijawab price check bila tidak ada jawaban terjadwal. */
+  supplierPolicy: CancellationPolicy
 }
 
 export function scriptedSuppliers(now: () => Date): ScriptedSuppliers {
-  const prices: Answer<{ readonly total: Money }>[] = []
+  const prices: Answer<SupplierPrice>[] = []
   const holdAnswers: Answer<SupplierHold>[] = []
   const priceChecks: RatePlanStay[] = []
   const holds: RatePlanStay[] = []
@@ -161,13 +167,19 @@ export function scriptedSuppliers(now: () => Date): ScriptedSuppliers {
     priceChecks,
     holds,
     supplierTotal: money(2_000_000, 'IDR'),
+    supplierPolicy: { refundable: true, freeCancellationDays: 3 },
     nextPrice: (answer) => prices.push(answer),
     nextHold: (answer) => holdAnswers.push(answer),
     async priceCheck(request) {
       priceChecks.push(request)
       await Promise.resolve()
       const scripted = prices.shift()
-      if (scripted === undefined) return { kind: 'ok', value: { total: suppliers.supplierTotal } }
+      if (scripted === undefined) {
+        return {
+          kind: 'ok',
+          value: { total: suppliers.supplierTotal, policy: suppliers.supplierPolicy },
+        }
+      }
       return typeof scripted === 'function' ? scripted(request) : scripted
     },
     async hold(request) {
@@ -272,8 +284,30 @@ export function sellQuoteFor(supplierTotal: Money): SellQuote {
   }
 }
 
+/** Katalog palsuan: setiap properti di Bali (UTC+8) kecuali dijadwalkan lain. */
+export interface ScriptedProperties extends PropertyDirectory {
+  answer: TimeZoneAnswer
+  readonly lookups: string[]
+}
+
+export function scriptedProperties(): ScriptedProperties {
+  const lookups: string[] = []
+  const properties: ScriptedProperties = {
+    answer: { kind: 'found', timeZone: 'Asia/Makassar' },
+    lookups,
+    async timeZoneOf(supplier, propertyId) {
+      lookups.push(`${supplier}/${propertyId}`)
+      await Promise.resolve()
+      return properties.answer
+    },
+  }
+
+  return properties
+}
+
 export interface Harness {
   readonly deps: BookingDeps
+  readonly properties: ScriptedProperties
   readonly db: MemoryBookingDb
   readonly holds: MemoryHoldStore
   readonly suppliers: ScriptedSuppliers
@@ -309,6 +343,7 @@ export function harness(
   const holds = options.holds ?? memoryHoldStore()
   const suppliers = scriptedSuppliers(() => clock.value)
   const pricing = scriptedPricing()
+  const properties = scriptedProperties()
 
   const deps: BookingDeps = {
     bookings: createPrismaBookingRepository(db),
@@ -316,6 +351,7 @@ export function harness(
     sagaPolicy: SAGA_POLICY,
     suppliers,
     pricing,
+    properties,
     holds,
     clock: { now: () => clock.value },
     ids: {
@@ -331,6 +367,7 @@ export function harness(
 
   return {
     deps,
+    properties,
     db,
     holds,
     suppliers,

@@ -17,6 +17,7 @@ import {
   priceCheckRequest,
   SAGA_POLICY,
   scriptedPricing,
+  scriptedProperties,
   scriptedSuppliers,
 } from '../../src/testing/fakes.js'
 import { integrationEnv } from './env.js'
@@ -39,6 +40,7 @@ function deps(holdDurationMs: number): BookingDeps {
     sagaPolicy: SAGA_POLICY,
     suppliers: scriptedSuppliers(() => new Date()),
     pricing: scriptedPricing(),
+    properties: scriptedProperties(),
     holds: createRedisHoldStore(redis),
     clock: systemClock,
     ids: { next: () => crypto.randomUUID() },

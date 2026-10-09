@@ -9,6 +9,7 @@ import {
   USER,
   type Harness,
 } from '../testing/fakes.js'
+import { SAMPLE_POLICY } from '../testing/builders.js'
 import type { Booking } from '../domain/booking.js'
 import { priceBreakdown, type PriceBreakdown } from '../domain/price.js'
 import { enterStep } from '../domain/saga-state.js'
@@ -39,7 +40,12 @@ async function hold(world: Harness, booking: Booking, unitsLeft = 5) {
  * repository sungguhan, persis yang dilakukan permintaan kembar.
  */
 async function reverify(world: Harness, booking: Booking, verified: PriceBreakdown): Promise<void> {
-  const change = applyCommand(booking, { type: 'verifyPrice', at: world.now(), verified })
+  const change = applyCommand(booking, {
+    type: 'verifyPrice',
+    at: world.now(),
+    verified,
+    policy: SAMPLE_POLICY,
+  })
   if (!change.ok) throw new Error('persiapan gagal: verifyPrice ditolak')
   await world.deps.bookings.save(change.value)
 }

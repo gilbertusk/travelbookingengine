@@ -11,8 +11,10 @@ import {
   type Script,
 } from '../testing/fakes.js'
 import {
+  SupplierCancelRefused,
   SupplierConfirmRejected,
   handleCancel,
+  handleCancelDeadLetter,
   handleConfirm,
   handleConfirmDeadLetter,
 } from './command-handlers.js'
@@ -205,35 +207,120 @@ describe('kabar dead letter supplier.confirm', () => {
 })
 
 describe('supplier.cancel', () => {
-  test('pembatalan yang berhasil tidak melempar', async () => {
-    const world = harness({ script: { cancel: [ok(undefined)] } })
+  function cancelWith(script: Script) {
+    const world = harness({ script })
+    const cancelReplies = recordingReplies()
+    const deps = { resilience: world.deps, logger, cancelReplies }
 
-    await expect(handleCancel({ resilience: world.deps, logger })(CANCEL)).resolves.toBeUndefined()
+    return {
+      cancelReplies,
+      handle: handleCancel(deps),
+      deadLetter: handleCancelDeadLetter(deps),
+    }
+  }
+
+  const CANCELLED = {
+    type: 'cancelled',
+    bookingId: CANCEL.bookingId,
+    supplier: 'SKY',
+    supplierRef: 'bkg_1',
+  }
+
+  test('pembatalan yang berhasil diumumkan ke saga', async () => {
+    // Pembatalan oleh pengguna (Step 25) menunggu jawaban ini sebelum
+    // mengembalikan dana. Tanpa pengumuman, uangnya tidak pernah kembali.
+    const { cancelReplies, handle } = cancelWith({ cancel: [ok(undefined)] })
+
+    await expect(handle(CANCEL)).resolves.toBeUndefined()
+
+    expect(cancelReplies.published).toEqual([CANCELLED])
   })
 
-  test('pemesanan yang sudah dibatalkan dianggap selesai', async () => {
+  test('pemesanan yang sudah dibatalkan dianggap selesai dan diumumkan', async () => {
     // Melemparnya akan membuat kompensasi diulang tanpa henti untuk sesuatu
     // yang sudah tercapai.
-    const world = harness({
-      script: { cancel: [err(failure('SKY', 'cancel', 'already_cancelled'))] },
+    const { cancelReplies, handle } = cancelWith({
+      cancel: [err(failure('SKY', 'cancel', 'already_cancelled'))],
     })
 
-    await expect(handleCancel({ resilience: world.deps, logger })(CANCEL)).resolves.toBeUndefined()
+    await expect(handle(CANCEL)).resolves.toBeUndefined()
+
+    expect(cancelReplies.published).toEqual([CANCELLED])
   })
 
   test('pemesanan yang tidak ditemukan juga dianggap selesai', async () => {
-    const world = harness({ script: { cancel: [err(failure('SKY', 'cancel', 'not_found'))] } })
+    // Tidak ada pemesanan di supplier berarti tidak ada kamar yang tertahan:
+    // mengembalikan dana tidak menimbulkan kerugian ganda.
+    const { cancelReplies, handle } = cancelWith({
+      cancel: [err(failure('SKY', 'cancel', 'not_found'))],
+    })
 
-    await expect(handleCancel({ resilience: world.deps, logger })(CANCEL)).resolves.toBeUndefined()
+    await expect(handle(CANCEL)).resolves.toBeUndefined()
+
+    expect(cancelReplies.published).toEqual([CANCELLED])
   })
 
-  test('kegagalan sementara dilempar supaya perintahnya dikirim ulang', async () => {
+  test('kegagalan sementara dilempar supaya perintahnya dikirim ulang, tanpa pengumuman', async () => {
     // Pembatalan aman diulang: membatalkan yang sudah dibatalkan menghasilkan
     // already_cancelled, bukan kerusakan.
-    const world = harness({ script: { cancel: [err(failure('SKY', 'cancel', 'upstream_error'))] } })
+    const { cancelReplies, handle } = cancelWith({
+      cancel: [err(failure('SKY', 'cancel', 'upstream_error'))],
+    })
 
-    await expect(handleCancel({ resilience: world.deps, logger })(CANCEL)).rejects.toThrow(
-      /upstream_error/,
-    )
+    await expect(handle(CANCEL)).rejects.toThrow(/upstream_error/)
+
+    expect(cancelReplies.published).toEqual([])
+  })
+
+  test('pengumuman yang gagal terbit melempar, supaya pembatalan diulang dan diumumkan lagi', async () => {
+    const { cancelReplies, handle } = cancelWith({ cancel: [ok(undefined), ok(undefined)] })
+    cancelReplies.failNext()
+
+    await expect(handle(CANCEL)).rejects.toThrow(/kafka/)
+    await handle(CANCEL)
+
+    expect(cancelReplies.published).toEqual([CANCELLED])
+  })
+
+  test('percobaan yang habis tanpa jawaban pasti diumumkan tidak pasti', async () => {
+    // Batas waktu di setiap percobaan: pembatalannya mungkin sudah terjadi.
+    const { cancelReplies, deadLetter } = cancelWith({})
+
+    await deadLetter({
+      payload: CANCEL,
+      message: createMessage({ eventType: 'supplier.cancel', payload: CANCEL }),
+      error: new Error('pembatalan gagal: timeout'),
+      reason: 'exhausted',
+    })
+
+    expect(cancelReplies.published).toEqual([
+      {
+        type: 'cancel_failed',
+        bookingId: CANCEL.bookingId,
+        supplier: 'SKY',
+        supplierRef: 'bkg_1',
+        outcome: 'uncertain',
+        reason: 'dead_letter:exhausted',
+      },
+    ])
+  })
+
+  test('penolakan supplier dilempar sebagai penolakan dan diumumkan pasti', async () => {
+    // 409: supplier menjawab, dan jawabannya tidak.
+    const { cancelReplies, handle, deadLetter } = cancelWith({
+      cancel: [err({ supplier: 'SKY', operation: 'cancel', kind: 'upstream_error', status: 409 })],
+    })
+
+    const thrown = await handle(CANCEL).catch((error: unknown) => error)
+    expect(thrown).toBeInstanceOf(SupplierCancelRefused)
+
+    await deadLetter({
+      payload: CANCEL,
+      message: createMessage({ eventType: 'supplier.cancel', payload: CANCEL }),
+      error: thrown,
+      reason: 'exhausted',
+    })
+
+    expect(cancelReplies.published).toMatchObject([{ type: 'cancel_failed', outcome: 'refused' }])
   })
 })

@@ -4,6 +4,7 @@
     "offer_ref": "zephr27547233761",
     "price": "262.37",
     "currency": "USD",
-    "changed": false
+    "changed": false,
+    "cancellable": false
   }
 }

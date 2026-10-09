@@ -4,6 +4,7 @@ import {
   type MoneyAmount,
   type NotificationContext,
   type NotificationRequest,
+  type ReviewConcern,
 } from './notification.js'
 
 /**
@@ -22,7 +23,8 @@ import {
 export type CancellationReason =
   'user_request' | 'hold_expired' | 'payment_failed' | 'supplier_rejected'
 
-export type FailureStage = 'price_check' | 'hold' | 'payment' | 'supplier_confirm' | 'voucher'
+export type FailureStage =
+  'price_check' | 'hold' | 'payment' | 'supplier_confirm' | 'voucher' | 'cancellation'
 
 export type BookingFact =
   | { readonly kind: 'booking_confirmed'; readonly bookingId: string }
@@ -131,12 +133,18 @@ function contextOf(context: NotificationContext): Plan {
  * `booking.failed` yang menuntut pemeriksaan manual BUKAN kegagalan bagi
  * pengguna, dan tidak boleh dikabarkan sebagai kegagalan: kamarnya mungkin
  * sudah terpesan di supplier (US-05). Tahapnya menentukan apa yang diperiksa —
- * `payment` di sini berarti kompensasinya, refund, yang gagal.
+ * `payment` di sini berarti kompensasinya, refund, yang gagal; `cancellation`
+ * berarti pembatalan oleh pengguna yang tidak tuntas (Step 25).
  */
 function failureContext(stage: FailureStage, requiresManualReview: boolean): NotificationContext {
   if (!requiresManualReview) return { type: 'booking_failed' }
 
-  return { type: 'manual_review', concern: stage === 'payment' ? 'refund' : 'room' }
+  return { type: 'manual_review', concern: REVIEW_CONCERNS[stage] ?? 'room' }
+}
+
+const REVIEW_CONCERNS: Partial<Record<FailureStage, ReviewConcern>> = {
+  payment: 'refund',
+  cancellation: 'cancellation',
 }
 
 /**

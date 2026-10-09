@@ -2,7 +2,7 @@ import type { CommandPayload } from '@tbe/event-contracts'
 import type { DeadLetterContext } from '@tbe/messaging'
 import type { Logger } from '@tbe/shared-kernel'
 import { confirmBooking } from '../application/confirm-booking.js'
-import type { ConfirmReplies, ResilienceDeps } from '../application/ports.js'
+import type { CancelReplies, ConfirmReplies, ResilienceDeps } from '../application/ports.js'
 import { cancel } from '../application/supplier-operations.js'
 
 /**
@@ -147,29 +147,99 @@ export function handleConfirmDeadLetter(deps: ConfirmHandlerDeps) {
   }
 }
 
-/** `supplier.cancel` — membatalkan pemesanan sebagai kompensasi saga. */
-export function handleCancel(deps: HandlerDeps) {
+export interface CancelHandlerDeps extends HandlerDeps {
+  /** Jalan balik ke saga pembatalan (Step 25). */
+  readonly cancelReplies: CancelReplies
+}
+
+/**
+ * `supplier.cancel` — membatalkan pemesanan: kompensasi saga pemesanan, atau
+ * langkah pertama pembatalan oleh pengguna (Step 25).
+ *
+ * Hasilnya kini DIUMUMKAN. Pembatalan oleh pengguna tidak mengembalikan dana
+ * sebelum supplier memastikan kamarnya lepas, dan tanpa pengumuman ini saga
+ * hanya dapat menunggu sampai batas waktunya lewat.
+ */
+export function handleCancel(deps: CancelHandlerDeps) {
   return async (payload: CommandPayload<'supplier.cancel'>): Promise<void> => {
     const result = await cancel(deps.resilience, payload.supplier, payload.supplierRef)
+    const subject = {
+      bookingId: payload.bookingId,
+      supplier: payload.supplier,
+      supplierRef: payload.supplierRef,
+    }
 
     if (result.ok) {
-      deps.logger.info(
-        { bookingId: payload.bookingId, supplier: payload.supplier },
-        'pemesanan dibatalkan di supplier',
-      )
+      deps.logger.info(subject, 'pemesanan dibatalkan di supplier')
+      await deps.cancelReplies.cancelled(subject)
       return
     }
 
     if (result.error.kind === 'already_cancelled' || result.error.kind === 'not_found') {
       // Sudah dibatalkan berarti tujuannya tercapai. Melemparnya akan membuat
-      // kompensasi diulang tanpa henti untuk sesuatu yang sudah selesai.
+      // kompensasi diulang tanpa henti untuk sesuatu yang sudah selesai. Tidak
+      // ditemukan juga berarti tidak ada kamar yang tertahan.
       deps.logger.info(
-        { bookingId: payload.bookingId, kind: result.error.kind },
+        { ...subject, kind: result.error.kind },
         'pembatalan sudah terjadi sebelumnya',
       )
+      await deps.cancelReplies.cancelled(subject)
       return
     }
 
+    // Penolakan 4xx adalah JAWABAN supplier: kamar ini tidak dibatalkan.
+    // Selain itu — batas waktu, 5xx, jawaban rusak — pembatalannya mungkin
+    // sudah terjadi dan hanya jawabannya yang hilang.
+    if (result.error.kind === 'upstream_error' && result.error.status < 500) {
+      throw new SupplierCancelRefused(`${result.error.kind}:${String(result.error.status)}`)
+    }
+
     throw new Error(`pembatalan gagal: ${result.error.kind}`)
+  }
+}
+
+/**
+ * Supplier menjawab TIDAK atas pembatalan (Step 25). Tetap mengikuti jenjang
+ * percobaan — jawaban yang sama dari supplier yang sedang pulih bisa berubah —
+ * dan bila habis, diumumkan `refused`: kamar pasti masih terpesan.
+ */
+export class SupplierCancelRefused extends Error {
+  readonly kind: string
+
+  constructor(kind: string) {
+    super(`pembatalan ditolak supplier: ${kind}`)
+    this.kind = kind
+  }
+}
+
+/**
+ * Kabar dead letter untuk `supplier.cancel`: seluruh percobaan habis tanpa
+ * kepastian kamarnya lepas. Diumumkan GAGAL, dan saga pembatalan tidak
+ * mengembalikan dana — kamar yang masih terpesan ditambah uang yang sudah
+ * kembali adalah kerugian ganda.
+ *
+ * `refused` hanya bila supplier sendiri yang menolak. Selain itu `uncertain`:
+ * perintah yang mati karena batas waktu, galat server, atau Kafka yang mati
+ * SETELAH pembatalan berhasil mungkin sudah melepas kamarnya.
+ */
+export function handleCancelDeadLetter(deps: CancelHandlerDeps) {
+  return async (context: DeadLetterContext<'supplier.cancel'>): Promise<void> => {
+    const { payload, error } = context
+    const subject = {
+      bookingId: payload.bookingId,
+      supplier: payload.supplier,
+      supplierRef: payload.supplierRef,
+    }
+
+    deps.logger.error(
+      { ...subject, err: error, reason: context.reason },
+      'pembatalan di supplier berhenti tanpa hasil, diumumkan gagal',
+    )
+    const refused = error instanceof SupplierCancelRefused
+    await deps.cancelReplies.cancelFailed({
+      ...subject,
+      outcome: refused ? 'refused' : 'uncertain',
+      reason: refused ? error.kind : `dead_letter:${context.reason}`,
+    })
   }
 }

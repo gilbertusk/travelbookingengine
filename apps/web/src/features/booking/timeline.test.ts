@@ -16,6 +16,8 @@ function view(
     supplierRef: null,
     failureReason: null,
     refund: null,
+    review: null,
+    cancellation: null,
     saga: null,
     serverTime: '2026-10-06T10:00:00.000Z',
     ...overrides,
@@ -67,6 +69,34 @@ describe('pesan untuk pengguna', () => {
       expect(outcomeOf(view(status)).money).toBeDefined()
     },
   )
+
+  test('pembatalan oleh pengguna tidak disebut "tidak ada dana yang ditagih" (Step 25)', () => {
+    const cancellation = {
+      step: 'done' as const,
+      refund: { amountMinor: 1_221_000, currency: 'IDR' as const },
+      percent: 50,
+      requestedAt: '2026-10-06T10:00:00.000Z',
+    }
+
+    const refunded = outcomeOf(view('CANCELLED', { cancellation }))
+    const nothing = outcomeOf(
+      view('CANCELLED', {
+        cancellation: { ...cancellation, refund: { amountMinor: 0, currency: 'IDR' }, percent: 0 },
+      }),
+    )
+
+    expect(refunded.money).toMatch(/sudah dikirim/)
+    expect(nothing.money).toMatch(/kebijakan pembatalan/)
+    expect(refunded.money).not.toMatch(/tidak ada dana yang ditagih/i)
+    expect(states('CANCELLED', { cancellation })).toEqual(['done', 'done', 'done', 'pending'])
+  })
+
+  test('pembatalan yang diperiksa manual berbicara soal pembatalan, bukan kamar', () => {
+    const outcome = outcomeOf(view('NEEDS_REVIEW', { review: 'cancellation' }))
+
+    expect(outcome.title).toMatch(/[Pp]embatalan/)
+    expect(outcome.body).not.toMatch(/kepastian dari penyedia/)
+  })
 
   test('NEEDS_REVIEW tidak berpura-pura berhasil maupun gagal', () => {
     const outcome = outcomeOf(view('NEEDS_REVIEW'))

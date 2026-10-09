@@ -39,6 +39,7 @@ enum BookingStatus {
   HELD
   PAID
   CONFIRMED
+  CANCELLING
   FAILED
   REFUNDED
   CANCELLED
@@ -78,8 +79,22 @@ enum BookingEventType {
   BookingRefunded
   BookingCancelled
   ReviewRequired
+  CancellationRequested
+  SupplierCancellationConfirmed
+  CancellationRestored
+  CancellationCompleted
 
   @@map("booking_event_type")
+}
+
+/// Langkah pembatalan oleh pengguna yang sedang ditunggu (Step 25).
+enum CancellationStep {
+  /// supplier.cancel terkirim; kamar belum pasti lepas.
+  supplier
+  /// Kamar sudah lepas; payment.refund terkirim.
+  refund
+
+  @@map("cancellation_step")
 }
 
 model Booking {
@@ -104,6 +119,12 @@ model Booking {
   /// Tidak berubah setelah pemesanan dibuat. (Tanpa kurung kurawal di komentar
   /// ini: prisma-schema.test.ts membaca blok model sampai kurung tutup pertama.)
   offerTerms Json @map("offer_terms")
+
+  /// Jadwal pengembalian saat pembatalan (Step 25), dari kebijakan yang
+  /// dijawab SUPPLIER saat price check. Objek JSON dengan satu kunci `tiers`,
+  /// berisi daftar jenjang atau null — null untuk pemesanan yang belum pernah
+  /// diverifikasi harganya, dan untuk pemesanan sebelum Step 25.
+  refundSchedule Json @map("refund_schedule")
 
   /// Tanggal lokal properti. DATE, bukan TIMESTAMP — lihat kepala berkas.
   checkIn  DateTime @map("check_in") @db.Date
@@ -154,8 +175,21 @@ model Booking {
   failureReason String?             @map("failure_reason")
   cancellation  CancellationReason?
   reviewReason  String?             @map("review_reason")
-  /// Keadaan asal peninjauan: PAID atau FAILED.
+  /// Keadaan asal peninjauan: PAID, FAILED, atau CANCELLING.
   reviewFrom    BookingStatus?      @map("review_from")
+
+  /// Pembatalan oleh pengguna (Step 25). Empat kolom pertama adalah
+  /// persetujuannya — nilai, persentase, dan waktu permintaan — dan tetap ada
+  /// pada CANCELLED sesudahnya. Dua kolom terakhir adalah langkah yang sedang
+  /// ditunggu, dan hanya ada selama CANCELLING. Batasan CHECK di migrasi
+  /// menegakkan keduanya.
+  cancelRefundMinor    Int?              @map("cancel_refund_minor")
+  cancelRefundCurrency String?           @map("cancel_refund_currency")
+  cancelRefundPercent  Int?              @map("cancel_refund_percent")
+  cancelRequestedAt    DateTime?         @map("cancel_requested_at") @db.Timestamptz(3)
+  cancelStep           CancellationStep? @map("cancel_step")
+  /// Batas menunggu jawaban supplier atau refund. Dibaca penyapu pembatalan.
+  cancelDeadlineAt     DateTime?         @map("cancel_deadline_at") @db.Timestamptz(3)
 
   /// Kunci idempotensi dari klien (FR-18). Unik BERSAMA user_id — lihat
   /// @@unique di bawah.
@@ -183,6 +217,8 @@ model Booking {
   /// Penyapu hold Step 17: `status = 'HELD' AND held_until < now()`. Satu indeks
   /// gabungan melayani kueri itu dan kueri menurut status saja.
   @@index([status, heldUntil])
+  /// Penyapu pembatalan Step 25: `status = 'CANCELLING' AND cancel_deadline_at < now()`.
+  @@index([status, cancelDeadlineAt])
   @@map("bookings")
 }
 

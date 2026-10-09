@@ -100,20 +100,37 @@ export function failedMessage(booking: BookingSnapshot): Built {
   return outdated(booking)
 }
 
+const NOT_YET_CONFIRMED =
+  'Sampai ada kabar dari kami, pemesanan ini belum terkonfirmasi. Jangan dulu memakainya untuk check-in.'
+
 const REVIEW_COPY: Readonly<
-  Record<ReviewConcern, { readonly lead: string; readonly body: string }>
+  Record<
+    ReviewConcern,
+    { readonly lead: string; readonly body: string; readonly meanwhile: string }
+  >
 > = {
   room: {
     lead: 'Pembayaranmu tercatat dan aman. Kami belum mendapat kepastian dari penyedia tentang kamarmu, jadi tim kami memeriksanya langsung.',
     body: 'Bila kamar tidak dapat dipastikan, dana dikembalikan penuh.',
+    meanwhile: NOT_YET_CONFIRMED,
   },
   refund: {
     lead: 'Pembayaranmu tercatat dan aman. Pengembalian dana untuk pemesanan ini tertunda, jadi tim kami memeriksanya langsung.',
     body: 'Dana tetap akan dikembalikan penuh; yang sedang kami periksa adalah jalur pengembaliannya.',
+    meanwhile: NOT_YET_CONFIRMED,
+  },
+  // Step 25: pembatalan oleh pengguna yang tidak tuntas — refundnya gagal,
+  // atau penyedia tidak menjawab. Pengembaliannya bisa sebagian sesuai
+  // kebijakan, jadi surel ini tidak menjanjikan "penuh".
+  cancellation: {
+    lead: 'Permintaan pembatalanmu sudah kami terima dan pembayaranmu tercatat aman. Penyelesaiannya tertunda, jadi tim kami memeriksanya langsung.',
+    body: 'Dana yang menjadi hakmu sesuai kebijakan pembatalan tetap akan dikembalikan.',
+    meanwhile: 'Sampai ada kabar dari kami, pemesanan ini sedang dalam proses pembatalan.',
   },
   unspecified: {
     lead: 'Pembayaranmu tercatat dan aman. Tim kami sedang memeriksa pemesanan ini langsung.',
     body: 'Bila pemesanan tidak dapat diselesaikan, dana dikembalikan penuh.',
+    meanwhile: NOT_YET_CONFIRMED,
   },
 }
 
@@ -126,7 +143,7 @@ export function reviewMessage(booking: BookingSnapshot, concern: ReviewConcern):
     lead: copy.lead,
     paragraphs: [
       `Kami menghubungimu lewat surel dalam ${REVIEW_CONTACT_WITHIN}. ${copy.body}`,
-      'Sampai ada kabar dari kami, pemesanan ini belum terkonfirmasi. Jangan dulu memakainya untuk check-in.',
+      copy.meanwhile,
     ],
     facts: [...stayFacts(booking), { label: 'Pembayaran', value: amount(booking.total) }],
   })

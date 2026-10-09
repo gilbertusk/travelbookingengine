@@ -9,6 +9,7 @@ import {
   type SagaState,
 } from '../../domain/saga-state.js'
 import { applyCommand } from '../../domain/transitions.js'
+import { awaitingRefund, settleCancellationRefund } from '../cancellation/on-replies.js'
 import type { BookingDeps } from '../ports.js'
 import { refundPayment, supplierConfirm, type RefundReason } from './commands.js'
 import { compensate } from './compensation.js'
@@ -172,7 +173,10 @@ export interface PaymentRefunded {
   readonly amount: Money
 }
 
-/** Refund tuntas: FAILED → REFUNDED, atau refund pembayaran yatim selesai dilacak. */
+/**
+ * Refund tuntas: FAILED → REFUNDED, pembatalan oleh pengguna tuntas (Step 25),
+ * atau refund pembayaran yatim selesai dilacak.
+ */
 export async function onPaymentRefunded(
   deps: BookingDeps,
   event: PaymentRefunded,
@@ -184,6 +188,12 @@ export async function onPaymentRefunded(
 
     if (booking.status === 'FAILED' && booking.paymentId === event.paymentId) {
       return await settleCompensationRefund(deps, situation, event)
+    }
+
+    // Refund pembatalan oleh pengguna (Step 25).
+    const cancelling = awaitingRefund(situation, event.paymentId)
+    if (cancelling !== undefined) {
+      return await settleCancellationRefund(deps, situation, cancelling, event)
     }
 
     if (saga?.phase === 'compensating' && saga.refundDueBy !== undefined) {

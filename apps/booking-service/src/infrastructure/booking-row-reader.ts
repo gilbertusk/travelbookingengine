@@ -56,8 +56,12 @@ export class BookingRowReader {
 
   reviewFrom(): Review['from'] {
     const from = this.required('reviewFrom')
-    if (from !== 'PAID' && from !== 'FAILED') {
-      throw new CorruptBookingRowError(this.row.id, 'reviewFrom', `bukan PAID atau FAILED: ${from}`)
+    if (from !== 'PAID' && from !== 'FAILED' && from !== 'CANCELLING') {
+      throw new CorruptBookingRowError(
+        this.row.id,
+        'reviewFrom',
+        `bukan PAID, FAILED, atau CANCELLING: ${from}`,
+      )
     }
 
     return from

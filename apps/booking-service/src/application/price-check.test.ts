@@ -1,6 +1,13 @@
 import { money } from '@tbe/money'
 import { describe, expect, test } from 'vitest'
-import { harness, OTHER_USER, priceCheckRequest, sellQuoteFor, USER } from '../testing/fakes.js'
+import {
+  harness,
+  OTHER_USER,
+  priceCheckRequest,
+  recordingLogger,
+  sellQuoteFor,
+  USER,
+} from '../testing/fakes.js'
 import { acceptPriceChange, checkPrice, startPriceCheck } from './price-check.js'
 
 function checked(result: Awaited<ReturnType<typeof startPriceCheck>>) {
@@ -62,6 +69,63 @@ describe('price check langsung ke supplier (FR-13)', () => {
   })
 })
 
+describe('kebijakan pembatalan diverifikasi ke supplier (Step 25)', () => {
+  test('kebijakan dari supplier menggantikan yang dikirim peramban', async () => {
+    // Peramban mengirim "refundable, gratis 3 hari"; supplier menjawab rate
+    // ini non-refundable. Tanpa verifikasi, pengguna yang memesan rate murah
+    // non-refundable dapat membatalkannya dengan refund penuh.
+    const world = harness()
+    world.suppliers.supplierPolicy = { refundable: false }
+
+    const booking = checked(await startPriceCheck(world.deps, priceCheckRequest()))
+
+    expect(booking.terms?.cancellationPolicy).toEqual({ refundable: false })
+    expect(booking.refundSchedule?.tiers).toEqual([{ minHoursBefore: 0, percent: 0 }])
+  })
+
+  test('perbedaan dengan kebijakan yang dikirim peramban dicatat', async () => {
+    const recorder = recordingLogger()
+    const world = harness({ logger: recorder.logger })
+    world.suppliers.supplierPolicy = { refundable: false }
+
+    await startPriceCheck(world.deps, priceCheckRequest())
+
+    expect(recorder.entries()).toContainEqual(
+      expect.objectContaining({ level: 'warn', msg: expect.stringContaining('kebijakan') }),
+    )
+  })
+
+  test('tenggat gratis yang berbeda juga dicatat sebagai perbedaan', async () => {
+    const recorder = recordingLogger()
+    const world = harness({ logger: recorder.logger })
+    world.suppliers.supplierPolicy = { refundable: true, freeCancellationDays: 5 }
+
+    const booking = checked(await startPriceCheck(world.deps, priceCheckRequest()))
+
+    expect(booking.refundSchedule?.tiers[0]).toEqual({ minHoursBefore: 120, percent: 100 })
+    expect(recorder.entries().some((entry) => entry.level === 'warn')).toBe(true)
+  })
+
+  test('kebijakan yang sama dengan peramban tidak dicatat', async () => {
+    const recorder = recordingLogger()
+    const world = harness({ logger: recorder.logger })
+
+    await startPriceCheck(world.deps, priceCheckRequest())
+
+    expect(recorder.entries().filter((entry) => entry.level === 'warn')).toEqual([])
+  })
+
+  test('jadwal tersimpan juga ketika harganya berubah', async () => {
+    const world = harness()
+    world.suppliers.supplierTotal = money(2_100_000, 'IDR')
+
+    const booking = checked(await startPriceCheck(world.deps, priceCheckRequest()))
+
+    expect(booking.status === 'PRICE_CHECKED' && booking.priceCheck.kind).toBe('changed')
+    expect(booking.refundSchedule?.tiers[0]).toEqual({ minHoursBefore: 72, percent: 100 })
+  })
+})
+
 describe('harga berubah menghentikan alur (FR-14, US-02)', () => {
   test('harga berbeda berakhir menunggu persetujuan dengan harga lama tetap disetujui', async () => {
     const world = harness()
@@ -86,6 +150,12 @@ describe('harga berubah menghentikan alur (FR-14, US-02)', () => {
     expect(world.db.committed().events[1]?.payload).toEqual({
       previousAmount: { amountMinor: 2_442_000, currency: 'IDR' },
       newAmount: { amountMinor: 2_564_100, currency: 'IDR' },
+      // Jenjang dari kebijakan supplier ikut tercatat (Step 25).
+      refundTiers: [
+        { minHoursBefore: 72, percent: 100 },
+        { minHoursBefore: 24, percent: 50 },
+        { minHoursBefore: 0, percent: 0 },
+      ],
     })
   })
 

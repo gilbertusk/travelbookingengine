@@ -38,6 +38,8 @@ export const BOOKING_STATUSES = [
   'HELD',
   'PAID',
   'CONFIRMED',
+  /** Pembatalan oleh pengguna sedang berjalan (Step 25). Layarnya menyusul di Step 26. */
+  'CANCELLING',
   'FAILED',
   'REFUNDED',
   'CANCELLED',
@@ -81,6 +83,18 @@ export const statusSchema = z.object({
   supplierRef: z.string().nullable(),
   failureReason: z.string().nullable(),
   refund: z.enum(['pending', 'completed', 'review']).nullable(),
+  /** Apa yang diperiksa manusia pada NEEDS_REVIEW (Step 25). */
+  review: z.enum(['room', 'refund', 'cancellation']).nullable().default(null),
+  /** Pembatalan oleh pengguna, bila ada (Step 25). Layar lengkapnya Step 26. */
+  cancellation: z
+    .object({
+      step: z.enum(['supplier', 'refund', 'done']),
+      refund: moneySchema,
+      percent: z.number().int(),
+      requestedAt: z.string(),
+    })
+    .nullable()
+    .default(null),
   saga: z.object({ phase: z.string(), step: z.string() }).nullable(),
   serverTime: z.string(),
 })

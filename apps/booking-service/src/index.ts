@@ -33,6 +33,7 @@ import { loadConfig } from './config.js'
 import {
   createHttpPayments,
   createHttpPricing,
+  createHttpPropertyDirectory,
   createHttpSupplierQuotes,
   undiciTransport,
 } from './infrastructure/http-gateways.js'
@@ -100,6 +101,7 @@ const deps: BookingDeps = {
   },
   suppliers: createHttpSupplierQuotes(config.SUPPLIER_SERVICE_URL, transport),
   pricing: createHttpPricing(config.PRICING_SERVICE_URL, transport),
+  properties: createHttpPropertyDirectory(config.SEARCH_SERVICE_URL, transport),
   holds: createRedisHoldStore(redis),
   clock: systemClock,
   ids: uuidFactory,

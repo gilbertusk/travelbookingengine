@@ -187,6 +187,18 @@ export interface PaymentEvents {
     readonly bookingId: string
     readonly amount: Money
   }): Promise<void>
+
+  /**
+   * Refund berhenti tanpa dana kembali (Step 25). Dibaca saga pembatalan, yang
+   * menyerahkan pemesanannya ke manusia.
+   */
+  refundFailed(input: {
+    readonly refundRequestId: string
+    readonly paymentId: string
+    readonly bookingId: string
+    readonly amount: Money
+    readonly reason: string
+  }): Promise<void>
 }
 
 /**

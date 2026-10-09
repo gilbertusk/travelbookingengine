@@ -43,12 +43,18 @@ describe('SKY — REST JSON, IDR, satuan terkecil', () => {
     const search = await request(app)
       .post('/sky/availability')
       .send({ city: CITY, ...STAY, guests: 2 })
-    const rateId = search.body.results[0].rooms[0].rates[0].rateId
+    const rate = search.body.results[0].rooms[0].rates[0]
+    const rateId = rate.rateId
 
     const verify = await request(app)
       .post('/sky/rates/verify')
       .send({ rateId, ...STAY })
     expect(verify.status).toBe(200)
+    // Kebijakan pembatalan di price check sama dengan yang tampil di pencarian.
+    expect(verify.body).toMatchObject({
+      refundable: rate.refundable,
+      freeCancellationDays: rate.freeCancellationDays,
+    })
 
     const held = await request(app)
       .post('/sky/holds')
@@ -283,12 +289,14 @@ describe('alur lengkap tiap supplier', () => {
     }
 
     const search = await request(app).post('/nova/search').send(body)
-    const optionCode = search.body.properties[0].room_options[0].option_code
+    const option = search.body.properties[0].room_options[0]
+    const optionCode = option.option_code
 
     const check = await request(app)
       .post('/nova/rate-check')
       .send({ option_code: optionCode, ...body })
     expect(check.status).toBe(200)
+    expect(check.body.is_refundable).toBe(option.is_refundable)
 
     const held = await request(app)
       .post('/nova/reservations/hold')
@@ -329,11 +337,14 @@ describe('alur lengkap tiap supplier', () => {
       'Availability',
       `<Location>${CITY}</Location>${dates}<PaxCount>2</PaxCount>`,
     )
-    const rateCode = parser.parse(search.text).Envelope.Body.AvailabilityResponse.HotelList.Hotel[0]
-      .RoomList.Room[0].RateList.Rate[0].RateCode
+    const rate = parser.parse(search.text).Envelope.Body.AvailabilityResponse.HotelList.Hotel[0]
+      .RoomList.Room[0].RateList.Rate[0]
+    const rateCode = rate.RateCode
 
     const checked = await soap('RateCheck', `<RateCode>${String(rateCode)}</RateCode>${dates}`)
-    expect(parser.parse(checked.text).Envelope.Body.RateCheckResponse.Changed).toMatch(/^[YN]$/)
+    const answer = parser.parse(checked.text).Envelope.Body.RateCheckResponse
+    expect(answer.Changed).toMatch(/^[YN]$/)
+    expect(answer.Refundable).toBe(rate.Refundable)
 
     const held = await soap(
       'Hold',
@@ -362,10 +373,12 @@ describe('alur lengkap tiap supplier', () => {
     const q = { loc: CITY, in: epoch(STAY.checkIn), out: epoch(STAY.checkOut), pax: 2 }
 
     const search = await request(app).post('/luna/availability').send({ q })
-    const pid = search.body.data.items[0].rt[0].rp[0].pid
+    const plan = search.body.data.items[0].rt[0].rp[0]
+    const pid = plan.pid
 
     const rate = await request(app).post('/luna/rate').send({ pid, in: q.in, out: q.out })
     expect(rate.body.ok).toBe(true)
+    expect(rate.body.data.ref).toBe(plan.ref)
 
     const held = await request(app).post('/luna/hold').send({ pid, in: q.in, out: q.out, pax: 2 })
     expect(held.status).toBe(201)
@@ -389,12 +402,14 @@ describe('alur lengkap tiap supplier', () => {
     const search = await request(app)
       .post('/zeph/availability')
       .send({ location: CITY, dates, pax: 2 })
-    const offerRef = search.body.payload.hotels[0].rooms[0].offers[0].ref
+    const offer = search.body.payload.hotels[0].rooms[0].offers[0]
+    const offerRef = offer.ref
 
     const priced = await request(app)
       .post('/zeph/offers/price')
       .send({ offer_ref: offerRef, dates })
     expect(priced.body.status).toBe('ok')
+    expect(priced.body.payload.cancellable).toBe(offer.cancellable)
 
     const held = await request(app)
       .post('/zeph/offers/hold')

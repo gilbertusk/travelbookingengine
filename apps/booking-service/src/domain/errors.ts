@@ -59,6 +59,14 @@ export const BOOKING_RULES = [
    * CONFIRMED tanpa booking reference bagi pengguna.
    */
   'blank_field',
+  /** Nilai pengembalian melebihi pembayaran, negatif, atau dalam mata uang lain. */
+  'refund_exceeds_payment',
+  /** Langkah pembatalan tidak sesuai perintahnya — mis. refund sebelum supplier menjawab. */
+  'cancellation_stage_mismatch',
+  /** Tidak ada dana yang perlu dikembalikan, atau sebaliknya ada yang tidak boleh dilewati. */
+  'refund_due_mismatch',
+  /** Batas waktu menunggu jawaban tidak berada di masa depan. */
+  'deadline_in_past',
 ] as const
 
 export type BookingRule = (typeof BOOKING_RULES)[number]

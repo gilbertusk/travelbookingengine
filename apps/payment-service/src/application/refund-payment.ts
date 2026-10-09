@@ -130,7 +130,17 @@ async function resume(
   payment: SettledPayment,
   refund: Refund,
 ): Promise<RefundResult> {
-  if (refund.status === 'SUCCEEDED') return { kind: 'already_done', refund }
+  if (refund.status === 'SUCCEEDED') {
+    // Diumumkan LAGI. Perintah yang sama tiba kembali bila pengumuman pertama
+    // gagal terbit setelah refund tersimpan — Kafka mati di antara keduanya —
+    // dan tanpa pengumuman ulang, saga pembatalan menunggu jawaban yang tidak
+    // akan pernah datang, lalu menyerahkan refund yang sudah tuntas ke
+    // manusia. Penerima mengenali pengumuman ganda: pemesanan yang sudah
+    // tuntas mengabaikannya, dan surel dideduplikasi per refund.
+    await announce(deps, payment, refund)
+
+    return { kind: 'already_done', refund }
+  }
 
   if (refund.status === 'FAILED') {
     deps.logger.warn(

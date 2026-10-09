@@ -100,6 +100,8 @@ function verifyHandler(context: SupplierContext): RequestHandler {
       rateId: parsed.data.rateId,
       price: money(result.value.totalMinorIdr),
       changed: result.value.changed,
+      refundable: result.value.policy.refundable,
+      freeCancellationDays: result.value.policy.freeCancellationDays,
     })
   }
 }

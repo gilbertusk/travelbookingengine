@@ -1,6 +1,12 @@
 import { err, type Result } from '@tbe/shared-kernel'
 import type { Booking, BookingIn, BookingStatus } from './booking.js'
 import { COMMAND_TYPES, type BookingCommand, type CommandType } from './commands.js'
+import {
+  completeCancellation,
+  confirmSupplierCancellation,
+  requestCancellation,
+  restoreConfirmation,
+} from './cancellation-handlers.js'
 import { InvalidTransitionError, type BookingError, type BookingRuleError } from './errors.js'
 import type { BookingChange } from './events.js'
 import {
@@ -31,6 +37,9 @@ import {
  *   HELD           ─recordPayment→ PAID  ─expireHold→ EXPIRED  ─cancel→ CANCELLED
  *   PAID           ─confirm→ CONFIRMED   ─fail→ FAILED   ─requireReview→ NEEDS_REVIEW
  *   FAILED         ─recordRefund→ REFUNDED               ─requireReview→ NEEDS_REVIEW
+ *   CONFIRMED      ─requestCancellation→ CANCELLING      (hanya atas permintaan pengguna)
+ *   CANCELLING     ─confirmSupplierCancellation→ CANCELLING   ─completeCancellation→ CANCELLED
+ *                  ─restoreConfirmation→ CONFIRMED       ─requireReview→ NEEDS_REVIEW
  *
  * Beberapa sel yang layak dijelaskan, karena ketiadaannya disengaja:
  *
@@ -49,9 +58,13 @@ import {
  *   setelah kompensasi dimulai adalah status supplier yang tidak dapat
  *   dipastikan, dan itu `requireReview` — US-05: refund membabi buta untuk
  *   pemesanan yang sebenarnya berhasil adalah kerugian jenis lain.
- * - **Kelima keadaan final tidak punya satu kolom pun.** CONFIRMED termasuk.
- *   Pembatalan setelah konfirmasi (FR-27, Step 25) belum dimodelkan di sini —
- *   lihat bagian Temuan di step doc.
+ * - **Keadaan final tidak punya satu kolom pun yang dijalankan sistem.**
+ *   CONFIRMED punya satu kolom, `requestCancellation`, dan itu milik pengguna
+ *   (Step 25, FR-27). Ketegangan yang dicatat Step 16 diselesaikan di ADR-0004:
+ *   CONFIRMED tetap final bagi saga dan bagi NFR-06, dan hanya pemiliknya yang
+ *   dapat membukanya kembali. Pembatalan sesudahnya berjalan lewat keadaan
+ *   tengah CANCELLING, bukan langsung ke CANCELLED — kamar harus lepas di
+ *   supplier sebelum uang kembali.
  */
 export const TRANSITIONS = {
   DRAFT: { verifyPrice, cancel },
@@ -59,7 +72,13 @@ export const TRANSITIONS = {
   HELD: { expireHold, recordPayment, cancel },
   PAID: { confirm, fail, requireReview },
   FAILED: { recordRefund, requireReview },
-  CONFIRMED: {},
+  CONFIRMED: { requestCancellation },
+  CANCELLING: {
+    confirmSupplierCancellation,
+    completeCancellation,
+    restoreConfirmation,
+    requireReview,
+  },
   REFUNDED: {},
   CANCELLED: {},
   EXPIRED: {},
@@ -73,6 +92,19 @@ export const TRANSITIONS = {
  */
 export type TransitionTable = {
   readonly [S in BookingStatus]: { readonly [C in CommandType]?: Handler<BookingIn<S>, C> }
+}
+
+/**
+ * Perintah yang hanya dapat datang dari PENGGUNA, tidak pernah dari saga,
+ * peristiwa, batas waktu, maupun pemulihan. Hanya perintah ini yang boleh
+ * dipasang pada keadaan final — lihat FINAL_STATUSES di booking.ts.
+ */
+export const USER_INITIATED_COMMANDS = [
+  'requestCancellation',
+] as const satisfies readonly CommandType[]
+
+export function isUserInitiated(command: CommandType): boolean {
+  return USER_INITIATED_COMMANDS.some((candidate) => candidate === command)
 }
 
 /** Perintah yang sah pada sebuah keadaan, sebagaimana dinyatakan tabel. */

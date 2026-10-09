@@ -49,7 +49,7 @@ describe('bagian respons yang hilang', () => {
   })
 
   test('ORBIT: price check tanpa RateCode memakai kode yang dikirim', async () => {
-    const body = `<?xml version="1.0"?><Envelope><Body><RateCheckResponse><Amount Currency="IDR">500000</Amount><Changed>Y</Changed></RateCheckResponse></Body></Envelope>`
+    const body = `<?xml version="1.0"?><Envelope><Body><RateCheckResponse><Amount Currency="IDR">500000</Amount><Changed>Y</Changed><Refundable>Y</Refundable></RateCheckResponse></Body></Envelope>`
 
     const result = await createOrbitAdapter(fakeHttp(respondWith(body))).priceCheck('r-asli', STAY)
 
@@ -167,5 +167,30 @@ describe('registri', () => {
     const registry = createSupplierRegistry(mockSupplierRegistryConfig('http://localhost:4000'))
 
     expect(() => registry.get('MARS' as SupplierCode)).toThrow(/MARS/)
+  })
+})
+
+describe('price check tanpa kebijakan pembatalan', () => {
+  // Kebijakan dari price check menentukan berapa yang dikembalikan saat
+  // pengguna membatalkan (Step 25). Jawaban tanpa kebijakan bukan "boleh
+  // dibatalkan gratis" — itu jawaban yang tidak dapat dipakai.
+  test('SKY tanpa bidang refundable menjadi invalid_response', async () => {
+    const body = JSON.stringify({
+      rateId: 'r-1',
+      price: { amount: 500_000, currency: 'IDR' },
+      changed: false,
+    })
+
+    const result = await createSkyAdapter(fakeHttp(respondWith(body))).priceCheck('r-1', STAY)
+
+    expect(!result.ok && result.error.kind).toBe('invalid_response')
+  })
+
+  test('ORBIT dengan Refundable yang bukan Y atau N menjadi invalid_response', async () => {
+    const body = `<?xml version="1.0"?><Envelope><Body><RateCheckResponse><RateCode>r-1</RateCode><Amount Currency="IDR">500000</Amount><Changed>N</Changed><Refundable>kadang</Refundable></RateCheckResponse></Body></Envelope>`
+
+    const result = await createOrbitAdapter(fakeHttp(respondWith(body))).priceCheck('r-1', STAY)
+
+    expect(!result.ok && result.error.kind).toBe('invalid_response')
   })
 })

@@ -100,6 +100,7 @@ function rateHandler(context: SupplierContext): RequestHandler {
         pid: parsed.data.pid,
         amt: idr(result.value.totalMinorIdr),
         chg: result.value.changed,
+        ref: result.value.policy.refundable ? 1 : 0,
       },
     })
   }

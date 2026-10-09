@@ -51,6 +51,7 @@ export function decide(booking: Booking): Decision {
       return { step: 'held', booking }
     case 'PAID':
     case 'CONFIRMED':
+    case 'CANCELLING':
     case 'FAILED':
     case 'REFUNDED':
     case 'NEEDS_REVIEW':

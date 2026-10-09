@@ -63,11 +63,12 @@ export const TEST_PAYMENT_ID = '11111111-1111-4111-8111-111111111111'
 export const TEST_AMOUNT: Money = money(1_250_000, 'IDR')
 
 export interface RecordedEvent {
-  readonly type: 'succeeded' | 'failed' | 'refunded'
+  readonly type: 'succeeded' | 'failed' | 'refunded' | 'refund_failed'
   readonly paymentId: string
   readonly bookingId: string
   readonly amount?: Money | undefined
   readonly reason?: string | undefined
+  readonly refundRequestId?: string | undefined
 }
 
 export interface RecordingEvents extends PaymentEvents {
@@ -96,6 +97,12 @@ export function recordingEvents(effects?: string[]): RecordingEvents {
     async refunded(input) {
       published.push({ type: 'refunded', ...input })
       log.push(`event:payment.refunded:${input.refundId}`)
+      await Promise.resolve()
+    },
+
+    async refundFailed(input) {
+      published.push({ type: 'refund_failed', ...input })
+      log.push(`event:payment.refund_failed:${input.refundRequestId}`)
       await Promise.resolve()
     },
   }

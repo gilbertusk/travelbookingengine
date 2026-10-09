@@ -72,6 +72,7 @@ const zephPriceResponse = envelope(
     price: z.string().min(1),
     currency: z.literal('USD'),
     changed: z.boolean(),
+    cancellable: z.boolean(),
   }),
 )
 
@@ -192,6 +193,7 @@ async function priceCheck(
     supplierRatePlanId: decoded.value.payload.offer_ref,
     total: total.value,
     changed: decoded.value.payload.changed,
+    cancellationPolicy: cancellationPolicy(decoded.value.payload.cancellable),
   })
 }
 

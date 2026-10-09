@@ -3,6 +3,7 @@ import type { Money } from '@tbe/money'
 import type { Logger } from '@tbe/shared-kernel'
 import type { Booking, DraftBooking, SupplierCode } from '../domain/booking.js'
 import type { BookingChange } from '../domain/events.js'
+import type { CancellationPolicy } from '../domain/offer-terms.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
 import type { RetryPolicy, SagaState } from '../domain/saga-state.js'
 import type { SellQuote } from '../domain/sell-price.js'
@@ -73,6 +74,12 @@ export interface BookingRepository {
    * dulu. Dibaca penyapu hold (Step 17) lewat indeks `(status, held_until)`.
    */
   findExpiredHolds(now: Date, limit: number): Promise<readonly Booking[]>
+
+  /**
+   * Pemesanan CANCELLING yang batas menunggu jawaban supplier atau refundnya
+   * sudah lewat (Step 25), yang paling lama lebih dulu.
+   */
+  findOverdueCancellations(now: Date, limit: number): Promise<readonly Booking[]>
 }
 
 /**
@@ -97,6 +104,12 @@ export interface RatePlanStay {
   readonly checkOut: string
 }
 
+/** Jawaban price check: harga supplier dan kebijakan pembatalan rate plan (Step 25). */
+export interface SupplierPrice {
+  readonly total: Money
+  readonly policy: CancellationPolicy
+}
+
 export interface SupplierHold {
   readonly holdRef: string
   readonly expiresAt: Date
@@ -114,7 +127,7 @@ export interface SupplierHold {
  */
 export interface SupplierQuotes {
   /** Harga supplier, langsung dari supplier. Tidak pernah dari cache (FR-13). */
-  priceCheck(request: RatePlanStay): Promise<SupplierAnswer<{ readonly total: Money }>>
+  priceCheck(request: RatePlanStay): Promise<SupplierAnswer<SupplierPrice>>
   hold(request: RatePlanStay & { readonly guests: number }): Promise<SupplierAnswer<SupplierHold>>
 }
 
@@ -268,6 +281,27 @@ export interface SagaPolicy {
   readonly sweepBatch: number
 }
 
+/**
+ * Zona waktu properti, dari katalog search-service (Step 25).
+ *
+ * Ditanyakan saat pembatalan dihitung, bukan disalin saat memesan: zona waktu
+ * adalah fakta properti (CONVENTIONS.md bagian 9), bukan bagian kesepakatan,
+ * dan katalog adalah pemiliknya. Yang disepakati — jadwal pengembaliannya —
+ * tersimpan bersama pemesanan.
+ *
+ * `not_found`: properti tidak terpetakan di katalog. Pembatalannya tidak dapat
+ * dihitung otomatis, dan TIDAK ditebak dengan zona lain: selisih beberapa jam
+ * di sekitar tenggat berarti persentase pengembalian yang lain.
+ */
+export type TimeZoneAnswer =
+  | { readonly kind: 'found'; readonly timeZone: string }
+  | { readonly kind: 'not_found' }
+  | { readonly kind: 'unreachable' }
+
+export interface PropertyDirectory {
+  timeZoneOf(supplier: SupplierCode, propertyId: string): Promise<TimeZoneAnswer>
+}
+
 export interface Clock {
   now(): Date
 }
@@ -290,6 +324,7 @@ export interface BookingDeps {
   readonly sagaPolicy: SagaPolicy
   readonly suppliers: SupplierQuotes
   readonly pricing: Pricing
+  readonly properties: PropertyDirectory
   readonly holds: HoldStore
   readonly clock: Clock
   readonly ids: IdFactory

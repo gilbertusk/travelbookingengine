@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { searchResultSchema } from '../canonical/model.js'
-import type { SupplierCode } from '../canonical/model.js'
+import type { CancellationPolicy, SupplierCode } from '../canonical/model.js'
 import type { SupplierGateway } from '../ports/supplier-gateway.js'
 import { fakeHttp, readFixture, respondWith } from '../testing/fakes.js'
 import { createLunaAdapter } from './luna.js'
@@ -26,6 +26,8 @@ interface Subject {
   readonly create: (response: ReturnType<typeof respondWith>) => SupplierGateway
   readonly fixture: (operation: string) => string
   readonly currency: 'IDR' | 'USD'
+  /** Kebijakan pembatalan yang tertera di fixture price check-nya. */
+  readonly policy: CancellationPolicy
 }
 
 const SUBJECTS: readonly Subject[] = [
@@ -34,30 +36,35 @@ const SUBJECTS: readonly Subject[] = [
     create: (response) => createSkyAdapter(fakeHttp(response)),
     fixture: (operation) => readFixture(`sky-${operation}.json`),
     currency: 'IDR',
+    policy: { refundable: true, freeCancellationDays: 5 },
   },
   {
     code: 'NOVA',
     create: (response) => createNovaAdapter(fakeHttp(response)),
     fixture: (operation) => readFixture(`nova-${operation}.json`),
     currency: 'USD',
+    policy: { refundable: true },
   },
   {
     code: 'ORBIT',
     create: (response) => createOrbitAdapter(fakeHttp(response)),
     fixture: (operation) => readFixture(`orbit-${operation}.xml`),
     currency: 'IDR',
+    policy: { refundable: false },
   },
   {
     code: 'LUNA',
     create: (response) => createLunaAdapter(fakeHttp(response)),
     fixture: (operation) => readFixture(`luna-${operation}.json`),
     currency: 'IDR',
+    policy: { refundable: true },
   },
   {
     code: 'ZEPH',
     create: (response) => createZephAdapter(fakeHttp(response)),
     fixture: (operation) => readFixture(`zeph-${operation}.json`),
     currency: 'USD',
+    policy: { refundable: false },
   },
 ]
 
@@ -157,6 +164,16 @@ describe.each(SUBJECTS)('adapter $code', (item) => {
     // sepersepuluh permintaan, dan pergeseran harga adalah jawaban yang sah.
     expect(typeof result.value.changed).toBe('boolean')
     expect(result.value.total.amountMinor).toBeGreaterThan(0)
+  })
+
+  test('price check membawa kebijakan pembatalan dari jawaban supplier', async () => {
+    const adapter = item.create(respondWith(item.fixture('price-check')))
+
+    const result = await adapter.priceCheck('rate-apa-saja', STAY)
+
+    // Kebijakan inilah yang mengikat nilai refund (Step 25). Ia harus datang
+    // dari jawaban supplier, bukan dari apa pun yang dikirim peramban.
+    expect(result.ok && result.value.cancellationPolicy).toEqual(item.policy)
   })
 
   test('menormalisasi hasil hold, dengan kedaluwarsa sebagai titik waktu', async () => {
@@ -382,6 +399,7 @@ describe('keanehan khas tiap supplier', () => {
         price: '1,250.00',
         currency: 'USD',
         changed: false,
+        cancellable: true,
       },
     })
 

@@ -146,6 +146,7 @@ function handleRateCheck({ body, context, res }: HandleParams): void {
       RateCode: text(request, 'RateCode'),
       Amount: amountNode(result.value.totalMinorIdr),
       Changed: result.value.changed ? 'Y' : 'N',
+      Refundable: result.value.policy.refundable ? 'Y' : 'N',
     },
   })
 }

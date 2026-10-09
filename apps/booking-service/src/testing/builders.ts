@@ -1,13 +1,18 @@
 import { money, type Money } from '@tbe/money'
 import type { Booking, BookingIn, BookingStatus } from '../domain/booking.js'
-import type { BookingCommand, CommandOf, CommandType } from '../domain/commands.js'
+import type {
+  BookingCommand,
+  CancellationQuote,
+  CommandOf,
+  CommandType,
+} from '../domain/commands.js'
 import { createBooking } from '../domain/create-booking.js'
 import type { BookingChange } from '../domain/events.js'
 import { guestDetails, type GuestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey, type IdempotencyKey } from '../domain/idempotency-key.js'
 import { priceBreakdown, type PriceBreakdown } from '../domain/price.js'
 import { stayDates, type StayDates } from '../domain/stay-dates.js'
-import type { OfferTerms } from '../domain/offer-terms.js'
+import type { CancellationPolicy, OfferTerms } from '../domain/offer-terms.js'
 import { applyCommand } from '../domain/transitions.js'
 
 /**
@@ -68,12 +73,29 @@ export function sampleKey(suffix = 'a'): IdempotencyKey {
   return key
 }
 
+/** Kebijakan pembatalan contoh, sebagaimana dijawab supplier saat price check (Step 25). */
+export const SAMPLE_POLICY: CancellationPolicy = { refundable: true, freeCancellationDays: 3 }
+
 /** Ketentuan tawaran contoh — bahan e-voucher (Step 23). */
 export const SAMPLE_TERMS: OfferTerms = {
   roomTypeName: 'Deluxe King',
   ratePlanName: 'Termasuk sarapan',
   breakfastIncluded: true,
-  cancellationPolicy: { refundable: true, freeCancellationDays: 3 },
+  cancellationPolicy: SAMPLE_POLICY,
+}
+
+/** Awal 10 November 2026 di Bali (UTC+8) — tanggal masuk contoh. */
+export const CHECK_IN_STARTS_AT = new Date('2026-11-09T16:00:00.000Z')
+
+/** Persetujuan pengembalian contoh: seluruh pembayaran, jenjang 100%. */
+export function sampleQuote(refund: Money = samplePrice().total): CancellationQuote {
+  return {
+    refund,
+    percent: refund.amountMinor === 0 ? 0 : 100,
+    until: new Date(CHECK_IN_STARTS_AT.getTime() - 72 * 3_600_000),
+    timeZone: 'Asia/Makassar',
+    checkInStartsAt: CHECK_IN_STARTS_AT,
+  }
 }
 
 export function draftChange(
@@ -110,7 +132,7 @@ export function draft(): BookingIn<'DRAFT'> {
 export function validCommand<C extends CommandType>(booking: Booking, type: C): CommandOf<C> {
   const at = minutesAfter(booking.updatedAt, 1)
   const commands: { readonly [K in CommandType]: CommandOf<K> } = {
-    verifyPrice: { type: 'verifyPrice', at, verified: booking.price },
+    verifyPrice: { type: 'verifyPrice', at, verified: booking.price, policy: SAMPLE_POLICY },
     acceptPrice: { type: 'acceptPrice', at },
     hold: {
       type: 'hold',
@@ -133,9 +155,49 @@ export function validCommand<C extends CommandType>(booking: Booking, type: C): 
     recordRefund: { type: 'recordRefund', at, refundId: REFUND_ID, amount: booking.price.total },
     cancel: { type: 'cancel', at, reason: 'user_request' },
     requireReview: { type: 'requireReview', at, reason: 'status supplier tidak dapat dipastikan' },
+    ...cancellationCommands(booking, at),
   }
 
   return commands[type]
+}
+
+/** Perintah saga pembatalan (Step 25) yang SAH untuk pemesanan pada keadaannya. */
+function cancellationCommands(booking: Booking, at: Date) {
+  return {
+    requestCancellation: {
+      type: 'requestCancellation',
+      at,
+      quote: sampleQuote(booking.price.total),
+      replyBy: minutesAfter(at, 10),
+    },
+    confirmSupplierCancellation: {
+      type: 'confirmSupplierCancellation',
+      at,
+      refundBy: minutesAfter(at, 30),
+    },
+    completeCancellation: {
+      type: 'completeCancellation',
+      at,
+      settlement: {
+        kind: 'refunded',
+        refundId: REFUND_ID,
+        amount: booking.cancellationRequest?.refund ?? booking.price.total,
+      },
+    },
+    restoreConfirmation: {
+      type: 'restoreConfirmation',
+      at,
+      reason: 'supplier menolak pembatalan setelah seluruh percobaan',
+    },
+  } as const satisfies {
+    readonly [
+      K in
+        | 'requestCancellation'
+        | 'confirmSupplierCancellation'
+        | 'completeCancellation'
+        | 'restoreConfirmation'
+    ]: CommandOf<K>
+  }
 }
 
 export function step(booking: Booking, command: BookingCommand): Booking {
@@ -154,6 +216,7 @@ export function inState(status: BookingStatus): Booking {
     HELD: ['verifyPrice', 'hold'],
     PAID: ['verifyPrice', 'hold', 'recordPayment'],
     CONFIRMED: ['verifyPrice', 'hold', 'recordPayment', 'confirm'],
+    CANCELLING: ['verifyPrice', 'hold', 'recordPayment', 'confirm', 'requestCancellation'],
     FAILED: ['verifyPrice', 'hold', 'recordPayment', 'fail'],
     REFUNDED: ['verifyPrice', 'hold', 'recordPayment', 'fail', 'recordRefund'],
     CANCELLED: ['cancel'],
@@ -174,6 +237,7 @@ export function priceChanged(nightly = 1_100_000): BookingIn<'PRICE_CHECKED'> {
     type: 'verifyPrice',
     at: minutesAfter(booking.updatedAt, 1),
     verified: samplePrice(nightly),
+    policy: SAMPLE_POLICY,
   })
 
   return narrow(changed, 'PRICE_CHECKED')
@@ -189,8 +253,20 @@ export function priceChanged(nightly = 1_100_000): BookingIn<'PRICE_CHECKED'> {
  */
 export function sampleFor(status: BookingStatus, command: CommandType): Booking {
   if (status === 'PRICE_CHECKED' && command === 'acceptPrice') return priceChanged()
+  // Refund hanya dapat tuntas setelah supplier membatalkan (Step 25).
+  if (status === 'CANCELLING' && command === 'completeCancellation') return refunding()
 
   return inState(status)
+}
+
+/** CANCELLING yang supplier-nya sudah membatalkan dan sedang menunggu refund. */
+export function refunding(): BookingIn<'CANCELLING'> {
+  const cancelling = inState('CANCELLING')
+
+  return narrow(
+    step(cancelling, validCommand(cancelling, 'confirmSupplierCancellation')),
+    'CANCELLING',
+  )
 }
 
 export function narrow<S extends BookingStatus>(booking: Booking, status: S): BookingIn<S> {

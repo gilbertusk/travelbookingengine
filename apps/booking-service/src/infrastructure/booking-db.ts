@@ -65,12 +65,20 @@ export interface BookingStateColumns {
   readonly cancellation: CancellationReason | null
   readonly reviewReason: string | null
   readonly reviewFrom: BookingStatus | null
+  readonly cancelRefundMinor: number | null
+  readonly cancelRefundCurrency: string | null
+  readonly cancelRefundPercent: number | null
+  readonly cancelRequestedAt: Date | null
+  readonly cancelStep: 'supplier' | 'refund' | null
+  readonly cancelDeadlineAt: Date | null
   readonly version: number
   readonly updatedAt: Date
 }
 
 export interface BookingWriteColumns extends BookingIdentityColumns, BookingStateColumns {
   readonly priceLines: JsonObject
+  /** `{ tiers: [...] | null }` — lihat schema.prisma. Berubah saat price check (Step 25). */
+  readonly refundSchedule: JsonObject
   /** `{ terms: {...} | null }` — lihat schema.prisma. Ditulis sekali, saat dibuat. */
   readonly offerTerms: JsonObject
 }
@@ -81,6 +89,7 @@ export interface BookingWriteColumns extends BookingIdentityColumns, BookingStat
  */
 export interface BookingRow extends BookingIdentityColumns, BookingStateColumns {
   readonly priceLines: unknown
+  readonly refundSchedule: unknown
   readonly offerTerms: unknown
 }
 
@@ -156,11 +165,12 @@ export interface BookingDb {
     findFirst(args: {
       where: { userId: string; idempotencyKey: string }
     }): Promise<BookingRow | null>
-    findMany(args: {
-      where: { status: 'HELD'; heldUntil: { lte: Date } }
-      orderBy: { heldUntil: 'asc' }
-      take: number
-    }): Promise<BookingRow[]>
+    /**
+     * Dua kueri penyapu, masing-masing dilayani indeks gabungannya sendiri:
+     * hold yang lewat (Step 17) dan pembatalan yang batas menunggunya lewat
+     * (Step 25).
+     */
+    findMany(args: { where: DueWhere; orderBy: DueOrder; take: number }): Promise<BookingRow[]>
   }
   readonly sagaState: {
     findUnique(args: { where: { bookingId: string } }): Promise<SagaRow | null>
@@ -178,6 +188,22 @@ export interface BookingDb {
     fn: (tx: BookingTx) => Promise<T>,
     options?: { readonly timeout?: number; readonly maxWait?: number },
   ): Promise<T>
+}
+
+/**
+ * Bentuk kueri penyapu. Satu bentuk yang mencakup keduanya, bukan union dua
+ * bentuk: inferensi generik `findMany` Prisma tidak dapat dicocokkan dengan
+ * union maupun overload, dan bukti kesesuaian di prisma-client.ts akan gagal.
+ */
+export interface DueWhere {
+  readonly status: 'HELD' | 'CANCELLING'
+  readonly heldUntil?: { readonly lte: Date }
+  readonly cancelDeadlineAt?: { readonly lte: Date }
+}
+
+export interface DueOrder {
+  readonly heldUntil?: 'asc'
+  readonly cancelDeadlineAt?: 'asc'
 }
 
 export interface BookingTx {

@@ -1,6 +1,6 @@
 import type { EventPayload } from '@tbe/event-contracts'
 import { toJson } from '@tbe/money'
-import type { BookingCreated, BookingEvent } from '../domain/events.js'
+import type { BookingCreated, BookingEvent, ReviewRequired } from '../domain/events.js'
 
 /**
  * Pemetaan peristiwa domain ke payload kontrak peristiwa Kafka.
@@ -63,15 +63,29 @@ export function toContractEvent(event: BookingEvent): ContractEvent | undefined 
       return { type: 'booking.failed', payload: failedPayload(event) }
     case 'BookingCancelled':
       return { type: 'booking.cancelled', payload: { bookingId, reason: event.reason } }
+    case 'CancellationCompleted':
+      // Pembatalan oleh pengguna setelah terkonfirmasi (Step 25). Nilainya
+      // selalu disertakan, juga nol: notification-service membedakan "tidak ada
+      // yang kembali sesuai kebijakan" dari "rincian menyusul" lewat ada
+      // tidaknya bidang ini.
+      return {
+        type: 'booking.cancelled',
+        payload: { bookingId, reason: 'user_request', refundAmount: toJson(event.refund) },
+      }
     case 'HoldExpired':
       // EXPIRED adalah keadaannya sendiri di domain, tetapi bagi service lain
       // ia pembatalan dengan alasan `hold_expired` — dan kontraknya memang
       // menyatakannya begitu sejak Step 05.
       return { type: 'booking.cancelled', payload: { bookingId, reason: 'hold_expired' } }
+    // Langkah tengah pembatalan (tiga terakhir) adalah urusan saga ini sendiri.
+    // Yang diumumkan hanyalah akhirnya: dibatalkan, atau diserahkan ke manusia.
     case 'PriceVerified':
     case 'PriceAccepted':
     case 'PaymentRecorded':
     case 'BookingRefunded':
+    case 'CancellationRequested':
+    case 'SupplierCancellationConfirmed':
+    case 'CancellationRestored':
       return undefined
   }
 }
@@ -102,8 +116,17 @@ function createdPayload(event: BookingCreated): EventPayload<'booking.created'> 
  *   kompensasinya otomatis.
  * - ReviewRequired dari PAID: status supplier tidak dapat dipastikan (US-05).
  *   Dari FAILED: kompensasinya — refund — yang gagal, jadi tahapnya `payment`.
- *   Keduanya `requiresManualReview`.
+ *   Dari CANCELLING (Step 25): refund pembatalan oleh pengguna yang gagal atau
+ *   tidak terjawab, jadi tahapnya `cancellation` — kamarnya mungkin sudah
+ *   lepas, dan surelnya tidak boleh berkata "belum terkonfirmasi".
+ *   Ketiganya `requiresManualReview`.
  */
+const REVIEW_STAGES = {
+  PAID: 'supplier_confirm',
+  FAILED: 'payment',
+  CANCELLING: 'cancellation',
+} as const satisfies Record<ReviewRequired['from'], EventPayload<'booking.failed'>['stage']>
+
 function failedPayload(
   event: Extract<BookingEvent, { type: 'BookingFailed' | 'ReviewRequired' }>,
 ): EventPayload<'booking.failed'> {
@@ -118,7 +141,7 @@ function failedPayload(
 
   return {
     bookingId: event.bookingId,
-    stage: event.from === 'PAID' ? 'supplier_confirm' : 'payment',
+    stage: REVIEW_STAGES[event.from],
     reason: event.reason,
     requiresManualReview: true,
   }

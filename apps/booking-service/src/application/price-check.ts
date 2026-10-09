@@ -6,7 +6,7 @@ import { createBooking } from '../domain/create-booking.js'
 import type { BookingError } from '../domain/errors.js'
 import { guestDetails } from '../domain/guest-details.js'
 import { parseIdempotencyKey } from '../domain/idempotency-key.js'
-import { offerTerms, type OfferTermsInput } from '../domain/offer-terms.js'
+import { offerTerms, type CancellationPolicy, type OfferTermsInput } from '../domain/offer-terms.js'
 import { priceBreakdown } from '../domain/price.js'
 import { stayDates } from '../domain/stay-dates.js'
 import { quoteLive } from './live-quote.js'
@@ -121,8 +121,42 @@ export async function checkPrice(deps: BookingDeps, booking: Booking): Promise<P
       // berubah dengan dicoba lagi. Pemesanan berakhir, bukan menggantung.
       return await apply(deps, booking, { type: 'cancel', at, reason: 'supplier_rejected' })
     case 'quoted':
-      return await apply(deps, booking, { type: 'verifyPrice', at, verified: quote.price })
+      warnIfPolicyDiffers(deps, booking, quote.policy)
+      return await apply(deps, booking, {
+        type: 'verifyPrice',
+        at,
+        verified: quote.price,
+        policy: quote.policy,
+      })
   }
+}
+
+/**
+ * Kebijakan yang dikirim peramban berbeda dari jawaban supplier (Step 25).
+ *
+ * Yang dipakai selalu jawaban supplier — itu sudah diputuskan domain. Yang
+ * dicatat di sini adalah perbedaannya: hasil pencarian yang basi atau adapter
+ * yang salah membaca kebijakan akan terlihat sebagai perbedaan yang berulang,
+ * dan pemanggil API yang mencoba menulis kebijakannya sendiri juga.
+ */
+function warnIfPolicyDiffers(
+  deps: BookingDeps,
+  booking: Booking,
+  verified: CancellationPolicy,
+): void {
+  const offered = booking.terms?.cancellationPolicy
+  if (offered === undefined || isSamePolicy(offered, verified)) return
+
+  deps.logger.warn(
+    { bookingId: booking.id, offered, verified },
+    'kebijakan pembatalan dari peramban berbeda dari jawaban supplier, yang dipakai milik supplier',
+  )
+}
+
+function isSamePolicy(a: CancellationPolicy, b: CancellationPolicy): boolean {
+  if (!a.refundable || !b.refundable) return a.refundable === b.refundable
+
+  return a.freeCancellationDays === b.freeCancellationDays
 }
 
 /** Yang menentukan "pemesanan yang sama": apa yang dipesan, bukan harganya. */

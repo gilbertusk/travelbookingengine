@@ -4,6 +4,7 @@ import type {
   BookingRow,
   BookingTx,
   BookingWriteColumns,
+  DueWhere,
   EventWriteColumns,
 } from '../infrastructure/booking-db.js'
 import { UNIQUE_VIOLATION } from '../infrastructure/booking-db.js'
@@ -149,13 +150,16 @@ function insertEvent(tables: Tables, data: EventWriteColumns): void {
 }
 
 /** Baris HELD yang batas waktunya sudah lewat, meniru kueri penyapu. */
-function dueRows(tables: Tables, now: Date, take: number): BookingRow[] {
+function dueRows(tables: Tables, where: DueWhere, take: number): BookingRow[] {
+  const column = where.heldUntil === undefined ? 'cancelDeadlineAt' : 'heldUntil'
+  const bound = where.heldUntil ?? where.cancelDeadlineAt
+  if (bound === undefined) throw new Error('kueri penyapu tanpa batas waktu')
+  const now = bound.lte
+  const dueAt = (row: BookingRow): number => row[column]?.getTime() ?? Number.POSITIVE_INFINITY
+
   return [...tables.bookings.values()]
-    .filter(
-      (row) =>
-        row.status === 'HELD' && row.heldUntil !== null && row.heldUntil.getTime() <= now.getTime(),
-    )
-    .sort((a, b) => (a.heldUntil?.getTime() ?? 0) - (b.heldUntil?.getTime() ?? 0))
+    .filter((row) => row.status === where.status && dueAt(row) <= now.getTime())
+    .sort((a, b) => dueAt(a) - dueAt(b))
     .slice(0, take)
 }
 
@@ -169,7 +173,7 @@ function readersOver(committed: () => Tables): Pick<BookingDb, 'booking' | 'saga
       },
       findMany: async ({ where, take }) => {
         await Promise.resolve()
-        return structuredClone(dueRows(committed(), where.heldUntil.lte, take))
+        return structuredClone(dueRows(committed(), where, take))
       },
       findFirst: async ({ where }) => {
         await Promise.resolve()

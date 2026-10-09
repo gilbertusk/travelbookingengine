@@ -32,6 +32,7 @@ import {
   priceCheckRequest,
   SAGA_POLICY,
   scriptedPricing,
+  scriptedProperties,
   scriptedSuppliers,
 } from '../../src/testing/fakes.js'
 import { caughtUp, commandObserver, eventObserver, eventually } from './brokers.js'
@@ -70,6 +71,7 @@ const deps: BookingDeps = {
   sagaPolicy: SAGA_POLICY,
   suppliers: scriptedSuppliers(() => new Date()),
   pricing: scriptedPricing(),
+  properties: scriptedProperties(),
   holds: createRedisHoldStore(redis),
   clock: systemClock,
   ids: { next: () => randomUUID() },

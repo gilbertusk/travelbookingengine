@@ -51,7 +51,7 @@ export const TOPICS: readonly TopicDefinition[] = [
     partitions: 6,
     partitionKey: 'bookingId',
     retentionMs: 90 * DAY_MS,
-    events: ['payment.succeeded', 'payment.failed', 'payment.refunded'],
+    events: ['payment.succeeded', 'payment.failed', 'payment.refunded', 'payment.refund_failed'],
     rationale:
       'Dikunci bookingId agar seluruh peristiwa pembayaran satu pemesanan tiba ' +
       'berurutan pada consumer yang sama. Retensi panjang untuk audit finansial.',
@@ -65,9 +65,11 @@ export const TOPICS: readonly TopicDefinition[] = [
       'supplier.booking_confirmed',
       'supplier.booking_rejected',
       'supplier.booking_uncertain',
+      'supplier.booking_cancelled',
+      'supplier.booking_cancel_failed',
     ],
     rationale:
-      'Hasil supplier.confirm untuk saga (Step 19). Dikunci bookingId, bukan kode ' +
+      'Hasil supplier.confirm dan supplier.cancel untuk saga (Step 19, Step 25). Dikunci bookingId, bukan kode ' +
       'supplier: urutan yang penting adalah urutan per pemesanan, dan satu supplier ' +
       'populer tidak boleh memusatkan seluruh saga di satu partisi. Terpisah dari ' +
       'tbe.supplier.v1 karena yang itu satu partisi dan beretensi pendek; ' +

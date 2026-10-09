@@ -101,7 +101,26 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
     create,
     save,
     findExpiredHolds: async (now, limit) => await expiredHolds(db, now, limit),
+    findOverdueCancellations: async (now, limit) => await overdueCancellations(db, now, limit),
   }
+}
+
+/**
+ * Pembatalan yang batas menunggu jawabannya sudah lewat (Step 25), yang paling
+ * lama lebih dulu. Dilayani indeks `(status, cancel_deadline_at)`.
+ */
+async function overdueCancellations(
+  db: BookingDb,
+  now: Date,
+  limit: number,
+): Promise<readonly Booking[]> {
+  const rows = await db.booking.findMany({
+    where: { status: 'CANCELLING', cancelDeadlineAt: { lte: now } },
+    orderBy: { cancelDeadlineAt: 'asc' },
+    take: limit,
+  })
+
+  return rows.map(fromRow)
 }
 
 /**

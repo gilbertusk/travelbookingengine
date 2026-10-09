@@ -35,11 +35,12 @@ export type MoneyAmount = {
 export type CancelReason = 'user_request' | 'payment_failed' | 'supplier_rejected' | 'unspecified'
 
 /**
- * Apa yang diperiksa manual. Pemeriksaan kamar (status supplier tidak pasti)
- * dan pemeriksaan pengembalian dana (refund gagal) menjanjikan hal berbeda
- * kepada pengguna, jadi surelnya juga berbeda.
+ * Apa yang diperiksa manual. Pemeriksaan kamar (status supplier tidak pasti),
+ * pemeriksaan pengembalian dana (refund kompensasi gagal), dan pemeriksaan
+ * pembatalan oleh pengguna (Step 25) menjanjikan hal berbeda kepada pengguna,
+ * jadi surelnya juga berbeda.
  */
-export type ReviewConcern = 'room' | 'refund' | 'unspecified'
+export type ReviewConcern = 'room' | 'refund' | 'cancellation' | 'unspecified'
 
 /**
  * Fakta yang dibawa pemicu dan tidak dapat ditanyakan ulang ke pemesanan:
