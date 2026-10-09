@@ -6,6 +6,7 @@ import { bookingDbOf, createPrismaClient } from '../../src/infrastructure/prisma
 import { BOOKING_STATUSES, type Booking } from '../../src/domain/booking.js'
 import type { BookingCommand } from '../../src/domain/commands.js'
 import type { BookingChange } from '../../src/domain/events.js'
+import { parseLocalDate, stayDates } from '../../src/domain/stay-dates.js'
 import { applyCommand } from '../../src/domain/transitions.js'
 import { money } from '@tbe/money'
 import {
@@ -386,5 +387,54 @@ describe('penyapu: kueri pembatalan yang lewat (Step 25)', () => {
     expect(ids.indexOf(exact)).toBeLessThan(ids.indexOf(later))
     expect(ids).toContain(later)
     expect(ids).not.toContain(future)
+  })
+})
+
+describe('daftar pemesanan pengguna (Step 26)', () => {
+  test('kelompok, urutan, dan halaman lewat Postgres', async () => {
+    const { userId } = fresh()
+    const write = async (
+      status: 'CONFIRMED' | 'CANCELLED' | 'NEEDS_REVIEW',
+      checkIn: string,
+      checkOut: string,
+    ) => {
+      const { id, key } = fresh()
+      const stay = stayDates({ checkIn, checkOut })
+      if (!stay.ok) throw new Error('tanggal contoh tidak sah')
+      const target: Booking = {
+        ...inState(status),
+        id,
+        userId,
+        idempotencyKey: key,
+        stay: stay.value,
+      }
+      await repository.create(draftChange({ id, userId, key }))
+      await db.$transaction(async (tx) => {
+        await tx.booking.updateMany({ where: { id, version: 1 }, data: toStateColumns(target) })
+      })
+      // Tanggal menginap bukan kolom keadaan; ditulis langsung.
+      await prisma.$executeRawUnsafe(
+        `UPDATE bookings SET check_in = '${checkIn}', check_out = '${checkOut}' WHERE id = '${id}'`,
+      )
+      // Tanggal menginap bukan kolom keadaan; ditulis langsung.
+      await prisma.$executeRawUnsafe(
+        `UPDATE bookings SET check_in = '${checkIn}', check_out = '${checkOut}' WHERE id = '${id}'`,
+      )
+      return id
+    }
+    const later = await write('CONFIRMED', '2026-12-10', '2026-12-12')
+    const sooner = await write('CONFIRMED', '2026-11-10', '2026-11-12')
+    const past = await write('CONFIRMED', '2026-08-10', '2026-08-12')
+    const review = await write('NEEDS_REVIEW', '2026-08-01', '2026-08-03')
+    const cancelled = await write('CANCELLED', '2026-11-10', '2026-11-12')
+    const today = parseLocalDate('2026-10-01')
+    if (today === undefined) throw new Error('tanggal contoh tidak sah')
+    const ids = async (group: 'upcoming' | 'past' | 'cancelled', offset = 0, limit = 10) =>
+      (await repository.findByUser({ userId, group, today, offset, limit })).map((b) => b.id)
+
+    expect(await ids('upcoming')).toEqual([review, sooner, later])
+    expect(await ids('past')).toEqual([past])
+    expect(await ids('cancelled')).toEqual([cancelled])
+    expect(await ids('upcoming', 1, 1)).toEqual([sooner])
   })
 })

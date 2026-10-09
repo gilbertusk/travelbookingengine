@@ -1,9 +1,24 @@
-import type { BookingRepository, CreateOutcome, SaveOutcome } from '../application/ports.js'
+import type {
+  BookingRepository,
+  CreateOutcome,
+  SaveOutcome,
+  UserBookingsQuery,
+} from '../application/ports.js'
 import type { Booking, DraftBooking } from '../domain/booking.js'
+import {
+  ENDED_WITHOUT_STAY_STATUSES,
+  IN_PROGRESS_STATUSES,
+  type BookingGroup,
+} from '../domain/booking-groups.js'
 import type { BookingChange } from '../domain/events.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
-import { isUniqueViolation, type BookingDb } from './booking-db.js'
-import { fromRow, toEventRow, toRow } from './booking-rows.js'
+import {
+  isUniqueViolation,
+  type BookingClause,
+  type BookingDb,
+  type BookingQuery,
+} from './booking-db.js'
+import { fromRow, toDateColumn, toEventRow, toRow } from './booking-rows.js'
 import { commitTransition, writeEventOutbox } from './unit-of-work.js'
 
 /**
@@ -102,7 +117,45 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
     save,
     findExpiredHolds: async (now, limit) => await expiredHolds(db, now, limit),
     findOverdueCancellations: async (now, limit) => await overdueCancellations(db, now, limit),
+    findByUser: async (query) => await byUser(db, query),
   }
+}
+
+/**
+ * Kueri setiap kelompok daftar pemesanan (Step 26). Pernyataan yang sama
+ * dengan `groupOf` di domain, sebagai klausa — uji di list-bookings.test.ts
+ * memeriksa keduanya sepakat untuk setiap keadaan.
+ */
+const GROUP_QUERIES: Readonly<
+  Record<BookingGroup, (today: Date) => Pick<BookingQuery, 'orderBy'> & { OR: BookingClause[] }>
+> = {
+  upcoming: (today) => ({
+    OR: [
+      { status: { in: IN_PROGRESS_STATUSES } },
+      { status: { in: ['CONFIRMED'] }, checkOut: { gte: today } },
+    ],
+    orderBy: [{ checkIn: 'asc' }, { id: 'asc' }],
+  }),
+  past: (today) => ({
+    OR: [{ status: { in: ['CONFIRMED'] }, checkOut: { lt: today } }],
+    orderBy: [{ checkIn: 'desc' }, { id: 'asc' }],
+  }),
+  cancelled: () => ({
+    OR: [{ status: { in: ENDED_WITHOUT_STAY_STATUSES } }],
+    orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+  }),
+}
+
+async function byUser(db: BookingDb, query: UserBookingsQuery): Promise<readonly Booking[]> {
+  const { OR, orderBy } = GROUP_QUERIES[query.group](toDateColumn(query.today))
+  const rows = await db.booking.findMany({
+    where: { userId: query.userId, OR },
+    orderBy,
+    skip: query.offset,
+    take: query.limit,
+  })
+
+  return rows.map(fromRow)
 }
 
 /**

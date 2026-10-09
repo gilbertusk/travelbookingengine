@@ -2,6 +2,8 @@ import type { CommandPayload, CommandType } from '@tbe/event-contracts'
 import type { Money } from '@tbe/money'
 import type { Logger } from '@tbe/shared-kernel'
 import type { Booking, DraftBooking, SupplierCode } from '../domain/booking.js'
+import type { BookingGroup } from '../domain/booking-groups.js'
+import type { LocalDate } from '../domain/stay-dates.js'
 import type { BookingChange } from '../domain/events.js'
 import type { CancellationPolicy } from '../domain/offer-terms.js'
 import type { IdempotencyKey } from '../domain/idempotency-key.js'
@@ -80,6 +82,21 @@ export interface BookingRepository {
    * sudah lewat (Step 25), yang paling lama lebih dulu.
    */
   findOverdueCancellations(now: Date, limit: number): Promise<readonly Booking[]>
+
+  /**
+   * Pemesanan milik pengguna dalam satu kelompok daftar (Step 26), berhalaman.
+   * Pencarian SELALU bersama pemiliknya, seperti kunci idempotensi.
+   */
+  findByUser(query: UserBookingsQuery): Promise<readonly Booking[]>
+}
+
+export interface UserBookingsQuery {
+  readonly userId: string
+  readonly group: BookingGroup
+  /** Tanggal kalender UTC hari ini — batas "akan datang" dan "selesai". */
+  readonly today: LocalDate
+  readonly offset: number
+  readonly limit: number
 }
 
 /**
@@ -282,7 +299,8 @@ export interface SagaPolicy {
 }
 
 /**
- * Zona waktu properti, dari katalog search-service (Step 25).
+ * Properti dari katalog search-service: nama untuk ditampilkan (Step 26) dan
+ * zona waktu untuk tenggat pembatalan (Step 25).
  *
  * Ditanyakan saat pembatalan dihitung, bukan disalin saat memesan: zona waktu
  * adalah fakta properti (CONVENTIONS.md bagian 9), bukan bagian kesepakatan,
@@ -293,13 +311,13 @@ export interface SagaPolicy {
  * dihitung otomatis, dan TIDAK ditebak dengan zona lain: selisih beberapa jam
  * di sekitar tenggat berarti persentase pengembalian yang lain.
  */
-export type TimeZoneAnswer =
-  | { readonly kind: 'found'; readonly timeZone: string }
+export type PropertyAnswer =
+  | { readonly kind: 'found'; readonly name: string; readonly timeZone: string }
   | { readonly kind: 'not_found' }
   | { readonly kind: 'unreachable' }
 
 export interface PropertyDirectory {
-  timeZoneOf(supplier: SupplierCode, propertyId: string): Promise<TimeZoneAnswer>
+  lookup(supplier: SupplierCode, propertyId: string): Promise<PropertyAnswer>
 }
 
 export interface Clock {

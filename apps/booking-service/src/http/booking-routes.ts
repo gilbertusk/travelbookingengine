@@ -130,12 +130,16 @@ function getHandler(deps: BookingDeps): RequestHandler {
   return (_req, res, next) => {
     const userId = identity.value(res)
 
-    void loadOwned(deps, userId, bookingParams.value(res).id).then((booking) => {
+    void loadOwned(deps, userId, bookingParams.value(res).id).then(async (booking) => {
       if (booking === undefined) {
         next(new NotFoundError('Pemesanan tidak ditemukan'))
         return
       }
-      res.json(success(bookingView(booking, deps.clock.now())))
+      // Nama properti dari katalog untuk halaman detail (Step 26). Katalog
+      // yang tidak menjawab tidak menggagalkan halamannya.
+      const property = await deps.properties.lookup(booking.supplier, booking.propertyId)
+      const propertyName = property.kind === 'found' ? property.name : null
+      res.json(success({ ...bookingView(booking, deps.clock.now()), propertyName }))
     }, next)
   }
 }

@@ -18,7 +18,7 @@ import type {
   SupplierHold,
   SupplierPrice,
   SupplierQuotes,
-  TimeZoneAnswer,
+  PropertyAnswer,
 } from '../application/ports.js'
 import type { CancellationPolicy } from '../domain/offer-terms.js'
 import type { SellQuote } from '../domain/sell-price.js'
@@ -286,16 +286,16 @@ export function sellQuoteFor(supplierTotal: Money): SellQuote {
 
 /** Katalog palsuan: setiap properti di Bali (UTC+8) kecuali dijadwalkan lain. */
 export interface ScriptedProperties extends PropertyDirectory {
-  answer: TimeZoneAnswer
+  answer: PropertyAnswer
   readonly lookups: string[]
 }
 
 export function scriptedProperties(): ScriptedProperties {
   const lookups: string[] = []
   const properties: ScriptedProperties = {
-    answer: { kind: 'found', timeZone: 'Asia/Makassar' },
+    answer: { kind: 'found', name: 'Villa Sawah Ubud', timeZone: 'Asia/Makassar' },
     lookups,
-    async timeZoneOf(supplier, propertyId) {
+    async lookup(supplier, propertyId) {
       lookups.push(`${supplier}/${propertyId}`)
       await Promise.resolve()
       return properties.answer

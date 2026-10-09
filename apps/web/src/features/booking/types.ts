@@ -49,6 +49,21 @@ export const BOOKING_STATUSES = [
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number]
 
+/** Pembatalan oleh pengguna (Step 25): langkahnya, nilai yang disetujui, dan kapan diminta. */
+export const cancellationSchema = z.object({
+  step: z.enum(['supplier', 'refund', 'done']),
+  refund: moneySchema,
+  percent: z.number().int(),
+  requestedAt: z.string(),
+})
+
+export type BookingCancellation = z.infer<typeof cancellationSchema>
+
+const cancellationPolicySchema = z.discriminatedUnion('refundable', [
+  z.object({ refundable: z.literal(false) }),
+  z.object({ refundable: z.literal(true), freeCancellationDays: z.number().int().optional() }),
+])
+
 export const bookingSchema = z.object({
   id: z.string(),
   status: z.enum(BOOKING_STATUSES),
@@ -67,6 +82,20 @@ export const bookingSchema = z.object({
   }),
   heldUntil: z.string().nullable(),
   priceCheck: priceCheckSchema.nullable(),
+  /** Step 26: bukti pemesanan, ketentuan, dan nama properti untuk halaman detail. */
+  supplierRef: z.string().nullable().default(null),
+  terms: z
+    .object({
+      roomTypeName: z.string(),
+      ratePlanName: z.string(),
+      breakfastIncluded: z.boolean(),
+      cancellationPolicy: cancellationPolicySchema,
+    })
+    .nullable()
+    .default(null),
+  /** Hanya pada `GET /bookings/:id`; `null` bila katalog tidak menjawab. */
+  propertyName: z.string().nullable().default(null),
+  cancellation: cancellationSchema.nullable().default(null),
   /** Jam booking-service saat respons dibentuk. Lihat server-clock.ts. */
   serverTime: z.string(),
 })
@@ -86,15 +115,7 @@ export const statusSchema = z.object({
   /** Apa yang diperiksa manusia pada NEEDS_REVIEW (Step 25). */
   review: z.enum(['room', 'refund', 'cancellation']).nullable().default(null),
   /** Pembatalan oleh pengguna, bila ada (Step 25). Layar lengkapnya Step 26. */
-  cancellation: z
-    .object({
-      step: z.enum(['supplier', 'refund', 'done']),
-      refund: moneySchema,
-      percent: z.number().int(),
-      requestedAt: z.string(),
-    })
-    .nullable()
-    .default(null),
+  cancellation: cancellationSchema.nullable().default(null),
   saga: z.object({ phase: z.string(), step: z.string() }).nullable(),
   serverTime: z.string(),
 })
