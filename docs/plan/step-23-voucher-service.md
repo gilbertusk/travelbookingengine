@@ -89,6 +89,10 @@ Prompt menganggap seluruh field voucher sudah tersedia. Ternyata tidak: pemesana
 - 404 telanjang (URL dasar salah, rute belum dikerahkan) dulu dibaca sebagai "pemesanan tidak ada", sehingga perintah untuk pemesanan yang sudah dibayar langsung masuk dead letter. Sekarang hanya 404 beramplop `NOT_FOUND` yang berarti "tidak ada"; sisanya dicoba lagi.
 - Properti yang belum terpetakan dulu langsung masuk dead letter. Padahal keadaan itu sementara: operator memetakannya, dan snapshot katalog yang baru dimuat ulang juga menjawab 404. Sekarang dicoba lagi berjenjang (503).
 
+### Image MinIO resmi tidak lagi dapat ditarik
+
+CI pertama untuk PR Step 23 gagal sebelum satu uji pun berjalan: `quay.io/minio/minio` dan `quay.io/minio/mc` menjawab `unauthorized` untuk penarikan tanpa akun, begitu pula `minio/minio` dan `minio/mc` di Docker Hub. Di mesin lokal uji tetap hijau hanya karena image-nya sudah tersimpan di cache. Uji integrasi dan `infra/docker-compose.yml` kini memakai fork komunitas `pgsty/minio` dan `pgsty/mc` dengan tag RELEASE yang disematkan, bukan `latest`. API S3, `mc ready`, dan pembuatan bucket tidak berubah.
+
 ### Utang
 
 - **Ketentuan tawaran tidak diverifikasi.** Harga diverifikasi ke supplier, ketentuannya tidak. Pengguna yang memanggil API langsung dapat menulis "pembatalan gratis 365 hari" di vouchernya sendiri. Perbaikan yang benar: supplier mengembalikan ketentuan saat price check, atau booking-service mencocokkannya ke rate plan di sisi server.
