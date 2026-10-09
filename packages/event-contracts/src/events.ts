@@ -29,6 +29,7 @@ export const EVENT_TYPES = [
   'supplier.booking_confirmed',
   'supplier.booking_rejected',
   'supplier.booking_uncertain',
+  'voucher.issued',
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]
@@ -169,6 +170,27 @@ export const supplierBookingUncertainPayload = z.object({
   reason: z.string().min(1),
 })
 
+/**
+ * Voucher sudah terbit (Step 23).
+ *
+ * Dibaca notification-service untuk mengirimkan voucher kepada pengguna. Tidak
+ * membawa alamat surel, nama tamu, maupun kunci objek penyimpanan: pembaca yang
+ * butuh data tamu menanyakannya ke pemiliknya, dan kunci objek tidak pernah
+ * keluar dari voucher-service — tautan unduhan diterbitkan lewat endpoint yang
+ * memeriksa kepemilikan.
+ */
+export const voucherIssuedPayload = z.object({
+  bookingId: z.uuid(),
+  voucherId: z.uuid(),
+  userId: z.uuid(),
+  issuedAt: z.iso.datetime(),
+  /**
+   * Selisih dari konfirmasi pemesanan sampai voucher terbit, dalam milidetik.
+   * Bukti M7 di sisi peristiwa; metriknya ada di voucher-service.
+   */
+  latencyMs: z.number().int().nonnegative(),
+})
+
 export const EVENT_PAYLOADS = {
   'search.performed': searchPerformedPayload,
   'booking.created': bookingCreatedPayload,
@@ -185,6 +207,7 @@ export const EVENT_PAYLOADS = {
   'supplier.booking_confirmed': supplierBookingConfirmedPayload,
   'supplier.booking_rejected': supplierBookingRejectedPayload,
   'supplier.booking_uncertain': supplierBookingUncertainPayload,
+  'voucher.issued': voucherIssuedPayload,
 } as const satisfies Record<EventType, z.ZodType>
 
 export type EventPayload<T extends EventType> = z.infer<(typeof EVENT_PAYLOADS)[T]>

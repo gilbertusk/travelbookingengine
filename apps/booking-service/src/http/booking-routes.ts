@@ -32,6 +32,22 @@ const priceCheckBody = validate(
     propertyId: z.string().min(1).max(200),
     city: z.string().min(1).max(120),
     ratePlanRef: z.string().min(1).max(200),
+    /**
+     * Ketentuan tawaran dari hasil pencarian, disalin sebagai bahan e-voucher
+     * (Step 23). Panjang dan isinya diperiksa domain — lihat offer-terms.ts.
+     */
+    offer: z.object({
+      roomTypeName: z.string().max(400),
+      ratePlanName: z.string().max(400),
+      breakfastIncluded: z.boolean(),
+      cancellationPolicy: z.discriminatedUnion('refundable', [
+        z.object({ refundable: z.literal(false) }),
+        z.object({
+          refundable: z.literal(true),
+          freeCancellationDays: z.number().int().min(0).max(365).optional(),
+        }),
+      ]),
+    }),
     checkIn: z.string(),
     checkOut: z.string(),
     guest: z.object({

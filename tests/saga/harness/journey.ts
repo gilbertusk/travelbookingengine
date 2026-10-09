@@ -107,6 +107,14 @@ export function priceCheckBody(journey: {
     propertyId: journey.ratePlan.propertyId,
     city: journey.ratePlan.city,
     ratePlanRef: journey.ratePlan.ratePlanRef,
+    // Ketentuan tawaran sebagai bahan e-voucher (Step 23). Uji saga tidak
+    // memeriksanya; nilainya cukup sah.
+    offer: {
+      roomTypeName: 'Kamar Uji',
+      ratePlanName: 'Tarif Uji',
+      breakfastIncluded: false,
+      cancellationPolicy: { refundable: false },
+    },
     checkIn: journey.stay.checkIn,
     checkOut: journey.stay.checkOut,
     guest: { fullName: 'Budi Santoso', email: 'budi@example.test', count: 2 },

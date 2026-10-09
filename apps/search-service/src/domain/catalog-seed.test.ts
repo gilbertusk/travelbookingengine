@@ -131,6 +131,24 @@ describe('properti yang dibangun', () => {
     expect(plan.properties[0]?.timezone).toBe('Asia/Makassar')
   })
 
+  test('membawa kontak properti untuk e-voucher bila sumbernya menyebutkannya', () => {
+    const withContact = { ...PADMA, phone: '+62 361 1234', email: 'reservasi@padma.example' }
+
+    const plan = buildSeedPlan(truth([withContact]), { newId: sequentialIds() })
+
+    expect(plan.properties[0]).toMatchObject({
+      phone: '+62 361 1234',
+      email: 'reservasi@padma.example',
+    })
+  })
+
+  test('sumber tanpa kontak menghasilkan properti tanpa kontak, bukan string kosong', () => {
+    const plan = buildSeedPlan(truth(), { newId: sequentialIds() })
+
+    expect(plan.properties[0]).not.toHaveProperty('phone')
+    expect(plan.properties[0]).not.toHaveProperty('email')
+  })
+
   test('membawa nama yang dinormalkan untuk pencocokan manual', () => {
     const plan = buildSeedPlan(truth(), { newId: sequentialIds() })
 

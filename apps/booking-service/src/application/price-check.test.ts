@@ -283,6 +283,18 @@ describe('idempotensi (FR-18)', () => {
   })
 })
 
+describe('ketentuan tawaran (Step 23)', () => {
+  test('ketentuan tawaran disimpan bersama pemesanan sebagai bahan e-voucher', async () => {
+    const world = harness()
+
+    const result = await startPriceCheck(world.deps, priceCheckRequest())
+
+    expect(result.kind).toBe('checked')
+    const [stored] = [...world.db.committed().bookings.values()]
+    expect(stored?.offerTerms).toEqual({ terms: priceCheckRequest().offer })
+  })
+})
+
 describe('masukan tidak sah', () => {
   test.each([
     ['kunci idempotensi', { idempotencyKey: 'x' }],
@@ -290,6 +302,7 @@ describe('masukan tidak sah', () => {
     ['tamu', { guest: { fullName: '', email: 'sari@example.com', count: 2 } }],
     ['harga yang ditampilkan', { displayedTotal: money(0, 'IDR') }],
     ['kota', { city: ' ' }],
+    ['ketentuan tawaran', { offer: { ...priceCheckRequest().offer, roomTypeName: '' } }],
   ])('%s yang tidak sah ditolak tanpa membuat pemesanan', async (_name, override) => {
     const world = harness()
 

@@ -62,15 +62,43 @@ Commit: feat: add voucher service
 
 ## Definisi Selesai
 
-- [ ] Consumer idempoten, perintah ganda tidak menghasilkan voucher ganda
-- [ ] PDF memuat seluruh field wajib, diverifikasi dengan ekstraksi teks
-- [ ] Voucher terbaca dalam cetakan hitam putih
-- [ ] Kunci objek tidak dapat ditebak
-- [ ] Kepemilikan diperiksa, bukan hanya mengandalkan URL rahasia
-- [ ] URL bertanda tangan berumur pendek
-- [ ] M7 tercapai: p95 di bawah 30 detik dari konfirmasi sampai voucher terbit
-- [ ] Cakupan test ≥ 80%
-- [ ] Commit terbuat
+`[x]` terbukti, `[~]` terbukti sebagian (sebabnya ditulis), `[ ]` belum.
+
+- [x] Consumer idempoten, perintah ganda tidak menghasilkan voucher ganda — lewat pembungkus consumer sungguhan (unit), dan dua penerbitan SERENTAK terhadap Postgres + MinIO sungguhan menghasilkan satu baris dan satu berkas pemenang (integrasi)
+- [x] PDF memuat seluruh field wajib, diverifikasi dengan ekstraksi teks (`unpdf`), juga untuk nama properti 200+ karakter dan rincian harga 30 baris
+- [x] Voucher terbaca dalam cetakan hitam putih — uji memeriksa setiap operator warna di aliran isi PDF bernilai abu-abu (r = g = b)
+- [x] Kunci objek tidak dapat ditebak — token CSPRNG 256-bit, `v/<token>.pdf`; uji memastikan bookingId tidak muncul di kunci
+- [x] Kepemilikan diperiksa, bukan hanya mengandalkan URL rahasia — voucher orang lain dijawab 404 tanpa menandatangani URL apa pun
+- [x] URL bertanda tangan berumur pendek — 5 menit, `cache-control: no-store`; uji integrasi membuktikan URL dapat diunduh, URL yang diubah ditolak MinIO (403), dan objek tanpa tanda tangan tidak dapat dibuka
+- [~] M7 tercapai: p95 di bawah 30 detik dari konfirmasi sampai voucher terbit — histogram `voucher_issue_latency_seconds` dan `voucher.issued.latencyMs` ada dan teruji, tetapi BELUM diukur ujung ke ujung: voucher-service belum masuk rangkaian uji saga/beban (tests/saga), jadi belum ada angka p95 dari jalan sungguhan
+- [x] Cakupan test ≥ 80% — voucher-service 97,5% (ambang 85%); booking-service 99,9%
+- [x] Commit terbuat
+
+## Temuan
+
+### Bahan voucher tidak ada di mana pun
+
+Prompt menganggap seluruh field voucher sudah tersedia. Ternyata tidak: pemesanan hanya menyimpan `propertyId` (pengenal SUPPLIER) dan `ratePlanRef`. Jenis kamar, nama rate plan, dan kebijakan pembatalan tidak tercatat, dan katalog tidak punya kontak properti. Keputusan (dipilih pengguna):
+
+- booking-service menyalin **ketentuan tawaran** saat price check ke kolom `offer_terms`. Asalnya hasil pencarian yang dikirim peramban, sama seperti `city`.
+- Katalog search-service mendapat kolom `phone` dan `email` (nullable). mock-supplier menerbitkan kontak karangan, dan seed menyalinnya.
+- Dua rute `/internal` baru: `GET /internal/bookings/:id/voucher-source` (booking-service) dan `GET /internal/catalog/properties/by-supplier/:supplier/:id` (search-service). Keduanya tidak dirutekan api-gateway.
+
+### Temuan code review yang diperbaiki
+
+- 404 telanjang (URL dasar salah, rute belum dikerahkan) dulu dibaca sebagai "pemesanan tidak ada", sehingga perintah untuk pemesanan yang sudah dibayar langsung masuk dead letter. Sekarang hanya 404 beramplop `NOT_FOUND` yang berarti "tidak ada"; sisanya dicoba lagi.
+- Properti yang belum terpetakan dulu langsung masuk dead letter. Padahal keadaan itu sementara: operator memetakannya, dan snapshot katalog yang baru dimuat ulang juga menjawab 404. Sekarang dicoba lagi berjenjang (503).
+
+### Image MinIO resmi tidak lagi dapat ditarik
+
+CI pertama untuk PR Step 23 gagal sebelum satu uji pun berjalan: `quay.io/minio/minio` dan `quay.io/minio/mc` menjawab `unauthorized` untuk penarikan tanpa akun, begitu pula `minio/minio` dan `minio/mc` di Docker Hub. Di mesin lokal uji tetap hijau hanya karena image-nya sudah tersimpan di cache. Uji integrasi dan `infra/docker-compose.yml` kini memakai fork komunitas `pgsty/minio` dan `pgsty/mc` dengan tag RELEASE yang disematkan, bukan `latest`. API S3, `mc ready`, dan pembuatan bucket tidak berubah.
+
+### Utang
+
+- **Ketentuan tawaran tidak diverifikasi.** Harga diverifikasi ke supplier, ketentuannya tidak. Pengguna yang memanggil API langsung dapat menulis "pembatalan gratis 365 hari" di vouchernya sendiri. Perbaikan yang benar: supplier mengembalikan ketentuan saat price check, atau booking-service mencocokkannya ke rate plan di sisi server.
+- Berkas PDF yatim di MinIO bila proses mati di antara unggah dan simpan metadata. Setiap percobaan memakai token baru. Belum ada aturan lifecycle atau penyapu.
+- Rute `/internal` hanya dilindungi oleh fakta bahwa gateway tidak merutekannya. Belum ada kebijakan jaringan atau rahasia bersama.
+- M7 belum diukur ujung ke ujung (lihat di atas).
 
 ## Catatan
 

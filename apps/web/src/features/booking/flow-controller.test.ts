@@ -4,7 +4,12 @@ import { parseCriteria } from '@/features/search/criteria'
 import type { Offer } from '@/features/search/types'
 import { sampleBooking } from '@/testing/booking'
 import type { PriceCheckInput } from './api'
-import { createBookingFlow, type FlowDeps, type PaymentOutcome } from './flow-controller'
+import {
+  createBookingFlow,
+  offerTermsOf,
+  type FlowDeps,
+  type PaymentOutcome,
+} from './flow-controller'
 import type { Selection } from './selection'
 import type { Booking, PaymentStart } from './types'
 
@@ -155,6 +160,18 @@ describe('alur tanpa perubahan harga', () => {
 
     expect(deps.api.priceCheck).toHaveBeenCalledWith(
       expect.objectContaining({ displayedTotal: OFFER.total, guest: GUEST, guests: 2 }),
+    )
+  })
+
+  test('ketentuan tawaran yang dilihat ikut dikirim sebagai bahan e-voucher (Step 23)', async () => {
+    const { deps } = world()
+    const flow = createBookingFlow(selection(), OFFER, deps)
+
+    flow.submitGuest(GUEST)
+    await settle()
+
+    expect(deps.api.priceCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ offer: offerTermsOf(OFFER) }),
     )
   })
 
@@ -468,5 +485,27 @@ describe('melanjutkan setelah dimuat ulang', () => {
     await settle()
 
     expect(flow.getState().step).toEqual({ step: 'details' })
+  })
+})
+
+describe('ketentuan tawaran untuk e-voucher', () => {
+  test('tawaran yang tidak dapat dikembalikan tidak membawa tenggat', () => {
+    expect(offerTermsOf({ ...OFFER, refundable: false, freeCancellationDays: 3 })).toEqual({
+      roomTypeName: 'Deluxe',
+      ratePlanName: 'Termasuk sarapan',
+      breakfastIncluded: true,
+      cancellationPolicy: { refundable: false },
+    })
+  })
+
+  test('tenggat pembatalan gratis ikut bila supplier menyebutkannya', () => {
+    expect(offerTermsOf({ ...OFFER, freeCancellationDays: 3 }).cancellationPolicy).toEqual({
+      refundable: true,
+      freeCancellationDays: 3,
+    })
+  })
+
+  test('tanpa tenggat dari supplier, tidak ada tenggat yang dikarang', () => {
+    expect(offerTermsOf(OFFER).cancellationPolicy).toEqual({ refundable: true })
   })
 })

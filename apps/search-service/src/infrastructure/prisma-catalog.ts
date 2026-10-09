@@ -40,6 +40,8 @@ function toProperty(row: PropertyRow): Property | undefined {
     amenities: row.amenities,
     ...(row.description === null ? {} : { description: row.description }),
     photos: row.photos,
+    ...(row.phone === null ? {} : { phone: row.phone }),
+    ...(row.email === null ? {} : { email: row.email }),
   })
 
   // Baris yang tidak lolos skema dilewati, bukan menggagalkan seluruh
@@ -90,6 +92,8 @@ function toRow(property: Property): Omit<PropertyRow, 'createdAt' | 'updatedAt'>
     amenities: [...property.amenities],
     description: property.description ?? null,
     photos: [...property.photos],
+    phone: property.phone ?? null,
+    email: property.email ?? null,
   }
 }
 

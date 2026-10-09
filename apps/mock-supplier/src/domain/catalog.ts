@@ -29,6 +29,13 @@ export interface Property {
   readonly timezone: string
   readonly starRating: number
   readonly amenities: readonly string[]
+  /**
+   * Kontak properti untuk e-voucher (Step 23). Nomor dan surel karangan:
+   * surel memakai domain `.example` (RFC 2606) supaya tidak pernah sampai ke
+   * kotak surat sungguhan.
+   */
+  readonly phone: string
+  readonly email: string
 }
 
 export interface RoomType {
@@ -92,6 +99,8 @@ const BRANDS = [
 ]
 
 const SUFFIXES = ['Hotel', 'Resort', 'Suites', 'Residence', 'Boutique Hotel', 'Grand Hotel']
+const DIAL_CODES: Readonly<Record<string, string>> = { ID: '+62', SG: '+65', MY: '+60', TH: '+66' }
+
 const STREETS = ['Jalan Melati', 'Jalan Cendrawasih', 'Jalan Kenanga', 'Jalan Anggrek']
 
 const AMENITIES = [
@@ -135,6 +144,8 @@ function buildProperty(city: City, index: number): Property {
     timezone: city.timezone,
     starRating: intBetween(2, 5, id, 'stars'),
     amenities: pickSome(AMENITIES, intBetween(3, 7, id, 'amenityCount'), id, 'amenities').sort(),
+    phone: `${DIAL_CODES[city.countryCode] ?? '+62'} ${String(intBetween(200, 899, id, 'phoneArea'))} ${String(intBetween(1000, 9999, id, 'phoneLine'))}`,
+    email: `reservasi@${id.replace(/_/g, '-')}.example`,
   }
 }
 

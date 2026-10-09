@@ -1,0 +1,51 @@
+{
+  "name": "@tbe/voucher-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "dev": "node --watch dist/index.js",
+    "start": "node dist/index.js",
+    "test": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@tbe/event-contracts": "workspace:*",
+    "@tbe/messaging": "workspace:*",
+    "@tbe/money": "workspace:*",
+    "@tbe/shared-kernel": "workspace:*",
+    "express": "^5.2.1",
+    "minio": "^8.0.7",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "prom-client": "^15.1.3",
+    "qrcode": "^1.5.4",
+    "undici": "^8.11.0",
+    "uuid": "^14.0.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tbe/testing-infra": "workspace:*",
+    "@tbe/tsconfig": "workspace:*",
+    "@types/express": "^5.0.6",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^5.0.1",
+    "dotenv": "^18.0.2",
+    "prisma": "7.10.0",
+    "supertest": "^7.2.2",
+    "testcontainers": "12.1.0",
+    "typescript": "^7.0.2",
+    "unpdf": "^1.8.1",
+    "vitest": "^5.0.1"
+  }
+}

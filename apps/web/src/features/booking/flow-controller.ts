@@ -1,6 +1,6 @@
 import { ApiError } from '@/lib/api-error'
 import type { Offer } from '@/features/search/types'
-import type { PriceCheckInput } from './api'
+import type { OfferTermsInput, PriceCheckInput } from './api'
 import { clockOffset } from './countdown'
 import {
   decide,
@@ -262,6 +262,7 @@ class BookingFlow implements BookingFlowController {
       propertyId: offer.supplierPropertyId,
       city: selection.criteria.city,
       ratePlanRef: offer.supplierRatePlanId,
+      offer: offerTermsOf(offer),
       checkIn: selection.criteria.checkIn,
       checkOut: selection.criteria.checkOut,
       guests: selection.criteria.guests,
@@ -363,4 +364,18 @@ class BookingFlow implements BookingFlowController {
 
 function isCode(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code
+}
+
+/** Ketentuan tawaran sebagai bahan e-voucher (Step 23). */
+export function offerTermsOf(offer: Offer): OfferTermsInput {
+  return {
+    roomTypeName: offer.roomTypeName,
+    ratePlanName: offer.ratePlanName,
+    breakfastIncluded: offer.breakfastIncluded,
+    cancellationPolicy: !offer.refundable
+      ? { refundable: false }
+      : offer.freeCancellationDays === undefined
+        ? { refundable: true }
+        : { refundable: true, freeCancellationDays: offer.freeCancellationDays },
+  }
 }

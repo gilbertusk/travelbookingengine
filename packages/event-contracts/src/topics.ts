@@ -74,6 +74,18 @@ export const TOPICS: readonly TopicDefinition[] = [
       'jawaban supplier atas pemesanan berbayar adalah catatan finansial.',
   },
   {
+    name: 'tbe.voucher.v1',
+    partitions: 3,
+    partitionKey: 'bookingId',
+    retentionMs: 30 * DAY_MS,
+    events: ['voucher.issued'],
+    rationale:
+      'Voucher yang sudah terbit, dibaca notification-service (Step 24). Dikunci ' +
+      'bookingId agar voucher terbitan ulang satu pemesanan tiba berurutan. Volume ' +
+      'mengikuti pemesanan terkonfirmasi, jauh di bawah topik pemesanan, jadi tiga ' +
+      'partisi cukup. Retensi 30 hari: cukup untuk memutar ulang pengiriman surel.',
+  },
+  {
     name: 'tbe.search.v1',
     partitions: 3,
     partitionKey: 'city',

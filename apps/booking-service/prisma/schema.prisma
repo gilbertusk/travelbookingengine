@@ -96,6 +96,15 @@ model Booking {
   city        String
   ratePlanRef String @map("rate_plan_ref")
 
+  /// Ketentuan tawaran yang dipesan — jenis kamar, rate plan, sarapan,
+  /// kebijakan pembatalan — disalin saat price check sebagai bahan e-voucher
+  /// (Step 23). Objek JSON dengan satu kunci `terms`, berisi ketentuannya atau
+  /// null — pola yang sama dengan `price_lines`, supaya kolomnya tidak pernah
+  /// null di tingkat SQL. `terms` null hanya untuk pemesanan sebelum Step 23.
+  /// Tidak berubah setelah pemesanan dibuat. (Tanpa kurung kurawal di komentar
+  /// ini: prisma-schema.test.ts membaca blok model sampai kurung tutup pertama.)
+  offerTerms Json @map("offer_terms")
+
   /// Tanggal lokal properti. DATE, bukan TIMESTAMP — lihat kepala berkas.
   checkIn  DateTime @map("check_in") @db.Date
   checkOut DateTime @map("check_out") @db.Date

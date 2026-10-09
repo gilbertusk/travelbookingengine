@@ -135,8 +135,9 @@ services:
     networks: [tbe]
 
   minio:
-    # quay.io, bukan Docker Hub: MinIO tidak lagi menerbitkan tag latest di sana
-    image: quay.io/minio/minio:latest
+    # Fork komunitas pgsty: image MinIO resmi (Docker Hub dan quay.io) tidak lagi
+    # dapat ditarik tanpa akun. Lihat Temuan Step 23.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: tbe-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -161,7 +162,7 @@ services:
   # selesai sebagai kegagalan, meski keluar dengan kode 0. Dijalankan sebagai
   # langkah tersendiri oleh pnpm infra:up.
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     profiles: [init]
     depends_on:
       minio:

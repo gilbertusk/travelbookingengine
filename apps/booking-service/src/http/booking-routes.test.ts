@@ -36,6 +36,7 @@ function body(key?: string) {
     propertyId: request.propertyId,
     city: request.city,
     ratePlanRef: request.ratePlanRef,
+    offer: request.offer,
     checkIn: request.checkIn,
     checkOut: request.checkOut,
     guest: request.guest,

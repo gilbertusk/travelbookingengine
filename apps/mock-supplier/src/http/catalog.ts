@@ -43,6 +43,8 @@ export function createCatalogRouter(catalog: CatalogReader): Router {
       timezone: property.timezone,
       starRating: property.starRating,
       amenities: property.amenities,
+      phone: property.phone,
+      email: property.email,
       // Supplier mana saja yang menjual properti ini, dan dengan pengenal
       // serta ejaan nama seperti apa. Inilah bagian yang tidak dapat
       // disimpulkan dari memanggil supplier satu per satu.

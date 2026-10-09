@@ -1,0 +1,44 @@
+// Skema voucher-service.
+//
+// Satu tabel: metadata voucher yang sudah terbit. Berkas PDF-nya sendiri ada
+// di MinIO; basis data menyimpan di mana berkas itu dan milik siapa.
+//
+// Dua batasan yang memikul seluruh keamanan dan idempotensi service ini:
+//
+// - `booking_id` UNIK. Inilah yang membuat perintah voucher.generate yang
+//   datang dua kali — atau dua consumer yang berpacu — berakhir dengan satu
+//   voucher. Pemeriksaan "sudah ada?" di kode hanya jalan pintas; yang
+//   memutuskan adalah batasan ini.
+// - `object_key` UNIK dan acak. Kunci objek TIDAK diturunkan dari bookingId;
+//   hubungan antara keduanya hanya ada di tabel ini. Lihat
+//   src/domain/object-key.ts.
+//
+// Waktu bertipe TIMESTAMPTZ (CONVENTIONS.md bagian 9).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Voucher {
+  id        String @id @db.Uuid
+  bookingId String @unique @map("booking_id") @db.Uuid
+  /// Pemilik pemesanan saat voucher terbit. Dasar pemeriksaan kepemilikan
+  /// pada endpoint unduhan — lapisan kedua sesudah URL bertanda tangan.
+  userId    String @map("user_id") @db.Uuid
+
+  objectKey String @unique @map("object_key")
+  sizeBytes Int    @map("size_bytes")
+
+  issuedAt    DateTime @map("issued_at") @db.Timestamptz(3)
+  /// Waktu pemesanan menjadi CONFIRMED. Disimpan supaya selisih M7 dapat
+  /// dihitung ulang dari data, bukan hanya dari metrik yang beretensi pendek.
+  confirmedAt DateTime @map("confirmed_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("vouchers")
+}
