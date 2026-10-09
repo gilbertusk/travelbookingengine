@@ -21,6 +21,11 @@ const publicSchema = z.object({
    */
   midtransClientKey: z.string().min(1).optional(),
   snapScriptUrl: z.url(),
+  /**
+   * Alamat bantuan untuk pemesanan yang diperiksa manual (Step 26). Pengguna
+   * yang uangnya sedang ditahan harus punya cara menghubungi seseorang.
+   */
+  supportEmail: z.email(),
 })
 
 export type PublicConfig = z.infer<typeof publicSchema>
@@ -32,6 +37,7 @@ export const publicConfig: PublicConfig = publicSchema.parse({
   midtransClientKey: blankToUndefined(process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY),
   snapScriptUrl:
     process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ?? 'https://app.sandbox.midtrans.com/snap/snap.js',
+  supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'bantuan@lintang.example',
 })
 
 const serverSchema = z.object({

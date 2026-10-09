@@ -96,7 +96,7 @@ describe('tenggat dihitung dengan zona waktu properti', () => {
     ['Asia/Jakarta', 50],
   ])('pukul 23.00 WIB, properti di %s: %i%%', async (timeZone, percent) => {
     const world = cancellationWorld()
-    world.properties.answer = { kind: 'found', timeZone }
+    world.properties.answer = { kind: 'found', name: 'Hotel Contoh', timeZone }
     const booking = await world.confirmed()
     at(world, Date.parse('2026-11-08T16:00:00Z'))
 
@@ -471,7 +471,7 @@ describe('pemesanan yang tidak dapat dibatalkan', () => {
   test('zona waktu yang tidak dikenal basis data IANA juga tidak ditebak', async () => {
     const world = cancellationWorld()
     const booking = await world.confirmed()
-    world.properties.answer = { kind: 'found', timeZone: 'Asia/Atlantis' }
+    world.properties.answer = { kind: 'found', name: 'Hotel Contoh', timeZone: 'Asia/Atlantis' }
 
     expect(await world.preview(booking)).toEqual({
       kind: 'not_cancellable',

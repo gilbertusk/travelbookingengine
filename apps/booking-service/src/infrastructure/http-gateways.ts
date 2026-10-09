@@ -13,7 +13,7 @@ import type {
   SupplierHold,
   SupplierPrice,
   SupplierQuotes,
-  TimeZoneAnswer,
+  PropertyAnswer,
 } from '../application/ports.js'
 import { cancellationPolicyOf } from '../domain/offer-terms.js'
 import type { SellQuote } from '../domain/sell-price.js'
@@ -204,7 +204,9 @@ export function createHttpPayments(baseUrl: string, transport: Transport): Payme
   }
 }
 
-const catalogPropertySchema = envelope(z.object({ timezone: z.string().min(1) }))
+const catalogPropertySchema = envelope(
+  z.object({ name: z.string().min(1), timezone: z.string().min(1) }),
+)
 
 /**
  * Jawaban katalog menjadi zona waktu properti (Step 25).
@@ -214,14 +216,14 @@ const catalogPropertySchema = envelope(z.object({ timezone: z.string().min(1) })
  * tidak dikenal — adalah "belum ada jawaban", dan pembatalan dicoba lagi,
  * bukan dihitung dengan zona tebakan.
  */
-export function toTimeZoneAnswer(response: HttpResponse): TimeZoneAnswer {
+export function toPropertyAnswer(response: HttpResponse): PropertyAnswer {
   if (response.status === 404) return { kind: 'not_found' }
   if (response.status !== 200) return { kind: 'unreachable' }
 
   const parsed = catalogPropertySchema.safeParse(response.body)
 
   return parsed.success
-    ? { kind: 'found', timeZone: parsed.data.data.timezone }
+    ? { kind: 'found', name: parsed.data.data.name, timeZone: parsed.data.data.timezone }
     : { kind: 'unreachable' }
 }
 
@@ -230,11 +232,11 @@ export function createHttpPropertyDirectory(
   transport: Transport,
 ): PropertyDirectory {
   return {
-    async timeZoneOf(supplier, propertyId) {
+    async lookup(supplier, propertyId) {
       const path = `${encodeURIComponent(supplier)}/${encodeURIComponent(propertyId)}`
       const url = `${baseUrl}/internal/catalog/properties/by-supplier/${path}`
 
-      return toTimeZoneAnswer(await transport(url))
+      return toPropertyAnswer(await transport(url))
     },
   }
 }

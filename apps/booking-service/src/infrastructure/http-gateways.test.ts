@@ -10,7 +10,7 @@ import {
   toPaymentStart,
   toSellQuote,
   toSupplierAnswer,
-  toTimeZoneAnswer,
+  toPropertyAnswer,
   undiciTransport,
   type HttpResponse,
   type Transport,
@@ -278,22 +278,22 @@ describe('jawaban katalog: zona waktu properti (Step 25)', () => {
   test('properti yang dikenal menjawab zona waktunya, ditanyakan dengan GET', async () => {
     const { transport, calls } = recording({
       status: 200,
-      body: { data: { timezone: 'Asia/Tokyo', name: 'Hotel' }, error: null },
+      body: { data: { timezone: 'Asia/Tokyo', name: 'Hotel Shinjuku' }, error: null },
     })
 
-    const answer = await createHttpPropertyDirectory('http://search', transport).timeZoneOf(
+    const answer = await createHttpPropertyDirectory('http://search', transport).lookup(
       'SKY',
       'a/b c',
     )
 
-    expect(answer).toEqual({ kind: 'found', timeZone: 'Asia/Tokyo' })
+    expect(answer).toEqual({ kind: 'found', name: 'Hotel Shinjuku', timeZone: 'Asia/Tokyo' })
     expect(calls).toEqual([
       ['http://search/internal/catalog/properties/by-supplier/SKY/a%2Fb%20c', undefined],
     ])
   })
 
   test('properti yang tidak terpetakan: tidak ditemukan, bukan zona tebakan', () => {
-    expect(toTimeZoneAnswer(error(404, 'NOT_FOUND'))).toEqual({ kind: 'not_found' })
+    expect(toPropertyAnswer(error(404, 'NOT_FOUND'))).toEqual({ kind: 'not_found' })
   })
 
   test.each([
@@ -301,7 +301,7 @@ describe('jawaban katalog: zona waktu properti (Step 25)', () => {
     ['tanpa jawaban', { status: 0, body: null }],
     ['bentuk yang tidak dikenal', { status: 200, body: { data: { zona: 'x' }, error: null } }],
   ])('%s berarti coba lagi', (_name, response) => {
-    expect(toTimeZoneAnswer(response)).toEqual({ kind: 'unreachable' })
+    expect(toPropertyAnswer(response)).toEqual({ kind: 'unreachable' })
   })
 })
 

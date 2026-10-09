@@ -6,6 +6,7 @@ import type { BookingStatusState } from '@/features/booking/use-booking-status'
 import type { BookingFlow } from '@/features/booking/use-booking-flow'
 import type { PropertyDetailResponse } from '@/features/search/types'
 import { sampleBooking, sampleStatus } from '@/testing/booking'
+import { renderWithQuery } from '@/testing/render'
 import { BookingFlowPage } from './booking-flow'
 import { BookingStatusPage } from './booking-status-page'
 import { PaymentReturn } from './payment-return'
@@ -44,6 +45,13 @@ vi.mock('@/features/booking/use-booking-flow', () => ({
 }))
 vi.mock('@/features/booking/use-booking-status', () => ({
   useBookingStatus: () => mocks.status,
+}))
+// Pratinjau pembatalan dan voucher diuji di components/bookings; di sini
+// cukup jawaban yang tidak pernah tiba.
+vi.mock('@/features/bookings/api', () => ({
+  fetchCancellationPreview: () => new Promise(() => undefined),
+  fetchVoucherLink: vi.fn(),
+  cancelBooking: vi.fn(),
 }))
 
 const IDR = (amountMinor: number) => ({ amountMinor, currency: 'IDR' as const })
@@ -277,10 +285,12 @@ describe('halaman status', () => {
     mocks.status = statusState({
       status: sampleStatus({ status: 'CONFIRMED', isFinal: true, supplierRef: 'SKY-BK-778812' }),
     })
-    render(<BookingStatusPage bookingId={ID} />)
+    renderWithQuery(<BookingStatusPage bookingId={ID} />)
 
     expect(screen.getByRole('heading', { name: 'Kode pemesanan' })).toBeInTheDocument()
     expect(screen.getByText('SKY-BK-778812')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Unduh voucher/ })).toBeEnabled()
+    expect(screen.getByRole('heading', { name: 'Kebijakan pembatalan' })).toBeInTheDocument()
   })
 
   test('gagal: menjelaskan pengembalian dana dengan bahasa manusia, tanpa kode internal', () => {
@@ -305,6 +315,11 @@ describe('halaman status', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('sedang kami periksa')
     expect(screen.getByText(/Pembayaranmu tercatat dan aman/)).toBeInTheDocument()
+    // Cara menghubungi, bukan hanya "tunggu".
+    expect(screen.getByRole('link', { name: /bantuan@/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('mailto:'),
+    )
   })
 
   test('kembali dari popup yang ditutup: sapaan, dan pembayaran dapat dibuka lagi', () => {

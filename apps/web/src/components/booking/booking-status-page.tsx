@@ -19,6 +19,9 @@ import { useBookingStatus } from '@/features/booking/use-booking-status'
 import { openPayment } from '@/features/booking/use-booking-flow'
 import { ApiError, humanMessage } from '@/lib/api-error'
 import { cn } from '@/lib/cn'
+import { CancellationSection } from '@/components/bookings/cancellation-section'
+import { ReviewContact } from '@/components/bookings/review-contact'
+import { VoucherDownload } from '@/components/bookings/voucher-download'
 import { BookingStatusTimeline } from './booking-status-timeline'
 import { StaySummary } from './stay-summary'
 
@@ -93,7 +96,11 @@ export function BookingStatusPage({ bookingId }: { readonly bookingId: string })
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-8">
-          {status.status === 'CONFIRMED' ? <Confirmation status={status} /> : null}
+          {status.status === 'CONFIRMED' ? (
+            <Confirmation bookingId={bookingId} status={status} />
+          ) : null}
+
+          {status.status === 'NEEDS_REVIEW' ? <ReviewContact bookingId={bookingId} /> : null}
 
           <section aria-labelledby="tahapan" className="flex flex-col gap-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -106,7 +113,7 @@ export function BookingStatusPage({ bookingId }: { readonly bookingId: string })
           </section>
         </div>
 
-        <aside className="rounded-lg border border-border bg-card p-5">
+        <aside className="flex flex-col gap-8 rounded-lg border border-border bg-card p-5">
           <Summary
             bookingId={bookingId}
             booking={booking}
@@ -114,6 +121,11 @@ export function BookingStatusPage({ bookingId }: { readonly bookingId: string })
             error={state.bookingError}
             onRetry={state.refetchBooking}
           />
+          {status.status === 'CONFIRMED' ? (
+            <div className="border-t border-border pt-6">
+              <CancellationSection bookingId={bookingId} />
+            </div>
+          ) : null}
         </aside>
       </div>
 
@@ -249,7 +261,13 @@ function payAgainMessage(cause: unknown): string {
 }
 
 /** Konfirmasi (FR-24): kode pemesanan supplier ditampilkan menonjol. */
-function Confirmation({ status }: { readonly status: BookingStatusView }) {
+function Confirmation({
+  bookingId,
+  status,
+}: {
+  readonly bookingId: string
+  readonly status: BookingStatusView
+}) {
   return (
     <section
       aria-labelledby="kode-pemesanan"
@@ -267,15 +285,8 @@ function Confirmation({ status }: { readonly status: BookingStatusView }) {
           Tunjukkan kode ini saat check-in. Kode ini juga ada di voucher.
         </p>
       </div>
-      <div className="flex flex-col gap-1 border-t border-border pt-4">
-        <Button variant="secondary" disabled className="self-start">
-          <FileText />
-          Unduh voucher
-        </Button>
-        <p className="text-small text-muted-foreground">
-          Voucher sedang disiapkan. Tautan unduhnya muncul di sini, dan salinannya dikirim ke
-          surelmu.
-        </p>
+      <div className="border-t border-border pt-4">
+        <VoucherDownload bookingId={bookingId} />
       </div>
     </section>
   )
@@ -339,8 +350,9 @@ function Summary({
 
   return (
     <StaySummary
-      propertyName={label?.propertyName ?? `Penginapan di ${booking.city}`}
-      roomName={label?.roomName}
+      propertyName={booking.propertyName ?? label?.propertyName ?? `Penginapan di ${booking.city}`}
+      roomName={booking.terms?.roomTypeName ?? label?.roomName}
+      ratePlanName={booking.terms?.ratePlanName}
       city={booking.city}
       checkIn={booking.checkIn}
       checkOut={booking.checkOut}

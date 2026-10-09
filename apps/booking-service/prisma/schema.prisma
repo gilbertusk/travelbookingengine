@@ -219,6 +219,9 @@ model Booking {
   @@index([status, heldUntil])
   /// Penyapu pembatalan Step 25: `status = 'CANCELLING' AND cancel_deadline_at < now()`.
   @@index([status, cancelDeadlineAt])
+  /// Daftar pemesanan pengguna (Step 26): selalu menurut pemiliknya, diurutkan
+  /// menurut tanggal masuk untuk kelompok "akan datang" dan "selesai".
+  @@index([userId, checkIn])
   @@map("bookings")
 }
 

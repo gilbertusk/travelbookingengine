@@ -38,7 +38,50 @@ export function bookingView(booking: Booking, now: Date) {
     heldUntil: booking.heldUntil?.toISOString() ?? null,
     priceCheck: priceCheckView(booking),
     cancellation: cancellationView(booking),
+    // Step 26: halaman detail menampilkan bukti pemesanan dan ketentuannya.
+    supplierRef: booking.supplierRef ?? null,
+    terms: termsView(booking),
     serverTime: now.toISOString(),
+  }
+}
+
+/**
+ * Ketentuan tawaran yang dipesan. Kebijakan pembatalan di sini adalah versi
+ * supplier (Step 25), sama dengan yang dicetak voucher. `null` untuk pemesanan
+ * sebelum Step 23.
+ */
+function termsView(booking: Booking) {
+  const terms = booking.terms
+  if (terms === undefined) return null
+
+  return {
+    roomTypeName: terms.roomTypeName,
+    ratePlanName: terms.ratePlanName,
+    breakfastIncluded: terms.breakfastIncluded,
+    cancellationPolicy: terms.cancellationPolicy,
+  }
+}
+
+/**
+ * Satu entri daftar pemesanan (Step 26). Status dibawa sebagai kodenya;
+ * kalimatnya milik klien, yang juga menyusun kalimat untuk halaman status.
+ */
+export function listItemView(booking: Booking, propertyName: string | null) {
+  return {
+    id: booking.id,
+    status: booking.status,
+    isFinal: isFinal(booking.status),
+    propertyName,
+    city: booking.city,
+    roomTypeName: booking.terms?.roomTypeName ?? null,
+    checkIn: booking.stay.checkIn,
+    checkOut: booking.stay.checkOut,
+    guests: booking.guests.count,
+    supplierRef: booking.supplierRef ?? null,
+    total: toJson(booking.price.total),
+    refund: refundStatus(booking),
+    review: reviewConcern(booking),
+    cancellation: cancellationView(booking),
   }
 }
 

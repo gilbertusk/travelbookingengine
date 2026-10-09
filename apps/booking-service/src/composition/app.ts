@@ -13,6 +13,7 @@ import type { BookingDeps, Payments } from '../application/ports.js'
 import { sweepCancellations } from '../application/cancellation/sweep.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
+import { createBookingListRouter } from '../http/booking-list-routes.js'
 import { createBookingRouter } from '../http/booking-routes.js'
 import { createCancellationRouter } from '../http/cancellation-routes.js'
 import { databaseBusyHandler } from '../http/busy.js'
@@ -62,6 +63,7 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
     ),
   )
   app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
+  app.use(createBookingListRouter(options.deps))
   app.use(createBookingRouter(options.deps))
   app.use(createCancellationRouter(options.deps))
   app.use(createInternalRouter(options.deps))

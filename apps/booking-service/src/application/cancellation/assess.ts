@@ -43,7 +43,7 @@ export async function assessCancellation(
   const schedule = booking.refundSchedule
   if (schedule === undefined) return { kind: 'not_cancellable', reason: 'policy_unknown' }
 
-  const zone = await deps.properties.timeZoneOf(booking.supplier, booking.propertyId)
+  const zone = await deps.properties.lookup(booking.supplier, booking.propertyId)
   if (zone.kind === 'unreachable') return { kind: 'retry_later' }
   if (zone.kind === 'not_found') return { kind: 'not_cancellable', reason: 'time_zone_unknown' }
 

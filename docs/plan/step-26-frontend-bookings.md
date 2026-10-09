@@ -60,15 +60,39 @@ Commit: feat: add bookings list and cancellation experience
 
 ## Definisi Selesai
 
-- [ ] Status ditampilkan dengan kata-kata, bukan hanya warna
-- [ ] Tenggat pembatalan ditampilkan sebagai tanggal dan waktu konkret
-- [ ] Nilai pengembalian terlihat sebelum pengguna menekan tombol akhir
-- [ ] Keadaan `NEEDS_REVIEW` punya tampilan sendiri yang jujur
-- [ ] Status refund yang gagal tidak disembunyikan
-- [ ] Daftar di mobile berupa kartu, bukan tabel bergulir
-- [ ] Dialog konfirmasi mengunci fokus
-- [ ] Seluruh butir DESIGN-SYSTEM.md bagian 11 tercentang
-- [ ] Commit terbuat
+- [x] Status ditampilkan dengan kata-kata, bukan hanya warna. `statusOf` memberi setiap keadaan label tertulis, dan diuji untuk seluruh sebelas keadaan. Lencana warnanya hanya mengulang arti kata-katanya.
+- [x] Tenggat pembatalan ditampilkan sebagai tanggal dan waktu konkret di zona properti, misalnya "Gratis dibatalkan sampai Jumat, 6 Nov 2026 pukul 23.59 WITA". Zona Indonesia memakai WIB/WITA/WIT; zona lain disebut "waktu Tokyo", bukan "GMT+9".
+- [x] Nilai pengembalian terlihat sebelum pengguna menekan tombol akhir: di bagian kebijakan ("Bila dibatalkan sekarang…") dan di dialog (dana yang kembali, yang hangus, perkiraan sampai). Nilai itu pula yang dikirim sebagai `expectedRefund`; bila jenjangnya berganti, tidak ada yang dibatalkan dan nilai baru dimuat.
+- [x] Keadaan `NEEDS_REVIEW` punya tampilan sendiri yang jujur, dengan kapan kami menghubungi dan alamat bantuan (`NEXT_PUBLIC_SUPPORT_EMAIL`). Pemeriksaan pembatalan punya kalimatnya sendiri.
+- [x] Status refund yang gagal tidak disembunyikan. Pembatalan yang refundnya gagal tampil sebagai "Pembatalan sedang diperiksa" di daftar dan di halaman status.
+- [x] Daftar di mobile berupa kartu, bukan tabel bergulir. Diperiksa di 375px: `scrollWidth` halaman 375 untuk daftar, detail, dan dialog.
+- [x] Dialog konfirmasi mengunci fokus (Radix), fokus awalnya pada "Jangan batalkan", dan dapat ditutup dengan Escape. Diuji.
+- [x] Seluruh butir DESIGN-SYSTEM.md bagian 11 tercentang (lihat Temuan).
+- [x] Commit terbuat
+
+## Temuan
+
+### Backend yang dibutuhkan layar ini
+
+- `GET /bookings?group=upcoming|past|cancelled&cursor=&limit=`. Kelompok dinyatakan di domain (`booking-groups.ts`) dan sebagai kueri di repository; satu uji memastikan keduanya sepakat untuk setiap keadaan. Pemesanan yang masih berproses (menunggu bayar, menunggu supplier, sedang dibatalkan, diperiksa) selalu di "akan datang", apa pun tanggalnya. DRAFT dan PRICE_CHECKED tidak pernah tampil.
+- Halaman berupa offset di balik penunjuk buram. Pemesanan yang berpindah kelompok di antara dua halaman dapat terlewat atau terulang satu kali.
+- Nama properti dari katalog search-service (`PropertyDirectory.lookup`, yang juga memberi zona waktu Step 25), sekali per properti per halaman. Katalog yang tidak menjawab tidak menggagalkan daftar: entri tampil dengan kotanya.
+- `GET /bookings/:id` kini membawa `propertyName`, `supplierRef`, dan ketentuan tawaran versi supplier.
+- Indeks baru `bookings(user_id, check_in)`.
+
+### Bagian 11 DESIGN-SYSTEM.md
+
+- Tidak ada warna mentah (`verify:tokens`, `verify:contrast` hijau). Jarak memakai skala Tailwind 4px.
+- Empat keadaan untuk daftar (per kelompok), pratinjau pembatalan, dan rincian; masing-masing diuji.
+- Keyboard: kartu adalah satu tautan dengan `focus-visible`; tab, dialog, dan tombol voucher dapat dioperasikan penuh.
+- 375px diperiksa lewat tangkapan layar Chromium headless (build produksi, gateway palsu di luar repo).
+- Gerak memakai transisi warna token yang sudah menghormati `prefers-reduced-motion`. Tidak ada kartu bersarang. Aksen tidak dipakai di halaman detail selain status keberhasilan; tombol pembatalan bervarian sekunder, tombol akhirnya destructive.
+
+### Utang
+
+- Tanggal "hari ini" untuk kelompok adalah tanggal UTC, bukan tanggal di properti; batas "selesai" bisa bergeser satu hari di sekitar tengah malam.
+- Tautan voucher dibuka di tab yang sama.
+- Belum ada uji ujung ke ujung (Playwright) terhadap seluruh service yang berjalan.
 
 ## Catatan
 

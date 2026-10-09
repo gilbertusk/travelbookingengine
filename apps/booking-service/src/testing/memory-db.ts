@@ -4,7 +4,9 @@ import type {
   BookingRow,
   BookingTx,
   BookingWriteColumns,
-  DueWhere,
+  BookingClause,
+  BookingOrder,
+  BookingQuery,
   EventWriteColumns,
 } from '../infrastructure/booking-db.js'
 import { UNIQUE_VIOLATION } from '../infrastructure/booking-db.js'
@@ -149,18 +151,61 @@ function insertEvent(tables: Tables, data: EventWriteColumns): void {
   tables.events.push({ id: randomUUID(), ...structuredClone(data) })
 }
 
-/** Baris HELD yang batas waktunya sudah lewat, meniru kueri penyapu. */
-function dueRows(tables: Tables, where: DueWhere, take: number): BookingRow[] {
-  const column = where.heldUntil === undefined ? 'cancelDeadlineAt' : 'heldUntil'
-  const bound = where.heldUntil ?? where.cancelDeadlineAt
-  if (bound === undefined) throw new Error('kueri penyapu tanpa batas waktu')
-  const now = bound.lte
-  const dueAt = (row: BookingRow): number => row[column]?.getTime() ?? Number.POSITIVE_INFINITY
+/**
+ * Meniru `findMany` Prisma untuk bentuk kueri yang dipakai repository:
+ * kesamaan, `lte`/`gte`/`lt` pada kolom waktu, `in` pada status, `OR`,
+ * urutan berlapis, `skip`, dan `take`.
+ */
+function queryRows(tables: Tables, query: BookingQuery): BookingRow[] {
+  const where = query.where
+  const time = (value: Date | null): number => value?.getTime() ?? Number.NaN
+  const matches = (row: BookingRow): boolean =>
+    (where.status === undefined || row.status === where.status) &&
+    (where.userId === undefined || row.userId === where.userId) &&
+    (where.heldUntil === undefined || time(row.heldUntil) <= where.heldUntil.lte.getTime()) &&
+    (where.cancelDeadlineAt === undefined ||
+      time(row.cancelDeadlineAt) <= where.cancelDeadlineAt.lte.getTime()) &&
+    (where.OR === undefined || where.OR.some((clause) => matchesClause(row, clause)))
+  const orders = Array.isArray(query.orderBy) ? query.orderBy : [query.orderBy]
+  const skip = query.skip ?? 0
 
   return [...tables.bookings.values()]
-    .filter((row) => row.status === where.status && dueAt(row) <= now.getTime())
-    .sort((a, b) => dueAt(a) - dueAt(b))
-    .slice(0, take)
+    .filter(matches)
+    .sort((a, b) => compareBy(orders, a, b))
+    .slice(skip, skip + query.take)
+}
+
+function matchesClause(row: BookingRow, clause: BookingClause): boolean {
+  if (!clause.status.in.includes(row.status)) return false
+  const bound = clause.checkOut
+  if (bound === undefined) return true
+
+  return 'gte' in bound
+    ? row.checkOut.getTime() >= bound.gte.getTime()
+    : row.checkOut.getTime() < bound.lt.getTime()
+}
+
+function compareBy(orders: readonly BookingOrder[], a: BookingRow, b: BookingRow): number {
+  for (const order of orders) {
+    const [column, direction] = Object.entries(order)[0] ?? []
+    if (column === undefined) continue
+    const left = sortValue(a, column)
+    const right = sortValue(b, column)
+    if (left === right) continue
+    const ascending = left < right ? -1 : 1
+    return direction === 'desc' ? -ascending : ascending
+  }
+
+  return 0
+}
+
+function sortValue(row: BookingRow, column: string): number | string {
+  const value: unknown = row[column as keyof BookingRow]
+  if (value instanceof Date) return value.getTime()
+  if (value === null) return Number.POSITIVE_INFINITY
+  if (typeof value === 'string' || typeof value === 'number') return value
+
+  throw new Error(`kolom ${column} tidak dapat diurutkan`)
 }
 
 /** Pembaca di luar transaksi: selalu melihat tabel yang SUDAH di-commit. */
@@ -171,9 +216,9 @@ function readersOver(committed: () => Tables): Pick<BookingDb, 'booking' | 'saga
         await Promise.resolve()
         return structuredClone(committed().bookings.get(where.id)) ?? null
       },
-      findMany: async ({ where, take }) => {
+      findMany: async (query) => {
         await Promise.resolve()
-        return structuredClone(dueRows(committed(), where, take))
+        return structuredClone(queryRows(committed(), query))
       },
       findFirst: async ({ where }) => {
         await Promise.resolve()

@@ -170,7 +170,7 @@ export interface BookingDb {
      * hold yang lewat (Step 17) dan pembatalan yang batas menunggunya lewat
      * (Step 25).
      */
-    findMany(args: { where: DueWhere; orderBy: DueOrder; take: number }): Promise<BookingRow[]>
+    findMany(args: BookingQuery): Promise<BookingRow[]>
   }
   readonly sagaState: {
     findUnique(args: { where: { bookingId: string } }): Promise<SagaRow | null>
@@ -191,19 +191,41 @@ export interface BookingDb {
 }
 
 /**
- * Bentuk kueri penyapu. Satu bentuk yang mencakup keduanya, bukan union dua
- * bentuk: inferensi generik `findMany` Prisma tidak dapat dicocokkan dengan
- * union maupun overload, dan bukti kesesuaian di prisma-client.ts akan gagal.
+ * Bentuk kueri daftar: dua penyapu (hold Step 17, pembatalan Step 25) dan
+ * daftar pemesanan pengguna (Step 26).
+ *
+ * SATU bentuk dengan bidang opsional, bukan union atau overload: inferensi
+ * generik `findMany` Prisma tidak dapat dicocokkan dengan keduanya, dan bukti
+ * kesesuaian di prisma-client.ts akan gagal. Larik ditulis dapat diubah karena
+ * tipe Prisma menuntutnya.
  */
-export interface DueWhere {
-  readonly status: 'HELD' | 'CANCELLING'
-  readonly heldUntil?: { readonly lte: Date }
-  readonly cancelDeadlineAt?: { readonly lte: Date }
+export interface BookingQuery {
+  readonly where: BookingWhere
+  readonly orderBy: BookingOrder | BookingOrder[]
+  readonly skip?: number
+  readonly take: number
 }
 
-export interface DueOrder {
+export interface BookingWhere {
+  readonly status?: 'HELD' | 'CANCELLING'
+  readonly heldUntil?: { readonly lte: Date }
+  readonly cancelDeadlineAt?: { readonly lte: Date }
+  readonly userId?: string
+  /** Kelompok daftar pemesanan: keadaan tertentu, dibatasi tanggal keluar bila perlu. */
+  readonly OR?: BookingClause[]
+}
+
+export interface BookingClause {
+  readonly status: { readonly in: BookingStatus[] }
+  readonly checkOut?: { readonly gte: Date } | { readonly lt: Date }
+}
+
+export interface BookingOrder {
   readonly heldUntil?: 'asc'
   readonly cancelDeadlineAt?: 'asc'
+  readonly checkIn?: 'asc' | 'desc'
+  readonly updatedAt?: 'desc'
+  readonly id?: 'asc'
 }
 
 export interface BookingTx {

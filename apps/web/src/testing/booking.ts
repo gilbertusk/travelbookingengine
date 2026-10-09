@@ -28,6 +28,10 @@ export function sampleBooking(overrides: Partial<Booking> = {}): Booking {
     },
     heldUntil: null,
     priceCheck: { outcome: 'unchanged', price: IDR(2_442_000) },
+    supplierRef: null,
+    terms: null,
+    propertyName: null,
+    cancellation: null,
     serverTime: '2026-10-06T10:00:00.000Z',
     ...overrides,
   }
