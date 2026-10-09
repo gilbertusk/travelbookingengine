@@ -32,7 +32,9 @@ export function proxy(request: NextRequest): NextResponse {
     const url = new URL('/masuk', request.url)
     // Tujuan semula dibawa serta supaya pengguna kembali ke tempat yang ia
     // tuju setelah masuk, bukan terdampar di beranda.
-    url.searchParams.set('lanjut', pathname)
+    // Termasuk kuerinya: alur pemesanan membawa pilihan kamar di URL, dan
+    // pengguna yang baru masuk harus kembali ke kamar yang sama (Step 21).
+    url.searchParams.set('lanjut', `${pathname}${request.nextUrl.search}`)
 
     return NextResponse.redirect(url)
   }

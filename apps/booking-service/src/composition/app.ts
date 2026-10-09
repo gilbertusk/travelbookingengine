@@ -9,10 +9,11 @@ import {
   type Metrics,
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
-import type { BookingDeps } from '../application/ports.js'
+import type { BookingDeps, Payments } from '../application/ports.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
 import { createBookingRouter } from '../http/booking-routes.js'
+import { createPaymentRouter } from '../http/payment-routes.js'
 import { createStatusRouter, type StatusStreamOptions } from '../http/status-routes.js'
 import type { OutboxRelay } from '../infrastructure/outbox-relay.js'
 import { periodicResource } from './periodic.js'
@@ -29,6 +30,12 @@ export interface BookingHttpOptions {
   readonly serviceName: string
   readonly extraChecks?: readonly HealthCheck[]
   readonly statusStream?: StatusStreamOptions
+  /**
+   * payment-service. Tanpa ini rute pembayaran tidak dipasang — uji yang
+   * hanya menyentuh price check dan hold tidak perlu merangkainya. index.ts
+   * SELALU memberikannya.
+   */
+  readonly payments?: Payments
 }
 
 /** Satu pembacaan per detik; komentar penjaga tiap lima belas detik. */
@@ -52,6 +59,9 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
   )
   app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
   app.use(createBookingRouter(options.deps))
+  if (options.payments !== undefined) {
+    app.use(createPaymentRouter(options.deps, options.payments))
+  }
 
   finalizeHttpServer(app, options.logger)
 

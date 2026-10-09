@@ -121,14 +121,12 @@ function respondToIntent(
   next: (error: unknown) => void,
 ): void {
   if (result.kind === 'created') {
-    res
-      .status(201)
-      .json(success({ payment: view(result.payment), redirectUrl: result.redirectUrl }))
+    res.status(201).json(success({ payment: view(result.payment), ...providerLink(result) }))
     return
   }
 
   if (result.kind === 'resumed') {
-    res.json(success({ payment: view(result.payment), redirectUrl: result.redirectUrl }))
+    res.json(success({ payment: view(result.payment), ...providerLink(result) }))
     return
   }
 
@@ -289,6 +287,14 @@ function notificationError(why: string): Error {
  * Disusun eksplisit, bukan mengirim entitasnya. Mengirim entitas berarti setiap
  * bidang baru di domain ikut terbit ke klien tanpa ada yang memutuskannya.
  */
+/**
+ * Dua cara membuka halaman bayar Snap: tautan untuk mode halaman penuh, token
+ * untuk mode popup. Klien yang memilih; keduanya menunjuk transaksi yang sama.
+ */
+function providerLink(result: { readonly redirectUrl: string; readonly snapToken: string }) {
+  return { redirectUrl: result.redirectUrl, snapToken: result.snapToken }
+}
+
 function view(payment: Payment): Record<string, unknown> {
   return {
     id: payment.id,

@@ -15,14 +15,17 @@ Beranda, sistem desain, masuk, dan daftar dapat dibuka tanpa backend menyala. Ma
 
 ## Halaman
 
-| Rute             | Akses  | Isi                                         |
-| ---------------- | ------ | ------------------------------------------- |
-| `/`              | Publik | Hero dan batang pencarian                   |
-| `/cari`          | Publik | Hasil pencarian — penampung, diisi Step 14  |
-| `/masuk`         | Tamu   | Formulir masuk                              |
-| `/daftar`        | Tamu   | Formulir pendaftaran                        |
-| `/bookings`      | Privat | Daftar pemesanan — penampung, diisi Step 26 |
-| `/design-system` | Publik | Acuan seluruh token dan primitif            |
+| Rute                | Akses  | Isi                                                                  |
+| ------------------- | ------ | -------------------------------------------------------------------- |
+| `/`                 | Publik | Hero dan batang pencarian                                            |
+| `/cari`             | Publik | Hasil pencarian — penampung, diisi Step 14                           |
+| `/masuk`            | Tamu   | Formulir masuk                                                       |
+| `/daftar`           | Tamu   | Formulir pendaftaran                                                 |
+| `/bookings`         | Privat | Daftar pemesanan — penampung, diisi Step 26                          |
+| `/bookings/pesan`   | Privat | Alur pemesanan: data tamu, harga berubah, hold, pembayaran (Step 21) |
+| `/bookings/[id]`    | Privat | Status langsung (SSE) dan konfirmasi pemesanan (Step 21)             |
+| `/bookings/kembali` | Privat | Finish URL Snap halaman penuh; meneruskan ke status pemesanan        |
+| `/design-system`    | Publik | Acuan seluruh token dan primitif                                     |
 
 Rute privat dijaga [`src/proxy.ts`](src/proxy.ts). Yang diperiksa hanya keberadaan cookie sesi, bukan keabsahannya — keputusan akses yang sebenarnya tetap di gateway, yang memang memverifikasi setiap permintaan. Memverifikasi tanda tangan token di sini berarti menaruh rahasia penandatanganan di tempat ketiga tanpa menambah keamanan.
 

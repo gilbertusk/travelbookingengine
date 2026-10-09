@@ -52,6 +52,7 @@ const envSchema = baseEnvSchema
 
     SUPPLIER_SERVICE_URL: z.string().min(1).default('http://localhost:4004'),
     PRICING_SERVICE_URL: z.string().min(1).default('http://localhost:4005'),
+    PAYMENT_SERVICE_URL: z.string().min(1).default('http://localhost:4007'),
     /** Batas waktu satu panggilan ke supplier-service atau pricing-service. */
     UPSTREAM_TIMEOUT_MS: positiveMs(5_000),
 

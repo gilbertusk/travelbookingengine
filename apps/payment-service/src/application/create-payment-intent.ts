@@ -37,9 +37,20 @@ export type IntentRejection =
   'amount_not_approved' | 'amount_unknown' | 'gateway_rejected' | 'gateway_unavailable'
 
 export type CreateIntentResult =
-  | { readonly kind: 'created'; readonly payment: Payment; readonly redirectUrl: string }
+  | {
+      readonly kind: 'created'
+      readonly payment: Payment
+      readonly redirectUrl: string
+      /** Token Snap untuk mode popup. Sama dengan rujukan transaksi di penyedia. */
+      readonly snapToken: string
+    }
   /** Pembayaran yang sama, penagihannya diminta ulang. Permintaan berulang atau percobaan ulang. */
-  | { readonly kind: 'resumed'; readonly payment: Payment; readonly redirectUrl: string }
+  | {
+      readonly kind: 'resumed'
+      readonly payment: Payment
+      readonly redirectUrl: string
+      readonly snapToken: string
+    }
   /** Sudah tidak PENDING. Tidak ada yang perlu ditagih lagi. */
   | { readonly kind: 'existing'; readonly payment: Payment }
   | { readonly kind: 'rejected'; readonly why: IntentRejection }
@@ -158,9 +169,8 @@ async function charge(
   })
 
   if (result.kind === 'created') {
-    return isNew
-      ? { kind: 'created', payment, redirectUrl: result.redirectUrl }
-      : { kind: 'resumed', payment, redirectUrl: result.redirectUrl }
+    const link = { redirectUrl: result.redirectUrl, snapToken: result.providerRef }
+    return isNew ? { kind: 'created', payment, ...link } : { kind: 'resumed', payment, ...link }
   }
 
   if (result.kind === 'rejected') {

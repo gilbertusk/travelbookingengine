@@ -47,7 +47,7 @@ function statusHandler(deps: BookingDeps): RequestHandler {
         next(new NotFoundError('Pemesanan tidak ditemukan'))
         return
       }
-      res.json(success(statusView(snapshot)))
+      res.json(success(statusView(snapshot, deps.clock.now())))
     }, next)
   }
 }
@@ -99,7 +99,7 @@ async function stream(deps: BookingDeps, res: Response, context: Stream): Promis
       signal: context.signal,
       sleep: pause,
     })
-    for await (const snapshot of changes) writeStatus(res, snapshot)
+    for await (const snapshot of changes) writeStatus(res, snapshot, deps.clock.now())
     if (!context.signal.aborted) res.write('event: end\ndata: {}\n\n')
   } catch (error) {
     // Kepala respons sudah terkirim; galat tidak dapat lagi menjadi status
@@ -111,8 +111,8 @@ async function stream(deps: BookingDeps, res: Response, context: Stream): Promis
   }
 }
 
-function writeStatus(res: Response, snapshot: StatusSnapshot): void {
-  const view = statusView(snapshot)
+function writeStatus(res: Response, snapshot: StatusSnapshot, now: Date): void {
+  const view = statusView(snapshot, now)
   const id = `${String(view.version)}-${String(snapshot.saga?.version ?? 0)}`
 
   res.write(`event: status\nid: ${id}\ndata: ${JSON.stringify(view)}\n\n`)

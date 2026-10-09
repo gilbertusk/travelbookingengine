@@ -8,7 +8,14 @@ import { ErrorState } from '@/components/state/states'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PropertyPhoto } from '@/components/search/property-photo'
-import { amenityLabel, nightsBetween, parseCriteria, searchHref } from '@/features/search/criteria'
+import { bookingHref } from '@/features/booking/selection'
+import {
+  amenityLabel,
+  nightsBetween,
+  parseCriteria,
+  searchHref,
+  type SearchCriteria,
+} from '@/features/search/criteria'
 import { useProperty } from '@/features/search/use-search'
 import { humanMessage } from '@/lib/api-error'
 import { AmenityItem, RatePlanRow } from './rate-plan-row'
@@ -87,7 +94,7 @@ export function PropertyDetail({ slug }: { readonly slug: string }) {
           />
         )
       ) : (
-        <Content property={data.property} nights={nights} />
+        <Content property={data.property} nights={nights} criteria={criteria} />
       )}
     </Shell>
   )
@@ -104,9 +111,11 @@ function Shell({ children }: { readonly children: React.ReactNode }) {
 function Content({
   property,
   nights,
+  criteria,
 }: {
   readonly property: SearchProperty
   readonly nights: number
+  readonly criteria: SearchCriteria
 }) {
   const cheapest = lowestOf(property.offers)
 
@@ -143,7 +152,7 @@ function Content({
         </section>
       )}
 
-      <section className="flex flex-col gap-3">
+      <section id="pilihan-kamar" className="flex scroll-mt-24 flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium">Pilihan kamar</h2>
           <p className="text-xs text-muted-foreground">
@@ -160,6 +169,7 @@ function Content({
               offer={offer}
               nights={nights}
               isCheapest={offer === cheapest}
+              href={bookingHref(property.slug ?? property.ref, offer, criteria)}
             />
           ))}
         </ul>
@@ -167,8 +177,8 @@ function Content({
 
       {/* Aksi utama menempel di bawah layar pada mobile. */}
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card p-4 lg:hidden">
-        <Button variant="primary" className="w-full">
-          Pilih kamar
+        <Button asChild variant="primary" className="w-full">
+          <a href="#pilihan-kamar">Pilih kamar</a>
         </Button>
       </div>
     </>

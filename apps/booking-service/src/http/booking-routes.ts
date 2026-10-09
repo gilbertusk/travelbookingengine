@@ -82,7 +82,7 @@ function priceCheckHandler(deps: BookingDeps): RequestHandler {
       userId,
       displayedTotal: money(amountMinor, currency),
     }).then((result) => {
-      respondToPriceCheck(res, next, result)
+      respondToPriceCheck(res, next, result, deps.clock.now())
     }, next)
   }
 }
@@ -93,7 +93,7 @@ function acceptHandler(deps: BookingDeps): RequestHandler {
 
     void acceptPriceChange(deps, { userId, bookingId: acceptBody.value(res).bookingId }).then(
       (result) => {
-        respondToPriceCheck(res, next, result)
+        respondToPriceCheck(res, next, result, deps.clock.now())
       },
       next,
     )
@@ -105,7 +105,7 @@ function holdHandler(deps: BookingDeps): RequestHandler {
     const userId = identity.value(res)
 
     void placeHold(deps, { ...holdBody.value(res), userId }).then((result) => {
-      respondToHold(res, next, result)
+      respondToHold(res, next, result, deps.clock.now())
     }, next)
   }
 }
@@ -119,7 +119,7 @@ function getHandler(deps: BookingDeps): RequestHandler {
         next(new NotFoundError('Pemesanan tidak ditemukan'))
         return
       }
-      res.json(success(bookingView(booking)))
+      res.json(success(bookingView(booking, deps.clock.now())))
     }, next)
   }
 }
@@ -134,10 +134,10 @@ type Next = (error?: unknown) => void
  * menampilkan harga lama, baru, dan selisihnya. Yang 409 hanyalah rate plan
  * yang sudah tidak tersedia — pemesanan itu berakhir.
  */
-function respondToPriceCheck(res: Response, next: Next, result: PriceCheckResult): void {
+function respondToPriceCheck(res: Response, next: Next, result: PriceCheckResult, now: Date): void {
   switch (result.kind) {
     case 'checked': {
-      const view = bookingView(result.booking)
+      const view = bookingView(result.booking, now)
       if (view.priceCheck?.outcome === 'unavailable') {
         next(conflict('RATE_UNAVAILABLE', 'Rate plan ini sudah tidak tersedia di supplier'))
         return
@@ -164,10 +164,10 @@ function respondToPriceCheck(res: Response, next: Next, result: PriceCheckResult
   }
 }
 
-function respondToHold(res: Response, next: Next, result: HoldResult): void {
+function respondToHold(res: Response, next: Next, result: HoldResult, now: Date): void {
   switch (result.kind) {
     case 'held':
-      res.json(success(bookingView(result.booking)))
+      res.json(success(bookingView(result.booking, now)))
       return
     case 'sold_out':
       next(conflict('SOLD_OUT', 'Kamar untuk tanggal ini sudah habis'))

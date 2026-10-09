@@ -5,17 +5,23 @@ import { isFinal, type Booking } from '../domain/booking.js'
 /**
  * Bentuk pemesanan yang dikirim ke klien.
  *
+ * `serverTime` adalah jam booking-service saat respons dibentuk. Klien memakainya
+ * untuk menghitung selisih dengan jamnya sendiri, supaya hitung mundur hold
+ * mengikuti jam yang menentukan `heldUntil` — bukan jam komputer pengguna yang
+ * bisa meleset beberapa menit (Step 21).
+ *
  * Tidak menyertakan kunci idempotensi, versi, maupun data tamu. Kunci dan
  * versi adalah urusan internal; data tamu sudah dimiliki klien yang
  * mengirimnya, dan setiap salinan tambahannya di respons adalah salinan
  * tambahan di log proxy mana pun di antaranya (NFR-15).
  */
-export function bookingView(booking: Booking) {
+export function bookingView(booking: Booking, now: Date) {
   return {
     id: booking.id,
     status: booking.status,
     supplier: booking.supplier,
     propertyId: booking.propertyId,
+    city: booking.city,
     ratePlanRef: booking.ratePlanRef,
     checkIn: booking.stay.checkIn,
     checkOut: booking.stay.checkOut,
@@ -30,6 +36,7 @@ export function bookingView(booking: Booking) {
     },
     heldUntil: booking.heldUntil?.toISOString() ?? null,
     priceCheck: priceCheckView(booking),
+    serverTime: now.toISOString(),
   }
 }
 
@@ -75,7 +82,7 @@ function difference(previous: Money, current: Money): MoneyJson | null {
  * langkahnya disertakan supaya layar tunggu dapat berkata "menunggu
  * konfirmasi supplier", bukan untuk ditafsirkan klien menjadi keputusan.
  */
-export function statusView(snapshot: StatusSnapshot) {
+export function statusView(snapshot: StatusSnapshot, now: Date) {
   const { booking, saga } = snapshot
 
   return {
@@ -89,6 +96,7 @@ export function statusView(snapshot: StatusSnapshot) {
     failureReason: booking.failure?.reason ?? null,
     refund: refundStatus(booking),
     saga: saga === undefined ? null : { phase: saga.phase, step: saga.step },
+    serverTime: now.toISOString(),
   }
 }
 

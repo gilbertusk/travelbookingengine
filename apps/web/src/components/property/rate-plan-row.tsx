@@ -1,4 +1,5 @@
 import { Check, Coffee, ShieldCheck, ShieldOff, X } from 'lucide-react'
+import Link from 'next/link'
 import { PriceDisplay } from '@/components/search/price-display'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/cn'
@@ -27,9 +28,11 @@ export interface RatePlanRowProps {
   readonly nights: number
   /** Tawaran termurah untuk properti ini. Ditandai supaya mudah dikenali. */
   readonly isCheapest: boolean
+  /** Alur pemesanan untuk tawaran ini. Lihat features/booking/selection.ts. */
+  readonly href: string
 }
 
-export function RatePlanRow({ offer, nights, isCheapest }: RatePlanRowProps) {
+export function RatePlanRow({ offer, nights, isCheapest, href }: RatePlanRowProps) {
   return (
     <li
       className={cn(
@@ -80,8 +83,10 @@ export function RatePlanRow({ offer, nights, isCheapest }: RatePlanRowProps) {
 
       <div className="flex shrink-0 items-end gap-4 sm:flex-col sm:items-end">
         <PriceDisplay total={offer.total} nights={nights} tax={offer.tax} taxName={offer.taxName} />
-        <Button variant="secondary" size="sm">
-          Pilih
+        <Button asChild variant="secondary" size="sm">
+          <Link href={href} aria-label={`Pilih ${offer.roomTypeName}, ${offer.ratePlanName}`}>
+            Pilih
+          </Link>
         </Button>
       </div>
     </li>
