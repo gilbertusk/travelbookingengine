@@ -5,10 +5,12 @@ import { z } from 'zod'
 import {
   createHttpPayments,
   createHttpPricing,
+  createHttpPropertyDirectory,
   createHttpSupplierQuotes,
   toPaymentStart,
   toSellQuote,
   toSupplierAnswer,
+  toTimeZoneAnswer,
   undiciTransport,
   type HttpResponse,
   type Transport,
@@ -48,6 +50,7 @@ describe('jawaban supplier-service menjadi keputusan', () => {
           supplierRatePlanId: 'SKY-RP-DLX-BB',
           total: { amountMinor: 2_000_000, currency: 'IDR' },
           changed: false,
+          cancellationPolicy: { refundable: true, freeCancellationDays: 5 },
         },
         error: null,
       },
@@ -55,7 +58,13 @@ describe('jawaban supplier-service menjadi keputusan', () => {
 
     const answer = await createHttpSupplierQuotes('http://supplier', transport).priceCheck(STAY)
 
-    expect(answer).toEqual({ kind: 'ok', value: { total: money(2_000_000, 'IDR') } })
+    expect(answer).toEqual({
+      kind: 'ok',
+      value: {
+        total: money(2_000_000, 'IDR'),
+        policy: { refundable: true, freeCancellationDays: 5 },
+      },
+    })
     expect(calls).toEqual([['http://supplier/internal/suppliers/price-check', STAY]])
   })
 
@@ -120,6 +129,7 @@ describe('jawaban supplier-service menjadi keputusan', () => {
         supplierHoldId: 'h',
         expiresAt: '2026-10-01T03:20:00.000Z',
         changed: false,
+        cancellationPolicy: { refundable: false },
         total: { amountMinor: 1, currency: 'XYZ' },
       },
       error: null,
@@ -264,6 +274,37 @@ describe('jawaban payment-service', () => {
   })
 })
 
+describe('jawaban katalog: zona waktu properti (Step 25)', () => {
+  test('properti yang dikenal menjawab zona waktunya, ditanyakan dengan GET', async () => {
+    const { transport, calls } = recording({
+      status: 200,
+      body: { data: { timezone: 'Asia/Tokyo', name: 'Hotel' }, error: null },
+    })
+
+    const answer = await createHttpPropertyDirectory('http://search', transport).timeZoneOf(
+      'SKY',
+      'a/b c',
+    )
+
+    expect(answer).toEqual({ kind: 'found', timeZone: 'Asia/Tokyo' })
+    expect(calls).toEqual([
+      ['http://search/internal/catalog/properties/by-supplier/SKY/a%2Fb%20c', undefined],
+    ])
+  })
+
+  test('properti yang tidak terpetakan: tidak ditemukan, bukan zona tebakan', () => {
+    expect(toTimeZoneAnswer(error(404, 'NOT_FOUND'))).toEqual({ kind: 'not_found' })
+  })
+
+  test.each([
+    ['galat server', error(500, 'INTERNAL')],
+    ['tanpa jawaban', { status: 0, body: null }],
+    ['bentuk yang tidak dikenal', { status: 200, body: { data: { zona: 'x' }, error: null } }],
+  ])('%s berarti coba lagi', (_name, response) => {
+    expect(toTimeZoneAnswer(response)).toEqual({ kind: 'unreachable' })
+  })
+})
+
 describe('transport undici', () => {
   test('meneruskan badan JSON dan header korelasi, dan mengembalikan status apa adanya', async () => {
     const received: { body: string; correlation: string | undefined }[] = []
@@ -288,6 +329,29 @@ describe('transport undici', () => {
 
       expect(response).toEqual({ status: 409, body: { data: null, error: { code: 'SOLD_OUT' } } })
       expect(received).toEqual([{ body: '{"a":1}', correlation: 'corr-1' }])
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+
+  test('tanpa badan permintaan memakai GET', async () => {
+    const methods: string[] = []
+    const server = createServer((req, res) => {
+      methods.push(req.method ?? '')
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ data: { timezone: 'Asia/Jakarta' }, error: null }))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    const port = typeof address === 'object' && address !== null ? address.port : 0
+
+    try {
+      const response = await undiciTransport(2_000, () => ({}))(
+        `http://127.0.0.1:${String(port)}/x`,
+      )
+
+      expect(response.status).toBe(200)
+      expect(methods).toEqual(['GET'])
     } finally {
       await new Promise((resolve) => server.close(resolve))
     }

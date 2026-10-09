@@ -114,6 +114,7 @@ function rateCheckHandler(context: SupplierContext): RequestHandler {
       option_code: parsed.data.option_code,
       total_rate: usd(result.value.totalMinorIdr),
       rate_changed: result.value.changed,
+      is_refundable: result.value.policy.refundable,
     })
   }
 }

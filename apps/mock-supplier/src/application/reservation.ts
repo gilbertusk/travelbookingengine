@@ -33,6 +33,16 @@ export interface PriceCheckResult {
   readonly totalMinorIdr: number
   readonly baseTotalMinorIdr: number
   readonly changed: boolean
+  /**
+   * Kebijakan pembatalan rate plan, diulang di price check (Step 25) dalam
+   * dialek masing-masing supplier — sama dengan yang tampil di pencarian.
+   */
+  readonly policy: RatePlanPolicy
+}
+
+export interface RatePlanPolicy {
+  readonly refundable: boolean
+  readonly freeCancellationDays: number
 }
 
 /**
@@ -84,22 +94,34 @@ export function priceCheck(
   if (problem !== undefined) return err({ kind: 'invalid_request', reason: problem })
 
   const base = basePriceFor(deps, request)
-  if (base === undefined) return err({ kind: 'not_found', what: 'rate_plan' })
+  const ratePlan = deps.catalog.ratePlan(request.ratePlanId)
+  if (base === undefined || ratePlan === undefined) {
+    return err({ kind: 'not_found', what: 'rate_plan' })
+  }
 
+  const policy = {
+    refundable: ratePlan.refundable,
+    freeCancellationDays: ratePlan.freeCancellationDays,
+  }
   const key = priceKey(request)
   const existing = deps.store.driftedPrice(key)
 
   if (existing !== undefined) {
-    return ok({ totalMinorIdr: existing, baseTotalMinorIdr: base, changed: existing !== base })
+    return ok({
+      totalMinorIdr: existing,
+      baseTotalMinorIdr: base,
+      changed: existing !== base,
+      policy,
+    })
   }
 
   if (!shouldDriftPrice(request.supplier, chaos, deps.random)) {
-    return ok({ totalMinorIdr: base, baseTotalMinorIdr: base, changed: false })
+    return ok({ totalMinorIdr: base, baseTotalMinorIdr: base, changed: false, policy })
   }
 
   const drifted = driftedPriceMinorIdr(base, key)
   deps.store.setDriftedPrice(key, drifted)
-  return ok({ totalMinorIdr: drifted, baseTotalMinorIdr: base, changed: drifted !== base })
+  return ok({ totalMinorIdr: drifted, baseTotalMinorIdr: base, changed: drifted !== base, policy })
 }
 
 export interface HoldRequest extends StayRequest {

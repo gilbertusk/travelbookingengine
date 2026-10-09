@@ -66,6 +66,19 @@ export default defineConfig({
         // kompensasi yang tidak pernah terbukti berjalan.
         'src/domain/saga-*.ts': { lines: 100, functions: 100, branches: 100, statements: 100 },
         'src/application/saga/**': { lines: 100, functions: 100, branches: 100, statements: 100 },
+        // Step 25: saga kedua, dengan kompensasinya sendiri — ambang yang sama.
+        'src/application/cancellation/**': {
+          lines: 100,
+          functions: 100,
+          branches: 100,
+          statements: 100,
+        },
+        'src/domain/cancellation-handlers.ts': {
+          lines: 100,
+          functions: 100,
+          branches: 100,
+          statements: 100,
+        },
         'src/infrastructure/unit-of-work.ts': {
           lines: 100,
           functions: 100,

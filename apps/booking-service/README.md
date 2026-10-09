@@ -410,17 +410,21 @@ pnpm --filter @tbe/booking-service build && pnpm --filter @tbe/booking-service s
 
 Seluruhnya lewat api-gateway, yang mewajibkan autentikasi untuk `/bookings` dan meneruskan identitas sebagai `x-tbe-user-id`. Tanpa header itu — atau bukan UUID — dijawab 401, sebelum isi permintaan diperiksa. Pemesanan milik pengguna lain dijawab 404, sama dengan pemesanan yang tidak ada.
 
-| Rute                                | Guna                                                         |
-| ----------------------------------- | ------------------------------------------------------------ |
-| `POST /bookings/price-check`        | Buat bila belum ada (idempoten), lalu price check langsung   |
-| `POST /bookings/price-check/accept` | Setujui harga baru, lalu price check ulang                   |
-| `POST /bookings/hold`               | Hold lokal lalu supplier                                     |
-| `GET /bookings/:id`                 | Keadaan pemesanan milik sendiri                              |
-| `GET /bookings/:id/status`          | Status, fase saga, alasan gagal, status refund (FR-23)       |
-| `GET /bookings/stream/:id`          | SSE: setiap perubahan status sampai tuntas (FR-26, Step 21)  |
-| `POST /bookings/:id/payment`        | Buka pembayaran untuk pemesanan HELD milik sendiri (Step 21) |
+| Rute                                     | Guna                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `POST /bookings/price-check`             | Buat bila belum ada (idempoten), lalu price check langsung                    |
+| `POST /bookings/price-check/accept`      | Setujui harga baru, lalu price check ulang                                    |
+| `POST /bookings/hold`                    | Hold lokal lalu supplier                                                      |
+| `GET /bookings/:id`                      | Keadaan pemesanan milik sendiri                                               |
+| `GET /bookings/:id/status`               | Status, fase saga, alasan gagal, status refund (FR-23)                        |
+| `GET /bookings/stream/:id`               | SSE: setiap perubahan status sampai tuntas (FR-26, Step 21)                   |
+| `POST /bookings/:id/payment`             | Buka pembayaran untuk pemesanan HELD milik sendiri (Step 21)                  |
+| `GET /bookings/:id/cancellation-preview` | Nilai yang kembali bila dibatalkan sekarang, tanpa mengubah apa pun (Step 25) |
+| `POST /bookings/:id/cancel`              | Batalkan, dengan `expectedRefund` dari pratinjau (Step 25)                    |
 
 **Pembayaran lewat booking-service, bukan payment-service** (Step 21). payment-service tidak mengenal pemilik pemesanan, dan rutenya `/internal/payments` tidak diterbitkan gateway. `POST /bookings/:id/payment` memeriksa kepemilikan, keadaan HELD, dan batas hold MENURUT JAM — penyapu mungkin belum memindahkannya ke EXPIRED — lalu meminta payment-service menagih harga yang disetujui, dengan kunci idempotensi `booking:<id>`. Jawabannya membawa token Snap (popup) dan tautan Snap (halaman penuh). Galat: 409 `HOLD_EXPIRED`, `NOT_PAYABLE`, `ALREADY_PAID`; 503 `PAYMENT_UNAVAILABLE` (payment-service belum mengenal harganya, atau tidak dapat dihubungi); 402 `PAYMENT_REJECTED`.
+
+**Pembatalan oleh pengguna** (Step 25, [ADR-0004](../../docs/adr/0004-pembatalan-berjenjang.md)). Saga kedua: CONFIRMED → CANCELLING → (supplier membatalkan) → refund → CANCELLED. Jadwal pengembalian berjenjang disimpan saat harga diverifikasi, dari kebijakan yang dijawab supplier; tenggatnya dihitung terhadap awal tanggal masuk di zona waktu properti, yang ditanyakan ke katalog search-service (`SEARCH_SERVICE_URL`). Galat: 409 `REFUND_CHANGED` (jenjangnya berganti sejak pratinjau; pratinjau baru di `details.quote`), 409 `NOT_CANCELLABLE` (`details.reason`); 503 `CATALOG_UNAVAILABLE`.
 
 Setiap jawaban pemesanan dan status membawa **`serverTime`**, jam booking-service saat jawaban dibentuk. Klien memakainya untuk menghitung selisih dengan jamnya sendiri, sehingga hitung mundur hold mengikuti jam yang menentukan `heldUntil`.
 

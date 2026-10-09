@@ -10,9 +10,11 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { BookingDeps, Payments } from '../application/ports.js'
+import { sweepCancellations } from '../application/cancellation/sweep.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
 import { createBookingRouter } from '../http/booking-routes.js'
+import { createCancellationRouter } from '../http/cancellation-routes.js'
 import { databaseBusyHandler } from '../http/busy.js'
 import { createInternalRouter } from '../http/internal-routes.js'
 import { createPaymentRouter } from '../http/payment-routes.js'
@@ -61,6 +63,7 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
   )
   app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
   app.use(createBookingRouter(options.deps))
+  app.use(createCancellationRouter(options.deps))
   app.use(createInternalRouter(options.deps))
   if (options.payments !== undefined) {
     app.use(createPaymentRouter(options.deps, options.payments))
@@ -114,6 +117,11 @@ export function sagaSweeper(deps: BookingDeps, intervalMs: number): ManagedResou
       const report = await sweepSagas(deps)
       if (report.timedOut + report.recovered + report.failed > 0) {
         deps.logger.info(report, 'penyapu saga menangani saga')
+      }
+      // Saga kedua, batas waktu yang sama (Step 25).
+      const cancellations = await sweepCancellations(deps)
+      if (cancellations.reviewed + cancellations.skipped > 0) {
+        deps.logger.info(cancellations, 'penyapu saga menangani pembatalan')
       }
       return false
     },

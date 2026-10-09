@@ -7,7 +7,18 @@ import { BOOKING_STATUSES, type Booking } from '../../src/domain/booking.js'
 import type { BookingCommand } from '../../src/domain/commands.js'
 import type { BookingChange } from '../../src/domain/events.js'
 import { applyCommand } from '../../src/domain/transitions.js'
-import { draftChange, inState, sampleKey, validCommand } from '../../src/testing/builders.js'
+import { money } from '@tbe/money'
+import {
+  draftChange,
+  inState,
+  minutesAfter,
+  narrow,
+  refunding,
+  sampleKey,
+  sampleQuote,
+  step,
+  validCommand,
+} from '../../src/testing/builders.js'
 import { integrationEnv } from './env.js'
 
 /**
@@ -195,6 +206,48 @@ describe('setiap keadaan pulang-pergi melewati Postgres', () => {
   })
 })
 
+describe('pembatalan oleh pengguna pulang-pergi melewati Postgres (Step 25)', () => {
+  function cancelledWithoutRefund(): Booking {
+    const confirmed = inState('CONFIRMED')
+    const at = minutesAfter(confirmed.updatedAt, 1)
+    const cancelling = step(confirmed, {
+      type: 'requestCancellation',
+      at,
+      quote: sampleQuote(money(0, 'IDR')),
+      replyBy: minutesAfter(at, 10),
+    })
+
+    return step(cancelling, {
+      type: 'completeCancellation',
+      at: minutesAfter(at, 1),
+      settlement: { kind: 'nothing_due' },
+    })
+  }
+
+  test.each([
+    ['CANCELLING menunggu refund', () => refunding()],
+    [
+      'CANCELLED dengan refund',
+      () => step(refunding(), validCommand(refunding(), 'completeCancellation')),
+    ],
+    ['CANCELLED tanpa dana kembali', cancelledWithoutRefund],
+    [
+      'NEEDS_REVIEW dari CANCELLING',
+      () => step(refunding(), validCommand(refunding(), 'requireReview')),
+    ],
+  ])('%s', async (_name, build) => {
+    const { id, userId, key } = fresh()
+    const target = { ...build(), id, userId, idempotencyKey: key }
+    await repository.create(draftChange({ id, userId, key }))
+
+    await db.$transaction(async (tx) => {
+      await tx.booking.updateMany({ where: { id, version: 1 }, data: toStateColumns(target) })
+    })
+
+    expect(await repository.findById(id)).toEqual(target)
+  })
+})
+
 describe('booking_events hanya bertambah (NFR-10)', () => {
   /**
    * Setiap uji membuat pemesanannya sendiri dan menyasar BARIS miliknya.
@@ -242,6 +295,25 @@ describe('batasan CHECK per keadaan', () => {
     ['PAID tanpa payment_id', "status = 'PAID'", 'paid_has_payment'],
     ['check_out tidak setelah check_in', 'check_out = check_in', 'stay_order'],
     ['nilai nol', 'amount_minor = 0', 'amount_positive'],
+    [
+      'CANCELLING tanpa langkah yang ditunggu',
+      "status = 'CANCELLING', payment_id = gen_random_uuid(), supplier_ref = 'x'",
+      'cancelling_complete',
+    ],
+    [
+      'CANCELLING tanpa booking reference',
+      "status = 'CANCELLING', payment_id = gen_random_uuid(), cancel_refund_minor = 0, " +
+        'cancel_refund_currency = currency, cancel_refund_percent = 0, cancel_requested_at = now(), ' +
+        "cancel_step = 'supplier', cancel_deadline_at = now()",
+      'confirmed_has_supplier_ref',
+    ],
+    ['langkah pembatalan di luar CANCELLING', "cancel_step = 'supplier'", 'cancel_step_only'],
+    [
+      'pengembalian melebihi pembayaran',
+      'cancel_refund_minor = amount_minor + 1, cancel_refund_currency = currency',
+      'cancel_refund_bounds',
+    ],
+    ['persentase di luar 0–100', 'cancel_refund_percent = 150', 'cancel_refund_percent'],
   ])('%s ditolak', async (_name, assignments, constraint) => {
     const { id, userId, key } = fresh()
     await repository.create(draftChange({ id, userId, key }))
@@ -278,6 +350,37 @@ describe('penyapu: kueri hold yang lewat', () => {
     // pertama memakai batas 10 dan gagal hanya bila berkas itu berjalan lebih
     // dulu — urutan berkas, bukan kebetulan.
     const due = await repository.findExpiredHolds(new Date(Date.UTC(2031, 0, 1) + 2_000), 1_000)
+    const ids = due.map((booking) => booking.id)
+
+    expect(ids.indexOf(exact)).toBeLessThan(ids.indexOf(later))
+    expect(ids).toContain(later)
+    expect(ids).not.toContain(future)
+  })
+})
+
+describe('penyapu: kueri pembatalan yang lewat (Step 25)', () => {
+  test('hanya CANCELLING yang batasnya lewat, yang paling lama lebih dulu', async () => {
+    const make = async (deadline: Date) => {
+      const { id, userId, key } = fresh()
+      const target = {
+        ...narrow(inState('CANCELLING'), 'CANCELLING'),
+        id,
+        userId,
+        idempotencyKey: key,
+        cancellationStage: { step: 'supplier' as const, deadlineAt: deadline },
+      }
+      await repository.create(draftChange({ id, userId, key }))
+      await db.$transaction(async (tx) => {
+        await tx.booking.updateMany({ where: { id, version: 1 }, data: toStateColumns(target) })
+      })
+      return id
+    }
+    const base = Date.UTC(2032, 0, 1)
+    const later = await make(new Date(base + 2_000))
+    const exact = await make(new Date(base))
+    const future = await make(new Date(base + 10_000))
+
+    const due = await repository.findOverdueCancellations(new Date(base + 2_000), 1_000)
     const ids = due.map((booking) => booking.id)
 
     expect(ids.indexOf(exact)).toBeLessThan(ids.indexOf(later))

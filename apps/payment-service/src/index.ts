@@ -27,7 +27,7 @@ import { createRedisWebhookRateLimiter } from './infrastructure/rate-limiters.js
 import { createSignatureVerifier } from './infrastructure/signature-verifier.js'
 import { systemClock, uuidFactory } from './infrastructure/system.js'
 import { BOOKING_EVENTS, handleBookingEvent } from './messaging/booking-events.js'
-import { handleRefund } from './messaging/refund-command.js'
+import { handleRefund, handleRefundDeadLetter } from './messaging/refund-command.js'
 import type { PaymentDeps } from './application/ports.js'
 
 /**
@@ -136,6 +136,7 @@ const refundConsumerResource: ManagedResource = {
         publisher: rabbit.publisher,
         logger,
         handle: handleRefund(deps),
+        onDeadLetter: handleRefundDeadLetter(deps),
       }),
     )
 

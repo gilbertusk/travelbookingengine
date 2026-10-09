@@ -1,6 +1,6 @@
 import type { EventPublisher } from '@tbe/messaging'
 import type { SupplierCode } from '@tbe/supplier-adapters'
-import type { ConfirmReplies, SupplierEvents } from '../application/ports.js'
+import type { CancelReplies, ConfirmReplies, SupplierEvents } from '../application/ports.js'
 
 /**
  * Perubahan keadaan pemutus sebagai peristiwa Kafka.
@@ -41,6 +41,23 @@ export function createKafkaConfirmReplies(publisher: EventPublisher): ConfirmRep
     },
     async uncertain(reply) {
       await publisher.publish('supplier.booking_uncertain', reply)
+    },
+  }
+}
+
+/**
+ * Jawaban atas `supplier.cancel` (Step 25). Diterbitkan setelah supplier
+ * menjawab; kegagalan menerbitkannya membuat perintahnya dicoba ulang, dan
+ * pembatalan yang kedua kalinya dijawab `already_cancelled` — yang diumumkan
+ * sebagai `cancelled` lagi.
+ */
+export function createKafkaCancelReplies(publisher: EventPublisher): CancelReplies {
+  return {
+    async cancelled(reply) {
+      await publisher.publish('supplier.booking_cancelled', reply)
+    },
+    async cancelFailed(reply) {
+      await publisher.publish('supplier.booking_cancel_failed', reply)
     },
   }
 }

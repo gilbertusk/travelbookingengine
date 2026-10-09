@@ -6,6 +6,8 @@ import {
 } from '@tbe/event-contracts'
 import { describe, expect, test } from 'vitest'
 import { PAYMENT_ID, REFUND_ID, SUPPLIER_REF, sagaWorld } from '../testing/saga-world.js'
+import { cancellationRefundRequestId } from '../application/cancellation/commands.js'
+import { cancellationWorld } from '../testing/cancellation-world.js'
 import { handleSagaEvent, SAGA_EVENTS } from './saga-events.js'
 
 /**
@@ -102,6 +104,46 @@ describe('consumer peristiwa saga', () => {
 
     expect(await handle(once)).toBe('applied')
     expect(await handle(once)).toBe('duplicate')
+  })
+
+  test('jawaban atas pembatalan sampai ke reaksinya (Step 25)', async () => {
+    const world = cancellationWorld()
+    const handle = handleSagaEvent(world.deps)
+    const refunded = await world.confirmed('req-2026-10-01-0001')
+    const restored = await world.confirmed('req-2026-10-01-0002')
+    const reviewed = await world.confirmed('req-2026-10-01-0003')
+    for (const booking of [refunded, restored, reviewed]) await world.cancel(booking)
+    const cancelledReply = (bookingId: string) =>
+      message('supplier.booking_cancelled', {
+        bookingId,
+        supplier: 'SKY',
+        supplierRef: SUPPLIER_REF,
+      })
+
+    await handle(cancelledReply(refunded.id))
+    await handle(
+      message('supplier.booking_cancel_failed', {
+        bookingId: restored.id,
+        supplier: 'SKY',
+        supplierRef: SUPPLIER_REF,
+        outcome: 'refused',
+        reason: 'upstream_error:409',
+      }),
+    )
+    await handle(cancelledReply(reviewed.id))
+    await handle(
+      message('payment.refund_failed', {
+        refundRequestId: cancellationRefundRequestId(reviewed.id, PAYMENT_ID),
+        paymentId: PAYMENT_ID,
+        bookingId: reviewed.id,
+        amount: { amountMinor: 2_442_000, currency: 'IDR' },
+        reason: 'gateway_rejected',
+      }),
+    )
+
+    expect((await world.booking(refunded.id)).status).toBe('CANCELLING')
+    expect((await world.booking(restored.id)).status).toBe('CONFIRMED')
+    expect((await world.booking(reviewed.id)).status).toBe('NEEDS_REVIEW')
   })
 
   test('jenis di luar yang didengarkan tidak diproses', async () => {

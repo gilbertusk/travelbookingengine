@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { applyCommand } from '../domain/transitions.js'
-import { draftChange, samplePrice, validCommand } from '../testing/builders.js'
+import { draftChange, samplePrice, validCommand, SAMPLE_POLICY } from '../testing/builders.js'
 import { autocommitBookingDb, memoryBookingDb } from '../testing/memory-db.js'
 import { createPrismaBookingRepository } from './prisma-booking-repository.js'
 
@@ -50,6 +50,7 @@ describe('pemesanan dan outbox dalam SATU transaksi', () => {
       type: 'verifyPrice',
       at: draft.booking.updatedAt,
       verified: samplePrice(1_100_000),
+      policy: SAMPLE_POLICY,
     })
     if (!changed.ok) throw new Error('persiapan gagal')
     db.failNext('outboxMessage.create')

@@ -1,5 +1,6 @@
 import type { Money } from '@tbe/money'
 import type { Booking } from '../domain/booking.js'
+import type { CancellationPolicy } from '../domain/offer-terms.js'
 import type { PriceBreakdown } from '../domain/price.js'
 import { sellPriceBreakdown } from '../domain/sell-price.js'
 import { nights } from '../domain/stay-dates.js'
@@ -23,12 +24,23 @@ export type LiveQuote =
   | { readonly kind: 'unreachable' }
   | { readonly kind: 'unpriced' }
 
-export async function quoteLive(deps: BookingDeps, booking: Booking): Promise<LiveQuote> {
+/**
+ * Harga jual dari price check, beserta kebijakan pembatalan yang dijawab
+ * supplier pada panggilan yang SAMA (Step 25). Hanya price check yang
+ * membawanya; hold menjawab total saja.
+ */
+export type PriceCheckQuote =
+  | Exclude<LiveQuote, { readonly kind: 'quoted' }>
+  | (Extract<LiveQuote, { readonly kind: 'quoted' }> & { readonly policy: CancellationPolicy })
+
+export async function quoteLive(deps: BookingDeps, booking: Booking): Promise<PriceCheckQuote> {
   const answer = await deps.suppliers.priceCheck(ratePlanStayOf(booking))
 
   if (answer.kind !== 'ok') return answer
 
-  return await priceForSale(deps, booking, answer.value.total)
+  const priced = await priceForSale(deps, booking, answer.value.total)
+
+  return priced.kind === 'quoted' ? { ...priced, policy: answer.value.policy } : priced
 }
 
 /**

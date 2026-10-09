@@ -4,5 +4,7 @@
     "amount": 3755700,
     "currency": "IDR"
   },
-  "changed": false
+  "changed": false,
+  "refundable": true,
+  "freeCancellationDays": 5
 }

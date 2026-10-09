@@ -17,6 +17,11 @@ import {
   onSupplierUncertain,
 } from '../application/saga/on-supplier.js'
 import type { Reaction } from '../application/saga/reaction.js'
+import {
+  onRefundFailed,
+  onSupplierCancelFailed,
+  onSupplierCancelled,
+} from '../application/cancellation/on-replies.js'
 
 /**
  * Consumer peristiwa saga (Step 19).
@@ -39,6 +44,10 @@ export const SAGA_EVENTS = [
   'supplier.booking_confirmed',
   'supplier.booking_rejected',
   'supplier.booking_uncertain',
+  // Step 25: jawaban atas pembatalan oleh pengguna.
+  'supplier.booking_cancelled',
+  'supplier.booking_cancel_failed',
+  'payment.refund_failed',
 ] as const satisfies readonly EventType[]
 
 type AnyMessage = Message<EventType, EventPayload<EventType>>
@@ -95,6 +104,18 @@ async function dispatch(
     case 'supplier.booking_uncertain': {
       const payload = EVENT_PAYLOADS['supplier.booking_uncertain'].parse(message.payload)
       return await onSupplierUncertain(deps, { eventId, ...payload })
+    }
+    case 'supplier.booking_cancelled': {
+      const payload = EVENT_PAYLOADS['supplier.booking_cancelled'].parse(message.payload)
+      return await onSupplierCancelled(deps, { eventId, ...payload })
+    }
+    case 'supplier.booking_cancel_failed': {
+      const payload = EVENT_PAYLOADS['supplier.booking_cancel_failed'].parse(message.payload)
+      return await onSupplierCancelFailed(deps, { eventId, ...payload })
+    }
+    case 'payment.refund_failed': {
+      const payload = EVENT_PAYLOADS['payment.refund_failed'].parse(message.payload)
+      return await onRefundFailed(deps, { eventId, ...payload, amount: moneyOf(payload.amount) })
     }
     default:
       // Pembungkus consumer hanya meneruskan jenis yang diminta; ini sampai

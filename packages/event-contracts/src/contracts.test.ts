@@ -246,6 +246,62 @@ describe('topik', () => {
     }
   })
 
+  test('jawaban supplier dan payment-service atas pembatalan ikut dikunci bookingId', () => {
+    // Saga pembatalan Step 25 membaca ketiganya, dan urutannya terhadap
+    // peristiwa pemesanan yang sama harus terjaga.
+    for (const type of [
+      'supplier.booking_cancelled',
+      'supplier.booking_cancel_failed',
+      'payment.refund_failed',
+    ] as const) {
+      expect(topicFor(type).partitionKey).toBe('bookingId')
+      expect(topicFor(type).retentionMs).toBeGreaterThan(30 * 86_400_000)
+    }
+  })
+
+  test('kegagalan pembatalan supplier membedakan penolakan dari ketidakpastian', () => {
+    const payload = {
+      bookingId: BOOKING_ID,
+      supplier: 'SKY',
+      supplierRef: 'bkg_1',
+      outcome: 'uncertain',
+      reason: 'timeout',
+    }
+
+    expect(EVENT_PAYLOADS['supplier.booking_cancel_failed'].safeParse(payload).success).toBe(true)
+    expect(
+      EVENT_PAYLOADS['supplier.booking_cancel_failed'].safeParse({ ...payload, outcome: undefined })
+        .success,
+    ).toBe(false)
+  })
+
+  test('refund yang gagal menyebut nilai dan pengenal permintaannya', () => {
+    const payload = {
+      refundRequestId: BOOKING_ID,
+      paymentId: BOOKING_ID,
+      bookingId: BOOKING_ID,
+      amount: { amountMinor: 500_000, currency: 'IDR' },
+      reason: 'gateway_rejected',
+    }
+
+    expect(EVENT_PAYLOADS['payment.refund_failed'].safeParse(payload).success).toBe(true)
+    expect(
+      EVENT_PAYLOADS['payment.refund_failed'].safeParse({ ...payload, refundRequestId: 'x' })
+        .success,
+    ).toBe(false)
+  })
+
+  test('kegagalan pembayaran dapat menyebut tahap pembatalan', () => {
+    const payload = {
+      bookingId: BOOKING_ID,
+      stage: 'cancellation',
+      reason: 'refund ditolak penyedia',
+      requiresManualReview: true,
+    }
+
+    expect(EVENT_PAYLOADS['booking.failed'].safeParse(payload).success).toBe(true)
+  })
+
   test('uncertain menuntut kunci idempotensi, supaya statusnya masih dapat ditanyakan', () => {
     const payload = {
       bookingId: BOOKING_ID,

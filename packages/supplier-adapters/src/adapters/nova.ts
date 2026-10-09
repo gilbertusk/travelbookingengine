@@ -63,6 +63,7 @@ const novaRateCheckResponse = z.object({
   option_code: z.string().min(1),
   total_rate: novaAmount,
   rate_changed: z.boolean(),
+  is_refundable: z.boolean(),
 })
 
 const novaHoldResponse = z.object({
@@ -187,6 +188,7 @@ async function priceCheck(
     supplierRatePlanId: decoded.value.option_code,
     total: total.value,
     changed: decoded.value.rate_changed,
+    cancellationPolicy: cancellationPolicy(decoded.value.is_refundable),
   })
 }
 

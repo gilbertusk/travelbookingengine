@@ -24,11 +24,14 @@ export const EVENT_TYPES = [
   'payment.succeeded',
   'payment.failed',
   'payment.refunded',
+  'payment.refund_failed',
   'supplier.degraded',
   'supplier.recovered',
   'supplier.booking_confirmed',
   'supplier.booking_rejected',
   'supplier.booking_uncertain',
+  'supplier.booking_cancelled',
+  'supplier.booking_cancel_failed',
   'voucher.issued',
 ] as const
 
@@ -86,7 +89,7 @@ export const bookingConfirmedPayload = z.object({
 export const bookingFailedPayload = z.object({
   bookingId: z.uuid(),
   /** Langkah saga tempat kegagalan terjadi. Menentukan kompensasi apa yang perlu. */
-  stage: z.enum(['price_check', 'hold', 'payment', 'supplier_confirm', 'voucher']),
+  stage: z.enum(['price_check', 'hold', 'payment', 'supplier_confirm', 'voucher', 'cancellation']),
   reason: z.string(),
   /** true bila status di supplier tidak dapat dipastikan — lihat US-05. */
   requiresManualReview: z.boolean(),
@@ -116,6 +119,24 @@ export const paymentRefundedPayload = z.object({
   paymentId: z.uuid(),
   bookingId: z.uuid(),
   amount: moneySchema,
+})
+
+/**
+ * Refund yang berhenti tanpa dana kembali (Step 25).
+ *
+ * Diterbitkan payment-service ketika perintah `payment.refund` berakhir
+ * permanen — penyedia menolak, nilainya melanggar aturan, atau percobaan
+ * habis di dead letter. Sebelum Step 25, kegagalan itu hanya masuk log dan
+ * dead letter, dan saga mengetahuinya dari batas waktu yang lewat. Pembatalan
+ * oleh pengguna membutuhkan jawaban yang lebih cepat: kamar sudah dibatalkan di
+ * supplier, dan uang pengguna tertahan sampai manusia turun tangan.
+ */
+export const paymentRefundFailedPayload = z.object({
+  refundRequestId: z.uuid(),
+  paymentId: z.uuid(),
+  bookingId: z.uuid(),
+  amount: moneySchema,
+  reason: z.string().min(1),
 })
 
 export const supplierDegradedPayload = z.object({
@@ -171,6 +192,40 @@ export const supplierBookingUncertainPayload = z.object({
 })
 
 /**
+ * Hasil perintah `supplier.cancel` (Step 25).
+ *
+ * Seperti hasil konfirmasi, jalan balik perintah RabbitMQ ke saga lewat Kafka.
+ * Sebelum Step 25 pembatalan di supplier hanya kompensasi yang dikerjakan lalu
+ * dilupakan; pembatalan oleh pengguna MENUNGGU jawaban ini sebelum
+ * mengembalikan dana — mengembalikan uang untuk kamar yang masih terpesan
+ * adalah kerugian ganda.
+ *
+ * `cancelled` juga untuk pemesanan yang ternyata sudah batal atau tidak
+ * dikenal supplier: tujuannya tercapai. `cancel_failed` hanya setelah seluruh
+ * percobaan habis.
+ */
+export const supplierBookingCancelledPayload = z.object({
+  bookingId: z.uuid(),
+  supplier: supplierCode,
+  supplierRef: z.string().min(1),
+})
+
+export const supplierBookingCancelFailedPayload = z.object({
+  bookingId: z.uuid(),
+  supplier: supplierCode,
+  supplierRef: z.string().min(1),
+  /**
+   * `refused`: supplier MENJAWAB tidak dapat membatalkan — kamar pasti masih
+   * terpesan. `uncertain`: tidak ada jawaban yang pasti (batas waktu, galat
+   * server, Kafka mati setelah pembatalan berhasil) — kamar MUNGKIN sudah
+   * lepas. Menyatukan keduanya membuat pemesanan tampak aktif untuk kamar
+   * yang mungkin sudah tidak ada.
+   */
+  outcome: z.enum(['refused', 'uncertain']),
+  reason: z.string().min(1),
+})
+
+/**
  * Voucher sudah terbit (Step 23).
  *
  * Dibaca notification-service untuk mengirimkan voucher kepada pengguna. Tidak
@@ -202,11 +257,14 @@ export const EVENT_PAYLOADS = {
   'payment.succeeded': paymentSucceededPayload,
   'payment.failed': paymentFailedPayload,
   'payment.refunded': paymentRefundedPayload,
+  'payment.refund_failed': paymentRefundFailedPayload,
   'supplier.degraded': supplierDegradedPayload,
   'supplier.recovered': supplierRecoveredPayload,
   'supplier.booking_confirmed': supplierBookingConfirmedPayload,
   'supplier.booking_rejected': supplierBookingRejectedPayload,
   'supplier.booking_uncertain': supplierBookingUncertainPayload,
+  'supplier.booking_cancelled': supplierBookingCancelledPayload,
+  'supplier.booking_cancel_failed': supplierBookingCancelFailedPayload,
   'voucher.issued': voucherIssuedPayload,
 } as const satisfies Record<EventType, z.ZodType>
 

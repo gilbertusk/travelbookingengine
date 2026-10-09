@@ -130,6 +130,15 @@ export const priceCheckResultSchema = z.object({
   supplierRatePlanId: z.string().min(1),
   total: moneySchema,
   changed: z.boolean(),
+  /**
+   * Kebijakan pembatalan rate plan, dari jawaban supplier SAAT price check
+   * (Step 25). Wajib, bukan opsional: kebijakan inilah yang menentukan berapa
+   * yang dikembalikan saat pengguna membatalkan, dan satu-satunya sumber lain
+   * adalah hasil pencarian yang dikirim ulang peramban — yang dapat diubah
+   * siapa pun yang memanggil API langsung. Jawaban tanpa kebijakan ditolak
+   * adapter, tidak ditebak.
+   */
+  cancellationPolicy: cancellationPolicySchema,
 })
 
 export type PriceCheckResult = z.infer<typeof priceCheckResultSchema>

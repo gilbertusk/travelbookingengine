@@ -9,6 +9,7 @@ import { memoryHoldStore } from '../testing/fakes.js'
 import { sagaWorld } from '../testing/saga-world.js'
 import type { OutboxRelay, RelayReport } from '../infrastructure/outbox-relay.js'
 import { slotOf } from '../application/hold-slot.js'
+import { cancellationWorld } from '../testing/cancellation-world.js'
 import { holdSweeper, outboxPublisher, sagaSweeper } from './app.js'
 
 async function until(condition: () => Promise<boolean>): Promise<void> {
@@ -132,6 +133,22 @@ describe('penyapu saga terkelola (Step 19)', () => {
 
     expect(revived.holds.held(slotOf(checked.booking))).toBe(0)
     await sweeper.stop()
+  })
+
+  test('pembatalan yang lewat batas waktunya ikut disapu (Step 25)', async () => {
+    const world = cancellationWorld()
+    const booking = await world.confirmed()
+    await world.cancel(booking)
+    world.advance(SAGA_POLICY.confirmTimeoutMs + 1)
+    const sweeper = sagaSweeper(world.deps, 60_000)
+
+    await sweeper.start?.()
+    await sweeper.stop()
+
+    expect((await world.booking(booking.id)).status).toBe('NEEDS_REVIEW')
+    expect(world.logs()).toContainEqual(
+      expect.objectContaining({ msg: 'penyapu saga menangani pembatalan', reviewed: 1 }),
+    )
   })
 
   test('putaran tanpa pekerjaan tidak menulis apa pun ke log', async () => {

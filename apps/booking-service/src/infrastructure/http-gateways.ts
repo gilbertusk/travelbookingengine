@@ -7,11 +7,15 @@ import type {
   PaymentStart,
   Pricing,
   PricingRequest,
+  PropertyDirectory,
   RatePlanStay,
   SupplierAnswer,
   SupplierHold,
+  SupplierPrice,
   SupplierQuotes,
+  TimeZoneAnswer,
 } from '../application/ports.js'
+import { cancellationPolicyOf } from '../domain/offer-terms.js'
 import type { SellQuote } from '../domain/sell-price.js'
 
 /**
@@ -34,7 +38,8 @@ export interface HttpResponse {
   readonly body: unknown
 }
 
-export type Transport = (url: string, body: unknown) => Promise<HttpResponse>
+/** POST dengan `body`; GET bila `body` tidak diberikan. */
+export type Transport = (url: string, body?: unknown) => Promise<HttpResponse>
 
 const envelope = <T extends z.ZodType>(data: T) => z.object({ data, error: z.null() })
 const errorEnvelope = z.object({ error: z.object({ code: z.string() }) })
@@ -77,8 +82,9 @@ export function toSupplierAnswer<T>(
  */
 const toMoney = (value: MoneyJson) => money(value.amountMinor, value.currency)
 
-const priceCheckSchema = priceCheckResultSchema.transform((value) => ({
+const priceCheckSchema = priceCheckResultSchema.transform((value): SupplierPrice => ({
   total: toMoney(value.total),
+  policy: cancellationPolicyOf(value.cancellationPolicy),
 }))
 
 const holdSchema = holdResultSchema.transform((value): SupplierHold => ({
@@ -198,6 +204,41 @@ export function createHttpPayments(baseUrl: string, transport: Transport): Payme
   }
 }
 
+const catalogPropertySchema = envelope(z.object({ timezone: z.string().min(1) }))
+
+/**
+ * Jawaban katalog menjadi zona waktu properti (Step 25).
+ *
+ * Hanya 404 yang berarti "tidak ada": properti yang tidak terpetakan, atau
+ * katalog yang belum termuat. Selain itu — termasuk 200 dengan bentuk yang
+ * tidak dikenal — adalah "belum ada jawaban", dan pembatalan dicoba lagi,
+ * bukan dihitung dengan zona tebakan.
+ */
+export function toTimeZoneAnswer(response: HttpResponse): TimeZoneAnswer {
+  if (response.status === 404) return { kind: 'not_found' }
+  if (response.status !== 200) return { kind: 'unreachable' }
+
+  const parsed = catalogPropertySchema.safeParse(response.body)
+
+  return parsed.success
+    ? { kind: 'found', timeZone: parsed.data.data.timezone }
+    : { kind: 'unreachable' }
+}
+
+export function createHttpPropertyDirectory(
+  baseUrl: string,
+  transport: Transport,
+): PropertyDirectory {
+  return {
+    async timeZoneOf(supplier, propertyId) {
+      const path = `${encodeURIComponent(supplier)}/${encodeURIComponent(propertyId)}`
+      const url = `${baseUrl}/internal/catalog/properties/by-supplier/${path}`
+
+      return toTimeZoneAnswer(await transport(url))
+    },
+  }
+}
+
 /**
  * Transport undici. Kegagalan jaringan dan batas waktu menjadi status 0 —
  * "tidak ada jawaban" — bukan pengecualian, supaya ditangani di satu tempat
@@ -210,9 +251,13 @@ export function undiciTransport(
   return async (url, body) => {
     try {
       const response = await request(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...correlationHeader() },
-        body: JSON.stringify(body),
+        ...(body === undefined
+          ? { method: 'GET', headers: correlationHeader() }
+          : {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', ...correlationHeader() },
+              body: JSON.stringify(body),
+            }),
         headersTimeout: timeoutMs,
         bodyTimeout: timeoutMs,
       })

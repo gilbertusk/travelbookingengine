@@ -208,10 +208,14 @@ async function priceCheck(
   const changed = yesNo(text(payload.value, 'Changed'))
   if (changed === undefined) return err(fail('priceCheck', '<Changed> bukan Y atau N'))
 
+  const refundable = yesNo(text(payload.value, 'Refundable'))
+  if (refundable === undefined) return err(fail('priceCheck', '<Refundable> bukan Y atau N'))
+
   return ok({
     supplierRatePlanId: text(payload.value, 'RateCode') ?? supplierRatePlanId,
     total: total.value,
     changed,
+    cancellationPolicy: cancellationPolicy(refundable),
   })
 }
 

@@ -95,7 +95,9 @@ describe('idempotensi terhadap pengenal permintaan', () => {
     expect(first.kind).toBe('refunded')
     expect(second.kind).toBe('already_done')
     expect(refundCalls(world)).toBe(1)
-    expect(world.events.published).toHaveLength(1)
+    // Dana keluar sekali, pengumumannya diulang (Step 25): pengumuman pertama
+    // mungkin tidak pernah terbit, dan saga pembatalan menunggunya.
+    expect(world.events.published.map((event) => event.type)).toEqual(['refunded', 'refunded'])
   })
 
   /**

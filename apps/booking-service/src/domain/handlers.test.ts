@@ -12,6 +12,7 @@ import {
   samplePrice,
   step,
   validCommand,
+  SAMPLE_POLICY,
 } from '../testing/builders.js'
 import type { Booking } from './booking.js'
 import type { BookingCommand } from './commands.js'
@@ -68,6 +69,7 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
       type: 'verifyPrice',
       at: minutesAfter(booking.updatedAt, 1),
       verified: verified.value,
+      policy: SAMPLE_POLICY,
     })
 
     expect(next.price).toEqual(verified.value)
@@ -90,6 +92,7 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
       type: 'verifyPrice',
       at: minutesAfter(booking.updatedAt, 1),
       verified: samplePrice(1_100_000),
+      policy: SAMPLE_POLICY,
     })
 
     expect(result.ok).toBe(true)
@@ -113,6 +116,7 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
       type: 'verifyPrice',
       at: minutesAfter(booking.updatedAt, 1),
       verified: inUsd,
+      policy: SAMPLE_POLICY,
     })
 
     expect(result.ok).toBe(true)
@@ -160,6 +164,7 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
       type: 'verifyPrice',
       at: minutesAfter(accepted.updatedAt, 1),
       verified: samplePrice(1_100_000),
+      policy: SAMPLE_POLICY,
     })
 
     const held = step(reverified, validCommand(reverified, 'hold'))
@@ -176,6 +181,7 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
       type: 'verifyPrice',
       at: minutesAfter(accepted.updatedAt, 1),
       verified: samplePrice(1_200_000),
+      policy: SAMPLE_POLICY,
     })
 
     expect(again.ok).toBe(true)
@@ -192,6 +198,38 @@ describe('price check dan persetujuan harga (FR-13, FR-14, US-02)', () => {
     const booking = inState('PRICE_CHECKED')
 
     expectRule(booking, validCommand(booking, 'acceptPrice'), 'no_price_change')
+  })
+})
+
+describe('kebijakan pembatalan dari price check (Step 25)', () => {
+  test('menggantikan kebijakan di ketentuan tawaran dan menyimpan jadwalnya', () => {
+    const booking = draft()
+
+    const checked = step(booking, {
+      type: 'verifyPrice',
+      at: minutesAfter(booking.updatedAt, 1),
+      verified: booking.price,
+      policy: { refundable: false },
+    })
+
+    expect(checked.terms?.cancellationPolicy).toEqual({ refundable: false })
+    expect(checked.terms?.roomTypeName).toBe(booking.terms?.roomTypeName)
+    expect(checked.refundSchedule?.tiers).toEqual([{ minHoursBefore: 0, percent: 0 }])
+  })
+
+  test('pemesanan tanpa ketentuan tawaran tetap mendapat jadwal, tanpa ketentuan karangan', () => {
+    const { terms, ...withoutTerms } = draft()
+    expect(terms).toBeDefined()
+
+    const checked = step(withoutTerms, {
+      type: 'verifyPrice',
+      at: minutesAfter(withoutTerms.updatedAt, 1),
+      verified: withoutTerms.price,
+      policy: SAMPLE_POLICY,
+    })
+
+    expect('terms' in checked).toBe(false)
+    expect(checked.refundSchedule).toBeDefined()
   })
 })
 

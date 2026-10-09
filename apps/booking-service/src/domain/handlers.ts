@@ -1,9 +1,11 @@
+import { format } from '@tbe/money'
 import { err, ok, type Result } from '@tbe/shared-kernel'
 import { baseOf, type Booking, type BookingBase, type BookingIn } from './booking.js'
 import type { CommandOf, CommandType, TargetOf } from './commands.js'
 import { BookingRuleError, type BookingRule } from './errors.js'
 import type { BookingChange } from './events.js'
 import { isSameAmount } from './price.js'
+import { scheduleFor } from './refund-schedule.js'
 
 /**
  * Satu fungsi untuk setiap perintah. Masing-masing hanya memeriksa ATURAN
@@ -31,20 +33,37 @@ export type Handler<B extends Booking, C extends CommandType> = (
 ) => Result<BookingChange<BookingIn<TargetOf<C>>>, BookingRuleError>
 
 /** Bidang dasar keadaan berikutnya: versi naik satu, waktu ubah = waktu kejadian. */
-function next(booking: Booking, at: Date): BookingBase {
+export function next(booking: Booking, at: Date): BookingBase {
   return { ...baseOf(booking), version: booking.version + 1, updatedAt: at }
 }
 
-function meta(base: BookingBase) {
+export function meta(base: BookingBase) {
   return { bookingId: base.id, version: base.version, occurredAt: base.updatedAt }
 }
 
-function violation(booking: Booking, rule: BookingRule, message: string) {
+export function violation(booking: Booking, rule: BookingRule, message: string) {
   return err(new BookingRuleError(booking.id, rule, message))
 }
 
-function isBlank(value: string): boolean {
+export function isBlank(value: string): boolean {
   return value.trim().length === 0
+}
+
+/**
+ * Kebijakan pembatalan yang dijawab supplier pada price check ini (Step 25)
+ * MENGGANTIKAN yang dikirim peramban, dan jadwal pengembaliannya disimpan.
+ *
+ * Ketentuan tawaran tetap salinan dari hasil pencarian untuk nama kamar dan
+ * rate plan — yang tidak mengubah uang siapa pun. Kebijakan pembatalan
+ * mengubahnya, jadi hanya versi supplier yang dipercaya; voucher pun mencetak
+ * versi itu.
+ */
+function withVerifiedPolicy(base: BookingBase, command: CommandOf<'verifyPrice'>): BookingBase {
+  const refundSchedule = scheduleFor(command.policy)
+  const terms =
+    base.terms === undefined ? {} : { terms: { ...base.terms, cancellationPolicy: command.policy } }
+
+  return { ...base, ...terms, refundSchedule }
 }
 
 export const verifyPrice: Handler<BookingIn<'DRAFT' | 'PRICE_CHECKED'>, 'verifyPrice'> = (
@@ -59,8 +78,9 @@ export const verifyPrice: Handler<BookingIn<'DRAFT' | 'PRICE_CHECKED'>, 'verifyP
     return violation(booking, 'price_awaiting_approval', 'Perubahan harga belum disetujui')
   }
 
-  const base = next(booking, command.at)
+  const base = withVerifiedPolicy(next(booking, command.at), command)
   const agreed = booking.price.total
+  const schedule = { refundTiers: scheduleFor(command.policy).tiers }
 
   if (isSameAmount(command.verified.total, agreed)) {
     // Rincian yang terverifikasi MENGGANTIKAN rincian yang disetujui, karena
@@ -76,7 +96,7 @@ export const verifyPrice: Handler<BookingIn<'DRAFT' | 'PRICE_CHECKED'>, 'verifyP
         status: 'PRICE_CHECKED',
         priceCheck: { kind: 'verified' },
       },
-      event: { type: 'PriceVerified', ...meta(base), amount: agreed },
+      event: { type: 'PriceVerified', ...meta(base), amount: agreed, ...schedule },
     })
   }
 
@@ -91,6 +111,7 @@ export const verifyPrice: Handler<BookingIn<'DRAFT' | 'PRICE_CHECKED'>, 'verifyP
       ...meta(base),
       previousAmount: agreed,
       newAmount: command.verified.total,
+      ...schedule,
     },
   })
 }
@@ -280,14 +301,36 @@ export const cancel: Handler<Booking, 'cancel'> = (booking, command) => {
   })
 }
 
-export const requireReview: Handler<BookingIn<'PAID' | 'FAILED'>, 'requireReview'> = (
-  booking,
-  command,
-) => {
+/**
+ * Alasan peninjauan, dilengkapi yang dibutuhkan peninjau pembatalan (Step 25).
+ *
+ * NEEDS_REVIEW hanya membawa pembayaran. Pembatalan yang berhenti di tengah
+ * jalan kehilangan booking reference yang mungkin sudah dibatalkan dan nilai
+ * yang sudah disetujui pengguna — dua hal pertama yang harus diperiksa
+ * manusia. Keduanya ditulis ke alasannya, bukan diserahkan ke jejak audit.
+ */
+function reviewReason(
+  booking: BookingIn<'PAID' | 'FAILED' | 'CANCELLING'>,
+  reason: string,
+): string {
+  if (booking.status !== 'CANCELLING') return reason
+
+  const request = booking.cancellationRequest
+
+  return (
+    `${reason} (booking reference ${booking.supplierRef}; pengembalian disetujui ` +
+    `${format(request.refund)}, ${String(request.percent)}%)`
+  )
+}
+
+export const requireReview: Handler<
+  BookingIn<'PAID' | 'FAILED' | 'CANCELLING'>,
+  'requireReview'
+> = (booking, command) => {
   if (isBlank(command.reason)) return violation(booking, 'blank_field', 'Alasan peninjauan kosong')
 
   const base = next(booking, command.at)
-  const review = { from: booking.status, reason: command.reason }
+  const review = { from: booking.status, reason: reviewReason(booking, command.reason) }
 
   return ok({
     booking: { ...base, status: 'NEEDS_REVIEW', paymentId: booking.paymentId, review },

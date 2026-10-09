@@ -18,7 +18,7 @@ import {
   scriptedGateway,
   type Harness,
 } from '../testing/fakes.js'
-import { handleRefund } from './refund-command.js'
+import { handleRefund, handleRefundDeadLetter } from './refund-command.js'
 
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333'
 
@@ -59,6 +59,7 @@ async function deliver(
     publisher,
     logger: world.deps.logger,
     handle: handleRefund(world.deps),
+    onDeadLetter: handleRefundDeadLetter(world.deps),
   })
 
   const outcome = await consumer({
@@ -80,6 +81,7 @@ describe('perintah yang selesai', () => {
     expect(outcome).toBe('ack')
     expect(published).toHaveLength(0)
     expect(world.payments.rows.get(TEST_PAYMENT_ID)?.status).toBe('REFUNDED')
+    expect(world.events.published.map((event) => event.type)).toEqual(['refunded'])
   })
 
   test('perintah yang diulang untuk refund yang sudah berhasil di-ack tanpa suara', async () => {
@@ -108,6 +110,8 @@ describe('perintah yang selesai', () => {
     // dibaca orang.
     expect(outcome).toBe('ack')
     expect(published).toHaveLength(0)
+    // Tidak ada uang yang tertahan, jadi tidak ada kegagalan yang diumumkan.
+    expect(world.events.published).toEqual([])
   })
 })
 
@@ -156,6 +160,26 @@ describe('kegagalan sementara', () => {
     expect(deadLetterLine?.level).toBe(LOG_LEVELS.error)
     expect(deadLetterLine?.reason).toBe('exhausted')
   })
+
+  test('percobaan yang habis diumumkan sebagai refund gagal (Step 25)', async () => {
+    // Saga pembatalan menunggu jawaban ini untuk menyerahkan pemesanan ke
+    // manusia, alih-alih menunggu batas waktunya lewat.
+    const world = harness({ gateway: scriptedGateway({ refund: [{ kind: 'unavailable' }] }) })
+    await givenSucceededPayment(world)
+
+    await deliver(world, RETRY_TIERS.length)
+
+    expect(world.events.published).toEqual([
+      {
+        type: 'refund_failed',
+        refundRequestId: REQUEST_ID,
+        paymentId: TEST_PAYMENT_ID,
+        bookingId: TEST_BOOKING_ID,
+        amount: { amountMinor: 1_250_000, currency: 'IDR' },
+        reason: 'dead_letter:exhausted',
+      },
+    ])
+  })
 })
 
 describe('kegagalan permanen', () => {
@@ -174,6 +198,9 @@ describe('kegagalan permanen', () => {
     const deadLetterLine = world.lines.find((line) => line.msg.includes('dead letter'))
     expect(deadLetterLine?.level).toBe(LOG_LEVELS.error)
     expect(deadLetterLine?.reason).toBe('not_retryable')
+    expect(world.events.published).toMatchObject([
+      { type: 'refund_failed', reason: 'gateway_rejected' },
+    ])
   })
 
   test('nilai yang melebihi pembayaran langsung masuk dead letter', async () => {
@@ -186,6 +213,9 @@ describe('kegagalan permanen', () => {
 
     expect(published[0]?.exchange).toBe(DEAD_LETTER_EXCHANGE)
     expect(world.gateway.refunds).toHaveLength(0)
+    expect(world.events.published).toMatchObject([
+      { type: 'refund_failed', reason: 'exceeds_total' },
+    ])
   })
 
   test('pembayaran yang tidak dikenal masuk dead letter', async () => {

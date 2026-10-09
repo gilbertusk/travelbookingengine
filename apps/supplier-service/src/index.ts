@@ -22,6 +22,7 @@ import { Redis } from 'ioredis'
 import { createSupplierHttpApp } from './composition/app.js'
 import { loadConfig } from './config.js'
 import {
+  createKafkaCancelReplies,
   createKafkaConfirmReplies,
   createKafkaSupplierEvents,
 } from './infrastructure/kafka-events.js'
@@ -34,6 +35,7 @@ import { createRedisRateLimiter } from './infrastructure/redis-rate-limiter.js'
 import { systemClock, systemSleeper } from './infrastructure/system.js'
 import {
   handleCancel,
+  handleCancelDeadLetter,
   handleConfirm,
   handleConfirmDeadLetter,
 } from './messaging/command-handlers.js'
@@ -151,11 +153,14 @@ const httpResource: ManagedResource = {
 const consumersResource: ManagedResource = {
   name: 'rabbit-consumers',
   start: async () => {
+    const publisher = createEventPublisher(toProducerPort(producer))
     const deps = {
       resilience: buildDeps(),
       logger,
       // Jawaban konfirmasi untuk saga booking-service (Step 19).
-      replies: createKafkaConfirmReplies(createEventPublisher(toProducerPort(producer))),
+      replies: createKafkaConfirmReplies(publisher),
+      // Jawaban pembatalan untuk saga pembatalan (Step 25).
+      cancelReplies: createKafkaCancelReplies(publisher),
     }
 
     rabbit.consume(
@@ -178,6 +183,7 @@ const consumersResource: ManagedResource = {
         publisher: rabbit.publisher,
         logger,
         handle: handleCancel(deps),
+        onDeadLetter: handleCancelDeadLetter(deps),
       }),
     )
 

@@ -104,6 +104,7 @@ function priceHandler(context: SupplierContext): RequestHandler {
       price: usdString(result.value.totalMinorIdr),
       currency: 'USD',
       changed: result.value.changed,
+      cancellable: result.value.policy.refundable,
     })
   }
 }

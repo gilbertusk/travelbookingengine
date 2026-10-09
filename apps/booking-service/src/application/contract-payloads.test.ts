@@ -8,6 +8,8 @@ import {
   minutesAfter,
   samplePrice,
   validCommand,
+  refunding,
+  SAMPLE_POLICY,
 } from '../testing/builders.js'
 import { CANCELLATION_REASONS, SUPPLIER_CODES, type Booking } from '../domain/booking.js'
 import type { BookingCommand } from '../domain/commands.js'
@@ -40,6 +42,7 @@ function oneOfEach(): readonly BookingEvent[] {
     type: 'verifyPrice',
     at: minutesAfter(draft().updatedAt, 1),
     verified: samplePrice(1_100_000),
+    policy: SAMPLE_POLICY,
   })
   const accepted = run(changed.booking, validCommand(changed.booking, 'acceptPrice'))
 
@@ -62,6 +65,11 @@ function oneOfEach(): readonly BookingEvent[] {
     produce('HELD', 'cancel'),
     produce('PAID', 'requireReview'),
     produce('FAILED', 'requireReview'),
+    produce('CONFIRMED', 'requestCancellation'),
+    produce('CANCELLING', 'confirmSupplierCancellation'),
+    produce('CANCELLING', 'restoreConfirmation'),
+    run(refunding(), validCommand(refunding(), 'completeCancellation')).event,
+    produce('CANCELLING', 'requireReview'),
   ]
 }
 
@@ -88,7 +96,15 @@ describe('payload kontrak dapat diurai skemanya', () => {
       .map((event) => event.type)
 
     expect(new Set(unmapped)).toEqual(
-      new Set(['PriceVerified', 'PriceAccepted', 'PaymentRecorded', 'BookingRefunded']),
+      new Set([
+        'PriceVerified',
+        'PriceAccepted',
+        'PaymentRecorded',
+        'BookingRefunded',
+        'CancellationRequested',
+        'SupplierCancellationConfirmed',
+        'CancellationRestored',
+      ]),
     )
   })
 
@@ -121,6 +137,7 @@ describe('payload kontrak dapat diurai skemanya', () => {
   test.each([
     ['PAID', 'supplier_confirm'],
     ['FAILED', 'payment'],
+    ['CANCELLING', 'cancellation'],
   ] as const)('peninjauan dari %s diumumkan pada tahap %s', (from, stage) => {
     const booking = inState(from)
     const { event } = run(booking, validCommand(booking, 'requireReview'))
@@ -128,6 +145,20 @@ describe('payload kontrak dapat diurai skemanya', () => {
     expect(toContractEvent(event)).toMatchObject({
       type: 'booking.failed',
       payload: { stage, requiresManualReview: true },
+    })
+  })
+
+  test('pembatalan oleh pengguna diumumkan dengan nilai pengembaliannya', () => {
+    const booking = refunding()
+    const { event } = run(booking, validCommand(booking, 'completeCancellation'))
+
+    expect(toContractEvent(event)).toEqual({
+      type: 'booking.cancelled',
+      payload: {
+        bookingId: booking.id,
+        reason: 'user_request',
+        refundAmount: { amountMinor: 2_220_000, currency: 'IDR' },
+      },
     })
   })
 
@@ -173,6 +204,7 @@ function flow(verifiedPrices: readonly number[]): { held: Booking; events: Booki
       type: 'verifyPrice',
       at: minutesAfter(booking.updatedAt, 1),
       verified: samplePrice(nightly),
+      policy: SAMPLE_POLICY,
     })
     events.push(checked.event)
     booking = checked.booking
@@ -214,6 +246,7 @@ describe('nilai yang boleh ditagih sepakat dengan payment-service', () => {
       type: 'verifyPrice',
       at: minutesAfter(start.updatedAt, 1),
       verified: samplePrice(1_100_000),
+      policy: SAMPLE_POLICY,
     })
 
     expect(payableAccordingToPaymentService([created, changed.event])).toEqual(

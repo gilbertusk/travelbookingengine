@@ -24,6 +24,7 @@ import { DEFAULT_RETRY_POLICY } from '../domain/retry-policy.js'
 import type {
   CircuitKey,
   CircuitStore,
+  CancelReplies,
   ConfirmReplies,
   OutboundRateLimiter,
   RequestLog,
@@ -135,12 +136,15 @@ export type RecordedReply =
   | ({ readonly type: 'confirmed' } & Parameters<ConfirmReplies['confirmed']>[0])
   | ({ readonly type: 'rejected' } & Parameters<ConfirmReplies['rejected']>[0])
   | ({ readonly type: 'uncertain' } & Parameters<ConfirmReplies['uncertain']>[0])
+  | ({ readonly type: 'cancelled' } & Parameters<CancelReplies['cancelled']>[0])
+  | ({ readonly type: 'cancel_failed' } & Parameters<CancelReplies['cancelFailed']>[0])
 
-/** Jawaban konfirmasi yang terekam. `failNext` meniru Kafka yang tidak dapat dihubungi. */
-export function recordingReplies(): ConfirmReplies & {
-  readonly published: RecordedReply[]
-  failNext(): void
-} {
+/** Jawaban ke saga yang terekam. `failNext` meniru Kafka yang tidak dapat dihubungi. */
+export function recordingReplies(): ConfirmReplies &
+  CancelReplies & {
+    readonly published: RecordedReply[]
+    failNext(): void
+  } {
   const published: RecordedReply[] = []
   let failing = false
 
@@ -166,6 +170,12 @@ export function recordingReplies(): ConfirmReplies & {
     },
     uncertain: async (reply) => {
       await record({ type: 'uncertain', ...reply })
+    },
+    cancelled: async (reply) => {
+      await record({ type: 'cancelled', ...reply })
+    },
+    cancelFailed: async (reply) => {
+      await record({ type: 'cancel_failed', ...reply })
     },
   }
 }

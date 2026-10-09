@@ -7,6 +7,7 @@ import {
   sampleKey,
   USER_ID,
   validCommand,
+  SAMPLE_POLICY,
 } from '../testing/builders.js'
 import { autocommitBookingDb, memoryBookingDb } from '../testing/memory-db.js'
 import { BOOKING_STATUSES, type Booking } from '../domain/booking.js'
@@ -316,6 +317,7 @@ describe('baca kembali setiap keadaan', () => {
       type: 'verifyPrice',
       at: minutesAfter(created.booking.updatedAt, 1),
       verified: changed.priceCheck.kind === 'changed' ? changed.priceCheck.quoted : changed.price,
+      policy: SAMPLE_POLICY,
     })
 
     await repository.save(next)

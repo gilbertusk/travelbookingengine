@@ -53,6 +53,8 @@ const envSchema = baseEnvSchema
     SUPPLIER_SERVICE_URL: z.string().min(1).default('http://localhost:4004'),
     PRICING_SERVICE_URL: z.string().min(1).default('http://localhost:4005'),
     PAYMENT_SERVICE_URL: z.string().min(1).default('http://localhost:4007'),
+    /** Katalog properti — zona waktu untuk tenggat pembatalan (Step 25). */
+    SEARCH_SERVICE_URL: z.string().min(1).default('http://localhost:4003'),
     /**
      * Ukuran kolam koneksi Postgres per instance. Bawaan pg adalah 10, dan uji
      * beban Step 22 menghabiskannya: seribu price check serentak, transaksi
