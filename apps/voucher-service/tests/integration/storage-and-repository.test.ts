@@ -21,7 +21,7 @@ import { BOOKING_ID, OTHER_USER, USER, world } from '../../src/testing/fakes.js'
  */
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const MINIO_IMAGE = 'quay.io/minio/minio:latest'
+const MINIO_IMAGE = 'pgsty/minio:RELEASE.2026-08-04T00-00-00Z'
 const MINIO_USER = 'tbe'
 const MINIO_PASSWORD = 'tbe_it_minio'
 const BUCKET = 'vouchers'
