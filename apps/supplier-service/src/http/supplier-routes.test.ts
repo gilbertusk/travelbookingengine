@@ -173,6 +173,52 @@ describe('pembatalan', () => {
   })
 })
 
+describe('catatan pemesanan di supplier (Step 28)', () => {
+  test('dengan booking reference: catatan supplier dibalas apa adanya', async () => {
+    const world = harness({ script: { lookup: [ok(booking('SKY', 'bkg_1'))] } })
+
+    const response = await request(appWith(world))
+      .post('/internal/suppliers/lookup')
+      .send({ supplier: 'SKY', bookingReference: 'bkg_1' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.data).toEqual(booking('SKY', 'bkg_1'))
+    expect(world.gateway.calls).toEqual(['getBooking'])
+  })
+
+  test('dengan idempotency key: ditanyakan lewat kunci, bukan lewat referensi', async () => {
+    const world = harness({ script: { lookup: [ok(booking('SKY', 'bkg_1'))] } })
+
+    const response = await request(appWith(world))
+      .post('/internal/suppliers/lookup')
+      .send({ supplier: 'SKY', idempotencyKey: 'booking:abc' })
+
+    expect(response.status).toBe(200)
+    expect(world.gateway.calls).toEqual(['findByKey'])
+  })
+
+  test('supplier yang tidak menyimpannya dibalas 404 — jawaban, bukan kegagalan', async () => {
+    const world = harness({ script: { lookup: [err(failure('SKY', 'getBooking', 'not_found'))] } })
+
+    const response = await request(appWith(world))
+      .post('/internal/suppliers/lookup')
+      .send({ supplier: 'SKY', bookingReference: 'bkg_1' })
+
+    expect(response.status).toBe(404)
+  })
+
+  test('menyebut kedua pegangan sekaligus ditolak', async () => {
+    const world = harness({ script: { lookup: [ok(booking('SKY', 'bkg_1'))] } })
+
+    const response = await request(appWith(world))
+      .post('/internal/suppliers/lookup')
+      .send({ supplier: 'SKY', bookingReference: 'bkg_1', idempotencyKey: 'booking:abc' })
+
+    expect(response.status).toBe(400)
+    expect(world.gateway.calls).toEqual([])
+  })
+})
+
 describe('konfigurasi supplier', () => {
   test('mendaftar seluruh supplier yang terkonfigurasi', async () => {
     const directory = memoryDirectory()
