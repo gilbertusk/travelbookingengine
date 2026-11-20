@@ -135,3 +135,13 @@ pnpm --filter @tbe/supplier-service test
 97 test, cakupan 95%. Seluruh perilaku berbasis waktu — jendela pemutus, backoff, pemulihan bertahap — diuji dengan jam yang dikendalikan, bukan dengan menunggu. Pengujian yang benar-benar menunggu tiga puluh detik adalah pengujian yang akan dimatikan orang, dan pemulihan bertahap justru bagian yang paling sering salah.
 
 **Belum diverifikasi:** Redis dan Kafka belum pernah menyala bersama service ini. Keadaan pemutus yang dibagikan dibuktikan lewat penyimpanan dalam memori yang dipakai bersama dua instance — memakai fungsi transisi yang sama persis dengan implementasi Redis — tetapi skrip Lua-nya sendiri belum pernah dijalankan. Lihat [docs/plan/step-11-supplier-service.md](../../docs/plan/step-11-supplier-service.md).
+
+## Rute operator (Step 27)
+
+Di balik `requireOperator` (dan peran operator di gateway):
+
+- `GET /ops/suppliers` — setiap supplier dengan keadaan pemutus **per operasi** (search, priceCheck, hold, book, cancel) dan statistik `supplier_requests` dalam jendela `OPS_HEALTH_WINDOW_MS` (bawaan 15 menit): percobaan, galat dalam basis poin, p50/p95 dengan peringkat terdekat. Sampel dibatasi `OPS_HEALTH_SAMPLE_LIMIT` terbaru; `isTruncated` menandai batasnya tercapai.
+- `GET /ops/suppliers/requests?idempotencyKey=` — catatan percobaan satu pemesanan, untuk halaman NEEDS_REVIEW.
+- `PATCH /ops/suppliers/:code` — handler yang sama dengan `/internal/suppliers/:code` (FR-29).
+
+Pemutus dibaca per operasi, bukan hanya `search` seperti daftar internal: pemutus `book` yang terbuka sementara pencarian sehat adalah tepat kasus yang perlu dilihat operator.

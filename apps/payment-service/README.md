@@ -274,3 +274,7 @@ Docker Desktop mati sejak Step 05. Tidak ada Postgres, Redis, Kafka, maupun Rabb
 | Notifikasi sungguhan dari sandbox Midtrans          | Tanda tangan yang dihitung service cocok dengan `signature_key` yang dikirim Midtrans. Uji jawaban-diketahui di repo memakai kunci contoh, jadi yang terbukti adalah algoritmanya — **bukan** bahwa bahan yang dipakai sama dengan yang dipakai Midtrans.                                           |
 | `pnpm topics:create` lalu konsumsi `tbe.booking.v1` | Consumer peristiwa pemesanan benar-benar menerima `booking.created` dan `booking.price_changed`, dan `payable_amounts` terisi. Selama ini belum terbukti, `POST /internal/payments` akan **selalu** menolak dengan `amount_unknown` pada sistem yang berjalan.                                      |
 | Pembatas laju Redis                                 | `createRedisWebhookRateLimiter` berbagi hitungan antar replika. Yang diuji sekarang hanya port-nya lewat palsuan.                                                                                                                                                                                   |
+
+## Rute operator (Step 27)
+
+`GET /ops/payments/:id` — handler yang sama dengan `/internal/payments/:id`, di balik `requireOperator`, untuk status pembayaran di halaman NEEDS_REVIEW. Rute pelanggan `/payments` tidak dipakai karena memeriksa kepemilikan.

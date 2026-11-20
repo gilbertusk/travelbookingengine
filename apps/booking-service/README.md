@@ -439,3 +439,12 @@ Setiap jawaban pemesanan dan status membawa **`serverTime`**, jam booking-servic
 | `pnpm --filter @tbe/booking-service start` dengan saga          | Pemulihan saat startup, penerbit outbox, consumer Kafka, dan penutupan berurutan. Bagiannya diuji terpisah; prosesnya utuh belum pernah dijalankan.                                  |
 | Proses OS yang benar-benar dibunuh di tengah saga               | Step 20/28. Yang terbukti: galat yang tidak ditangkap + dependensi baru di atas basis data dan Redis yang sama.                                                                      |
 | Konsumsi `booking.created` oleh payment-service yang berjalan   | Diterbitkan ke Kafka sungguhan dan terbaca kembali (uji integrasi); payment-service yang membacanya belum dijalankan bersamaan.                                                      |
+
+## Rute operator (Step 27)
+
+Di balik `requireOperator`; dipasang hanya bila `reviews` diberikan (index.ts selalu memberikannya):
+
+- `GET /ops/bookings/review?limit=` — pemesanan NEEDS_REVIEW, yang paling lama menunggu lebih dulu, masing-masing dengan jejak `booking_events`, keadaan saga, `paymentId`, dan `supplierIdempotencyKey`.
+- `GET /ops/bookings/:id` — bentuk yang sama untuk pemesanan dalam keadaan apa pun.
+
+Bentuk ini MEMBAWA nama dan surel tamu utama serta pengenal internal — berbeda dari rute pelanggan. Service ini tidak memanggil payment- maupun supplier-service untuk halaman operator; ia memberikan kuncinya dan panel yang merangkai. Halaman ini hanya membaca: tindakan atas pemesanan yang ditinjau belum ada.

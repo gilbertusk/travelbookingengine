@@ -7,9 +7,43 @@ Pendaftaran, masuk, rotasi sesi, dan profil dasar. Service backend pertama di pr
 ```bash
 cp apps/auth-service/.env.example apps/auth-service/.env
 pnpm infra:up
-pnpm --filter @tbe/auth-service db:migrate
+pnpm --filter @tbe/auth-service db:deploy
 pnpm --filter @tbe/auth-service dev
 ```
+
+Migrasi baru ada sejak Step 27. Sebelumnya service ini tidak punya folder
+`prisma/migrations` sama sekali — `db:migrate` membuat skema dari `schema.prisma`
+di mesin pengembang, dan basis data produksi tidak punya riwayat yang dapat
+diputar. `20261025000000_init` dihasilkan offline dari skema Step 07 dengan
+`prisma migrate diff --from-empty`; `20261025000100_add_user_role` menambah
+peran. **Basis data yang sudah dibuat sebelum Step 27** sudah memiliki tabel
+`init`: tandai migrasi itu sebagai terpasang dengan
+`prisma migrate resolve --applied 20261025000000_init`, baru `db:deploy`.
+
+## Peran operator (Step 27)
+
+Dua peran saja: `customer` (bawaan setiap pendaftaran) dan `operator`. Peran
+masuk ke access token sebagai klaim `role`; gateway memeriksanya untuk setiap
+rute `/ops`, dan service memeriksanya lagi lewat `requireOperator`.
+
+```bash
+DATABASE_URL=postgresql://... pnpm --filter @tbe/auth-service operator:grant sari@example.com
+DATABASE_URL=postgresql://... pnpm --filter @tbe/auth-service operator:grant sari@example.com --revoke
+```
+
+- **Skrip, bukan endpoint.** Endpoint "jadikan operator" harus dilindungi peran
+  operator, dan operator pertama tidak dapat lahir dari rute yang menuntut
+  operator. Endpoint dengan rahasia bersama hanya memindahkan masalah ke
+  rahasia itu. Skrip menuntut akses basis data, batas kepercayaan paling sempit
+  yang sudah ada.
+- **Peran baru berlaku pada token berikutnya.** Token yang sedang hidup membawa
+  peran lama paling lama `ACCESS_TOKEN_TTL_SECONDS` (15 menit). Mencabut peran
+  operator tidak mencabut akses seketika; yang seketika adalah `logout` atau
+  pencabutan refresh token.
+- **Token tanpa klaim `role`** (terbit sebelum Step 27) dibaca sebagai
+  pelanggan, di auth-service maupun di gateway — tidak pernah sebagai operator.
+- `/auth/me` dan jawaban masuk kini menyertakan `role`. Bukan rahasia; panel
+  operator memakainya untuk menolak akun pelanggan dengan pesan yang jelas.
 
 ## Endpoint
 
