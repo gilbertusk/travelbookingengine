@@ -448,3 +448,18 @@ Di balik `requireOperator`; dipasang hanya bila `reviews` diberikan (index.ts se
 - `GET /ops/bookings/:id` — bentuk yang sama untuk pemesanan dalam keadaan apa pun.
 
 Bentuk ini MEMBAWA nama dan surel tamu utama serta pengenal internal — berbeda dari rute pelanggan. Service ini tidak memanggil payment- maupun supplier-service untuk halaman operator; ia memberikan kuncinya dan panel yang merangkai. Halaman ini hanya membaca: tindakan atas pemesanan yang ditinjau belum ada.
+
+## Pemesanan yang ditinggalkan dan rekonsiliasi (Step 28)
+
+**Penyapu pemesanan yang ditinggalkan.** DRAFT dan PRICE_CHECKED yang tidak disentuh lebih lama dari `ABANDON_AFTER_MS` (bawaan sehari) dibatalkan dengan alasan `abandoned`, setiap `ABANDON_SWEEP_INTERVAL_MS` (10 menit), paling banyak `ABANDON_SWEEP_BATCH` per putaran — batch penuh berarti putaran berikutnya segera. notification-service tidak mengabarkannya. Penjaganya eksplisit: penyapu melempar bila menerima keadaan lain, karena tabel transisi MENGIZINKAN `cancel` pada HELD (lihat Temuan Step 28).
+
+**Rekonsiliasi (FR-33, ADR-0005).** Perintah `reconciliation.run` dikonsumsi di sini. Penjadwal di setiap instance mengirim satu perintah per slot `RECONCILIATION_INTERVAL_MS` (6 jam) dengan eventId turunan slot, jadi beberapa instance menghasilkan satu putaran. Ketidaksesuaian memindahkan pemesanan ke `NEEDS_REVIEW` lewat `flagMismatch` — tidak ada refund, konfirmasi ulang, atau pembatalan otomatis.
+
+| Env                           | Bawaan  | Arti                                                                                     |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `RECONCILIATION_INTERVAL_MS`  | 6 jam   | Satu putaran per slot                                                                    |
+| `RECONCILIATION_LOOKBACK_MS`  | 30 hari | REFUNDED dan CANCELLED yang dibayar diperiksa sejauh ini ke belakang                     |
+| `RECONCILIATION_GRACE_MS`     | 10 mnt  | Perubahan yang lebih baru belum diperiksa                                                |
+| `RECONCILIATION_MAX_BOOKINGS` | 200     | Dikali `UPSTREAM_TIMEOUT_MS` harus < 25 menit (batas ack RabbitMQ), ditolak saat startup |
+
+Rute operator: `GET /ops/bookings/reconciliation` (putaran terakhir beserta temuannya) dan `POST /ops/bookings/reconciliation/run` (202, lewat antrean yang sama). Tabel `reconciliation_runs` dan `reconciliation_findings` adalah laporan, bukan sumber kebenaran keadaan.

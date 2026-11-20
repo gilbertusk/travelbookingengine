@@ -107,7 +107,7 @@ Seluruh tujuh pertanyaan terbuka sudah diputuskan pada 2026-09-23. Tidak ada ste
 | Q1  | Sandbox Midtrans di belakang port `PaymentGateway`. Chaos test menyuntikkan kegagalan di batas port, bukan di penyedia     | Step 18, 28          |
 | Q3  | Pembatalan berjenjang dengan pengembalian sebagian: 100% sampai 7 hari, 50% sampai 24 jam, 0% setelahnya                   | Step 25              |
 | Q6  | Panel operator sebagai aplikasi terpisah `apps/ops`, tidak diakses publik                                                  | Step 27, 30          |
-| Q4  | Rekonsiliasi termasuk MVP                                                                                                  | Step 28              |
+| Q4  | Rekonsiliasi termasuk MVP — [ADR-0005](../adr/0005-rekonsiliasi-dengan-supplier.md)                                        | Step 28              |
 | Q7  | Demo aktif selama masa melamar di tingkat gratis, video permanen sebagai cadangan                                          | Step 30              |
 
 ## Jalur minimum bila waktu menipis
