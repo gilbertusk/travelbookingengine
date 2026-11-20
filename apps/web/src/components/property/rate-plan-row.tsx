@@ -1,8 +1,8 @@
 import { Check, Coffee, ShieldCheck, ShieldOff, X } from 'lucide-react'
 import Link from 'next/link'
 import { PriceDisplay } from '@/components/search/price-display'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/cn'
+import { Button } from '@tbe/ui/button'
+import { cn } from '@tbe/ui/cn'
 import type { Offer } from '@/features/search/types'
 
 /**

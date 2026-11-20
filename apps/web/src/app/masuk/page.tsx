@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { LoginForm } from '@/components/auth/login-form'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton } from '@tbe/ui/skeleton'
 
 export const metadata: Metadata = { title: 'Masuk' }
 

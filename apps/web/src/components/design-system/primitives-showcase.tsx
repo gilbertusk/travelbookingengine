@@ -4,11 +4,11 @@ import { AlertTriangle, Inbox, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { DateRange } from 'react-day-picker'
 import { EmptyState, ErrorState, LoadingState } from '@/components/state/states'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@tbe/ui/alert'
+import { Badge } from '@tbe/ui/badge'
+import { Button } from '@tbe/ui/button'
+import { Calendar } from '@tbe/ui/calendar'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tbe/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -17,18 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
+} from '@tbe/ui/dialog'
+import { Input } from '@tbe/ui/input'
+import { Label } from '@tbe/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@tbe/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@tbe/ui/select'
+import { Separator } from '@tbe/ui/separator'
 import {
   Sheet,
   SheetContent,
@@ -36,10 +30,10 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toast } from '@/components/ui/toaster'
+} from '@tbe/ui/sheet'
+import { Skeleton } from '@tbe/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@tbe/ui/tabs'
+import { toast } from '@tbe/ui/toaster'
 
 const BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'destructive'] as const
 const BADGE_VARIANTS = [

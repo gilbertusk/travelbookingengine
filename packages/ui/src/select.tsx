@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from 'lucide-react'
 import { Select as SelectPrimitive } from 'radix-ui'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/cn'
+import { cn } from './cn'
 
 export const Select = SelectPrimitive.Root
 export const SelectGroup = SelectPrimitive.Group

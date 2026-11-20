@@ -1,4 +1,4 @@
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton } from '@tbe/ui/skeleton'
 
 /**
  * Skeleton yang MENYERUPAI bentuk akhirnya.

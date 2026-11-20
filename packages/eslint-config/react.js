@@ -20,9 +20,11 @@ import boundaries from 'eslint-plugin-boundaries'
  *
  * Yang dijaga aturan lapisan ini ada dua. Pertama, `features/` tidak boleh mengimpor
  * komponen: logika fitur yang menarik JSX akan ikut terseret setiap kali
- * tampilannya berubah. Kedua, `components/ui/` — primitif salinan shadcn —
- * tidak boleh tahu apa pun tentang fitur; begitu ia tahu, ia bukan primitif
- * lagi dan tidak dapat dipakai ulang.
+ * tampilannya berubah. Kedua, primitif salinan shadcn tidak boleh tahu apa
+ * pun tentang fitur; begitu ia tahu, ia bukan primitif lagi dan tidak dapat
+ * dipakai ulang. Sejak Step 27 primitif itu tinggal di packages/ui, yang
+ * secara fisik tidak dapat mengimpor apa pun dari aplikasi — batasnya kini
+ * ditegakkan grafik paket, dan elemen `ui` di bawah tidak lagi berisi berkas.
  */
 export const react19 = [
   {
@@ -40,7 +42,7 @@ export const react19 = [
       react: { version: 'detect' },
       // Tanpa ini plugin Next mencari folder pages di akar repo — yang tidak
       // ada, karena aplikasinya berada di dalam workspace.
-      next: { rootDir: 'apps/web' },
+      next: { rootDir: ['apps/web', 'apps/ops'] },
     },
     rules: {
       ...react.configs.flat.recommended.rules,

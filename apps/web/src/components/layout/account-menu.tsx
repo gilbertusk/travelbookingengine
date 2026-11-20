@@ -2,10 +2,10 @@
 
 import { LogOut, User as UserIcon } from 'lucide-react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@tbe/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@tbe/ui/popover'
+import { Separator } from '@tbe/ui/separator'
+import { Skeleton } from '@tbe/ui/skeleton'
 import { useLogout, useSession } from '@/features/auth/use-auth'
 
 /**

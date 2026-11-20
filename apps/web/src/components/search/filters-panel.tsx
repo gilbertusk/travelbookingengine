@@ -2,9 +2,9 @@
 
 import { Star, X } from 'lucide-react'
 import { AMENITIES, activeFilters, amenityLabel, formatRupiah } from '@/features/search/criteria'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/cn'
+import { Button } from '@tbe/ui/button'
+import { Label } from '@tbe/ui/label'
+import { cn } from '@tbe/ui/cn'
 import type { SearchCriteria } from '@/features/search/criteria'
 
 /**

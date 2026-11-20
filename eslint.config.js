@@ -13,7 +13,13 @@ import { react19 } from '@tbe/eslint-config/react'
  * berarti adalah cara tercepat membuat orang berhenti membaca keluaran linter.
  */
 
-const WEB_GLOB = 'apps/web/**'
+/**
+ * Aplikasi frontend. apps/ops (Step 27) memakai aturan yang sama dengan
+ * apps/web; packages/ui memuat primitif React bersama keduanya.
+ */
+const FRONTEND_APPS = ['web', 'ops']
+const FRONTEND_GLOBS = FRONTEND_APPS.map((app) => `apps/${app}/**`)
+const FRONTEND_ROOTS = [...FRONTEND_APPS.map((app) => `apps/${app}/`), 'packages/ui/']
 
 export default [
   {
@@ -65,17 +71,19 @@ function exceptWeb(config) {
   if (config.files === undefined) return config
   if (!config.files.some((pattern) => pattern.startsWith('apps/*/'))) return config
 
-  return { ...config, ignores: [...(config.ignores ?? []), WEB_GLOB] }
+  return { ...config, ignores: [...(config.ignores ?? []), ...FRONTEND_GLOBS] }
 }
 
 function onlyWeb(config) {
   if (config.files === undefined) return config
 
-  return { ...config, files: config.files.map(scopeToWeb) }
+  return { ...config, files: config.files.flatMap(scopeToFrontend) }
 }
 
-function scopeToWeb(pattern) {
-  if (pattern.startsWith('apps/*/')) return pattern.replace('apps/*/', 'apps/web/')
-
-  return `apps/web/**/${pattern.replace(/^\*\*\//, '')}`
+function scopeToFrontend(pattern) {
+  return FRONTEND_ROOTS.map((root) =>
+    pattern.startsWith('apps/*/')
+      ? pattern.replace('apps/*/', root)
+      : `${root}**/${pattern.replace(/^\*\*\//, '')}`,
+  )
 }

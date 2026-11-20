@@ -16,8 +16,14 @@ import { globSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
-const SOURCE_GLOB = 'apps/web/src/**/*.{ts,tsx}'
-const TOKEN_FILE = 'apps/web/src/styles/globals.css'
+// Step 27: token pindah ke packages/ui, dan apps/ops ikut diperiksa. Panel
+// operator boleh tidak dipoles, tetapi tidak boleh memakai warna di luar token.
+const SOURCE_GLOBS = [
+  'apps/web/src/**/*.{ts,tsx}',
+  'apps/ops/src/**/*.{ts,tsx}',
+  'packages/ui/src/**/*.{ts,tsx}',
+]
+const TOKEN_FILE = 'packages/ui/src/styles/tokens.css'
 
 /** Skala 4px: Tailwind menurunkan p-1 = 4px, p-2 = 8px, dan seterusnya. */
 const ALLOWED_SPACING_STEPS = new Set([
@@ -71,7 +77,7 @@ const RULES = [
 ]
 
 function findings() {
-  return globSync(SOURCE_GLOB, { cwd: ROOT })
+  return globSync(SOURCE_GLOBS, { cwd: ROOT })
     .map((file) => file.replaceAll('\\', '/'))
     .filter((file) => file !== TOKEN_FILE)
     .flatMap((file) => inspect(file, readFileSync(resolve(ROOT, file), 'utf8')))

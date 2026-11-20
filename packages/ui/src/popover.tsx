@@ -2,7 +2,7 @@
 
 import { Popover as PopoverPrimitive } from 'radix-ui'
 import type { ComponentProps } from 'react'
-import { cn } from '@/lib/cn'
+import { cn } from './cn'
 
 export const Popover = PopoverPrimitive.Root
 export const PopoverTrigger = PopoverPrimitive.Trigger

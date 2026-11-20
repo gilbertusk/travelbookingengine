@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { id as localeId } from 'date-fns/locale'
 import type { ComponentProps } from 'react'
 import { DayPicker } from 'react-day-picker'
-import { cn } from '@/lib/cn'
+import { cn } from './cn'
 
 /**
  * Kalender.

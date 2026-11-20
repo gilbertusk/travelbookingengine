@@ -1,6 +1,6 @@
 import { AlertTriangle, Inbox } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@tbe/ui/button'
 import { humanMessage } from '@/lib/api-error'
 import { EmptyState, ErrorState, LoadingState } from './states'
 

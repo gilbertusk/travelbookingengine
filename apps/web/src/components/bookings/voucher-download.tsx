@@ -2,7 +2,7 @@
 
 import { FileText } from 'lucide-react'
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@tbe/ui/button'
 import { fetchVoucherLink } from '@/features/bookings/api'
 import { ApiError, humanMessage } from '@/lib/api-error'
 

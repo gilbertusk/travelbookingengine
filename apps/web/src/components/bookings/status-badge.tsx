@@ -1,4 +1,4 @@
-import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Badge, type BadgeProps } from '@tbe/ui/badge'
 import type { StatusLabel, StatusTone } from '@/features/bookings/presentation'
 
 /**

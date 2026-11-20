@@ -3,14 +3,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Alert, AlertDescription } from '@tbe/ui/alert'
+import { Button } from '@tbe/ui/button'
+import { Input } from '@tbe/ui/input'
 import { loginSchema, type LoginInput } from '@/features/auth/types'
 import { useLogin } from '@/features/auth/use-auth'
 import { humanMessage } from '@/lib/api-error'
 import { safeRedirect } from '@/lib/safe-redirect'
-import { Field } from '@/components/ui/field'
+import { Field } from '@tbe/ui/field'
 
 export function LoginForm() {
   const router = useRouter()

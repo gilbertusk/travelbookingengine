@@ -1,6 +1,6 @@
 import Image from 'next/image'
 import { Building2 } from 'lucide-react'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 
 /**
  * Foto properti, rasio 4:3.
