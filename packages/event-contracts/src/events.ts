@@ -88,8 +88,20 @@ export const bookingConfirmedPayload = z.object({
 
 export const bookingFailedPayload = z.object({
   bookingId: z.uuid(),
-  /** Langkah saga tempat kegagalan terjadi. Menentukan kompensasi apa yang perlu. */
-  stage: z.enum(['price_check', 'hold', 'payment', 'supplier_confirm', 'voucher', 'cancellation']),
+  /**
+   * Langkah saga tempat kegagalan terjadi. Menentukan kompensasi apa yang perlu.
+   * `reconciliation` (Step 28): bukan langkah saga, melainkan rekonsiliasi
+   * yang membantah keadaan final — selalu `requiresManualReview`.
+   */
+  stage: z.enum([
+    'price_check',
+    'hold',
+    'payment',
+    'supplier_confirm',
+    'voucher',
+    'cancellation',
+    'reconciliation',
+  ]),
   reason: z.string(),
   /** true bila status di supplier tidak dapat dipastikan — lihat US-05. */
   requiresManualReview: z.boolean(),

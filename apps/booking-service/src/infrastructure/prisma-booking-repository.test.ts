@@ -167,6 +167,8 @@ describe('jejak audit (NFR-10)', () => {
     expect(db.committed().events[2]?.payload).toEqual({
       holdRef: 'sky-hold-001',
       heldUntil: held.booking.heldUntil?.toISOString(),
+      // Harga bersih supplier (Step 28): bahan rekonsiliasi, dalam bentuk uang kontrak.
+      supplierTotal: { amountMinor: 1_800_000, currency: 'IDR' },
     })
   })
 })

@@ -127,13 +127,28 @@ export interface Failure {
   readonly reason: string
 }
 
+/**
+ * Keadaan asal peninjauan. Tiga yang pertama dari saga yang buntu; tiga
+ * terakhir dari rekonsiliasi (Step 28) — keadaan final yang dibantah catatan
+ * supplier.
+ */
+export const REVIEW_ORIGINS = [
+  'PAID',
+  'FAILED',
+  'CANCELLING',
+  'CONFIRMED',
+  'REFUNDED',
+  'CANCELLED',
+] as const satisfies readonly BookingStatus[]
+export type ReviewOrigin = (typeof REVIEW_ORIGINS)[number]
+
 export interface Review {
   /**
    * Keadaan asal. Menentukan apa yang harus diperiksa manusia lebih dulu:
    * kamar (PAID), refund kompensasi (FAILED), atau refund pembatalan oleh
    * pengguna yang kamarnya mungkin sudah lepas (CANCELLING).
    */
-  readonly from: 'PAID' | 'FAILED' | 'CANCELLING'
+  readonly from: ReviewOrigin
   readonly reason: string
 }
 

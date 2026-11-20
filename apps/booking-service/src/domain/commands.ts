@@ -32,6 +32,14 @@ export type BookingCommand =
       readonly holdRef: string
       /** Yang lebih awal antara kedaluwarsa lokal dan kedaluwarsa supplier. */
       readonly heldUntil: Date
+      /**
+       * Harga bersih yang dijawab supplier untuk hold ini (Step 28). Tidak
+       * menjadi bidang pemesanan — tidak ada keadaan yang membutuhkannya —
+       * tetapi tercatat di peristiwa BookingHeld, dan rekonsiliasi
+       * membandingkan catatan supplier dengannya. Harga jual tidak dapat
+       * dipakai: markup dapat berubah sesudah memesan.
+       */
+      readonly supplierTotal: Money
     })
   | (CommandBase & { readonly type: 'expireHold' })
   /** payment.succeeded dari payment-service. */
@@ -53,6 +61,12 @@ export type BookingCommand =
   | (CommandBase & { readonly type: 'cancel'; readonly reason: CancellationReason })
   /** Status tidak dapat dipastikan, atau kompensasi gagal (US-05). */
   | (CommandBase & { readonly type: 'requireReview'; readonly reason: string })
+  /**
+   * Rekonsiliasi menemukan catatan supplier yang tidak cocok (Step 28, FR-33).
+   * Perintah terpisah dari `requireReview`, karena asalnya lain: bukan saga
+   * yang buntu, melainkan bukti dari luar bahwa keadaan final kita salah.
+   */
+  | (CommandBase & { readonly type: 'flagMismatch'; readonly reason: string })
   /** Pengguna membatalkan pemesanan yang sudah terkonfirmasi (Step 25, FR-27). */
   | (CommandBase & {
       readonly type: 'requestCancellation'
@@ -104,6 +118,7 @@ export const COMMAND_TYPES = [
   'recordRefund',
   'cancel',
   'requireReview',
+  'flagMismatch',
   'requestCancellation',
   'confirmSupplierCancellation',
   'completeCancellation',
@@ -134,6 +149,7 @@ export const COMMAND_TARGETS = {
   recordRefund: 'REFUNDED',
   cancel: 'CANCELLED',
   requireReview: 'NEEDS_REVIEW',
+  flagMismatch: 'NEEDS_REVIEW',
   requestCancellation: 'CANCELLING',
   confirmSupplierCancellation: 'CANCELLING',
   completeCancellation: 'CANCELLED',

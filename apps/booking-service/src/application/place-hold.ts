@@ -1,3 +1,4 @@
+import type { Money } from '@tbe/money'
 import type { Booking } from '../domain/booking.js'
 import type { BookingError } from '../domain/errors.js'
 import { effectiveHoldUntil } from '../domain/hold-window.js'
@@ -88,6 +89,7 @@ export async function placeHold(deps: BookingDeps, request: HoldRequest): Promis
     at: now,
     holdRef: '-',
     heldUntil: localUntil,
+    supplierTotal: booking.price.total,
   })
   if (!dryRun.ok) return { kind: 'refused', error: dryRun.error }
 
@@ -169,14 +171,18 @@ async function holdAtSupplier(attempt: Attempt, local: SagaState): Promise<HoldR
   }
 
   const heldUntil = effectiveHoldUntil(attempt.localUntil, answer.value.expiresAt)
-  return await saveHold(attempt, saga, { holdRef: answer.value.holdRef, heldUntil })
+  return await saveHold(attempt, saga, {
+    holdRef: answer.value.holdRef,
+    heldUntil,
+    supplierTotal: answer.value.total,
+  })
 }
 
 /** HELD dan "menunggu pembayaran" tersimpan bersama, atau tidak sama sekali. */
 async function saveHold(
   attempt: Attempt,
   saga: SagaState,
-  held: { readonly holdRef: string; readonly heldUntil: Date },
+  held: { readonly holdRef: string; readonly heldUntil: Date; readonly supplierTotal: Money },
 ): Promise<HoldResult> {
   const { deps } = attempt
   let booking = attempt.booking

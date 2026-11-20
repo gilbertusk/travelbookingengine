@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   PAYMENT_ID,
   REFUND_ID,
+  cancelledAfterPayment,
   draft,
   idr,
   inState,
@@ -393,6 +394,50 @@ describe('konfirmasi, kegagalan, dan peninjauan', () => {
     })
 
     expect(narrow(cancelled, 'CANCELLED').cancellation).toBe('payment_failed')
+  })
+})
+
+describe('rekonsiliasi membantah keadaan final (Step 28)', () => {
+  test.each(['CONFIRMED', 'REFUNDED'] as const)(
+    '%s yang dibantah berhenti di NEEDS_REVIEW dengan asal dan alasannya, tanpa perbaikan apa pun',
+    (from) => {
+      const booking = inState(from)
+
+      const result = applyCommand(booking, {
+        type: 'flagMismatch',
+        at: minutesAfter(booking.updatedAt, 1),
+        reason: 'tidak ditemukan di supplier',
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const flagged = narrow(result.value.booking, 'NEEDS_REVIEW')
+      expect(flagged.review).toEqual({ from, reason: 'tidak ditemukan di supplier' })
+      expect(flagged.paymentId).toBe(PAYMENT_ID)
+      // Satu peristiwa, dan itu permintaan peninjauan — bukan refund, bukan
+      // konfirmasi ulang, bukan pembatalan.
+      expect(result.value.event.type).toBe('ReviewRequired')
+    },
+  )
+
+  test('CANCELLED yang dibayar lalu dibatalkan pengguna dapat dibantah', () => {
+    const booking = cancelledAfterPayment()
+
+    const flagged = narrow(step(booking, validCommand(booking, 'flagMismatch')), 'NEEDS_REVIEW')
+
+    expect(flagged.review.from).toBe('CANCELLED')
+  })
+
+  test('CANCELLED yang tidak pernah dibayar ditolak: tidak pernah dikirim ke supplier', () => {
+    const booking = inState('CANCELLED')
+
+    expectRule(booking, validCommand(booking, 'flagMismatch'), 'mismatch_without_payment')
+  })
+
+  test('bantahan tanpa alasan ditolak', () => {
+    const booking = inState('CONFIRMED')
+
+    expectRule(booking, { ...validCommand(booking, 'flagMismatch'), reason: ' ' }, 'blank_field')
   })
 })
 

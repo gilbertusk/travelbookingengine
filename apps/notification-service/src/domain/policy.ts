@@ -24,7 +24,13 @@ export type CancellationReason =
   'user_request' | 'hold_expired' | 'payment_failed' | 'supplier_rejected' | 'abandoned'
 
 export type FailureStage =
-  'price_check' | 'hold' | 'payment' | 'supplier_confirm' | 'voucher' | 'cancellation'
+  | 'price_check'
+  | 'hold'
+  | 'payment'
+  | 'supplier_confirm'
+  | 'voucher'
+  | 'cancellation'
+  | 'reconciliation'
 
 export type BookingFact =
   | { readonly kind: 'booking_confirmed'; readonly bookingId: string }
@@ -63,6 +69,14 @@ export type SkipReason =
    * dibatalkan" untuk sesuatu yang tidak pernah ia selesaikan hanya membingungkan.
    */
   | 'abandoned'
+  /**
+   * Rekonsiliasi membantah keadaan final (Step 28). Operator lebih dulu:
+   * temuan rekonsiliasi dapat berasal dari supplier yang sedang bermasalah,
+   * dan surel "pemesananmu sedang diperiksa" untuk pemesanan yang ternyata
+   * baik-baik saja menakuti pengguna tanpa alasan. Operator yang menghubungi
+   * pengguna bila temuannya terbukti.
+   */
+  | 'reconciliation'
   /** Peristiwa lama, mis. dibaca dari awal topik saat service pertama kali menyala. */
   | 'stale'
 
@@ -118,6 +132,7 @@ function plan(fact: BookingFact): Plan {
     case 'voucher_issued':
       return contextOf({ type: 'booking_confirmed' })
     case 'booking_failed':
+      if (fact.stage === 'reconciliation') return { kind: 'skip', reason: 'reconciliation' }
       return contextOf(failureContext(fact.stage, fact.requiresManualReview))
     case 'booking_cancelled':
       if (fact.reason === 'hold_expired') return { kind: 'skip', reason: 'hold_expired' }

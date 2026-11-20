@@ -1,6 +1,6 @@
 import { subtract, toJson, type Money, type MoneyJson } from '@tbe/money'
 import type { StatusSnapshot } from '../application/booking-status.js'
-import { isFinal, type Booking } from '../domain/booking.js'
+import { isFinal, type Booking, type ReviewOrigin } from '../domain/booking.js'
 import { cancellationView } from './cancellation-views.js'
 
 /**
@@ -161,11 +161,20 @@ export function statusView(snapshot: StatusSnapshot, now: Date) {
  * belum pasti (dari PAID), refund kompensasi (dari FAILED), atau pembatalan
  * oleh pengguna yang tidak tuntas (dari CANCELLING, Step 25).
  */
+/**
+ * Yang sedang diperiksa, dalam bahasa pengguna. Asal dari rekonsiliasi
+ * (Step 28) dipetakan ke kekhawatiran yang sama dengan saga: pemesanan
+ * terkonfirmasi yang dibantah supplier adalah soal kamar; refund atau
+ * pembatalan yang dibantah adalah soal yang sudah ia anggap selesai.
+ */
 const REVIEW_CONCERNS = {
   PAID: 'room',
   FAILED: 'refund',
   CANCELLING: 'cancellation',
-} as const
+  CONFIRMED: 'room',
+  REFUNDED: 'refund',
+  CANCELLED: 'cancellation',
+} as const satisfies Readonly<Record<ReviewOrigin, string>>
 
 function reviewConcern(booking: Booking): 'room' | 'refund' | 'cancellation' | null {
   return booking.review === undefined ? null : REVIEW_CONCERNS[booking.review.from]

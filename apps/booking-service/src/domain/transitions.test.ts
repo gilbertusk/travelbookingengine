@@ -4,10 +4,13 @@ import { BOOKING_STATUSES, FINAL_STATUSES, isFinal, type BookingStatus } from '.
 import { COMMAND_TARGETS, COMMAND_TYPES, type CommandType } from './commands.js'
 import { InvalidTransitionError } from './errors.js'
 import {
+  RECONCILIATION_COMMANDS,
   TRANSITIONS,
   USER_INITIATED_COMMANDS,
   allowedCommands,
   applyCommand,
+  isOutsideSaga,
+  isReconciliation,
   isUserInitiated,
 } from './transitions.js'
 
@@ -54,7 +57,7 @@ describe('tabel transisi sebagai spesifikasi', () => {
    * final, atau sel yang terhapus dari keadaan tengah — sebelum uji sifat di
    * bawah sempat menjelaskan kenapa perubahan itu salah.
    */
-  test('tepat sembilan belas transisi yang disepakati', () => {
+  test('tepat dua puluh dua transisi yang disepakati', () => {
     const edges = LEGAL.map(
       ({ status, command }) => `${status} -${command}-> ${COMMAND_TARGETS[command]}`,
     )
@@ -81,12 +84,16 @@ describe('tabel transisi sebagai spesifikasi', () => {
         'CANCELLING -completeCancellation-> CANCELLED',
         'CANCELLING -restoreConfirmation-> CONFIRMED',
         'CANCELLING -requireReview-> NEEDS_REVIEW',
+        // Step 28: rekonsiliasi membantah keadaan final.
+        'CONFIRMED -flagMismatch-> NEEDS_REVIEW',
+        'REFUNDED -flagMismatch-> NEEDS_REVIEW',
+        'CANCELLED -flagMismatch-> NEEDS_REVIEW',
       ].sort(),
     )
     // Sel yang berujung di keadaan yang sama dihitung terpisah per perintah,
     // karena aturannya berbeda: verifyPrice dan acceptPrice, dan dua langkah
     // di dalam CANCELLING.
-    expect(LEGAL).toHaveLength(19)
+    expect(LEGAL).toHaveLength(22)
   })
 })
 
@@ -135,7 +142,7 @@ describe('transisi tidak sah', () => {
 
   test('seluruh sel terbagi habis antara sah dan tidak sah', () => {
     expect(LEGAL.length + ILLEGAL.length).toBe(BOOKING_STATUSES.length * COMMAND_TYPES.length)
-    expect(ILLEGAL).toHaveLength(11 * 14 - 19)
+    expect(ILLEGAL).toHaveLength(11 * 15 - 22)
   })
 })
 
@@ -154,9 +161,9 @@ describe('keadaan final (NFR-06)', () => {
    * transisi keluar. Keduanya bersama menyatakan: tepat keadaan yang disebut
    * final yang tidak punya jalan keluar.
    */
-  test('setiap keadaan final tidak punya transisi keluar selain permintaan pengguna', () => {
+  test('setiap keadaan final tidak punya transisi keluar selain dari luar saga', () => {
     for (const status of FINAL_STATUSES) {
-      const systemCommands = allowedCommands(status).filter((command) => !isUserInitiated(command))
+      const systemCommands = allowedCommands(status).filter((command) => !isOutsideSaga(command))
 
       expect(systemCommands, status).toEqual([])
     }
@@ -164,7 +171,7 @@ describe('keadaan final (NFR-06)', () => {
 
   test('setiap keadaan tanpa transisi keluar sistem dinyatakan final', () => {
     const frozen = BOOKING_STATUSES.filter((status) =>
-      allowedCommands(status).every((command) => isUserInitiated(command)),
+      allowedCommands(status).every((command) => isOutsideSaga(command)),
     )
 
     expect([...frozen].sort()).toEqual([...FINAL_STATUSES].sort())
@@ -172,19 +179,43 @@ describe('keadaan final (NFR-06)', () => {
 
   test('satu-satunya jalan keluar milik pengguna adalah pembatalan dari CONFIRMED', () => {
     const userExits = FINAL_STATUSES.flatMap((status) =>
-      allowedCommands(status).map((command) => `${status} -${command}`),
+      allowedCommands(status)
+        .filter(isUserInitiated)
+        .map((command) => `${status} -${command}`),
     )
 
     expect(userExits).toEqual(['CONFIRMED -requestCancellation'])
     expect(USER_INITIATED_COMMANDS).toEqual(['requestCancellation'])
-    expect(Object.keys(TRANSITIONS.REFUNDED)).toEqual([])
+  })
+
+  /**
+   * Step 28. Rekonsiliasi boleh menyentuh keadaan final hanya karena ia
+   * memindahkannya ke keadaan final LAIN. Perintah rekonsiliasi yang menuju
+   * keadaan tengah akan membuka kembali pemesanan selesai untuk saga — dan
+   * saga tidak lagi berjalan untuknya, jadi pemesanan itu menggantung.
+   */
+  test('rekonsiliasi hanya memindahkan keadaan final ke keadaan final, tanpa jalan keluar dari NEEDS_REVIEW', () => {
+    const exits = FINAL_STATUSES.flatMap((status) =>
+      allowedCommands(status)
+        .filter(isReconciliation)
+        .map((command) => `${status} -${command}→ ${COMMAND_TARGETS[command]}`),
+    )
+
+    expect(exits).toEqual([
+      'CONFIRMED -flagMismatch→ NEEDS_REVIEW',
+      'REFUNDED -flagMismatch→ NEEDS_REVIEW',
+      'CANCELLED -flagMismatch→ NEEDS_REVIEW',
+    ])
+    expect(RECONCILIATION_COMMANDS.every((command) => isFinal(COMMAND_TARGETS[command]))).toBe(true)
+    expect(Object.keys(TRANSITIONS.NEEDS_REVIEW)).toEqual([])
+    expect(Object.keys(TRANSITIONS.EXPIRED)).toEqual([])
   })
 
   test('perintah milik pengguna tidak pernah dipasang pada keadaan yang digerakkan saga', () => {
     // CANCELLING dan keadaan tengah lain digerakkan peristiwa dan batas waktu.
     // Perintah pengguna di sana berarti dua penggerak yang saling menimpa.
     for (const status of BOOKING_STATUSES.filter((candidate) => !isFinal(candidate))) {
-      expect(allowedCommands(status).filter(isUserInitiated), status).toEqual([])
+      expect(allowedCommands(status).filter(isOutsideSaga), status).toEqual([])
     }
   })
 
@@ -218,7 +249,7 @@ describe('keadaan final (NFR-06)', () => {
       const booking = inState(status)
       const snapshot = structuredClone(booking)
 
-      for (const command of COMMAND_TYPES.filter((candidate) => !isUserInitiated(candidate))) {
+      for (const command of COMMAND_TYPES.filter((candidate) => !isOutsideSaga(candidate))) {
         expect(applyCommand(booking, validCommand(booking, command)).ok).toBe(false)
       }
 
