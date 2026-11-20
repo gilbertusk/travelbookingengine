@@ -12,6 +12,9 @@ import { z } from 'zod'
 
 const MINUTE_MS = 60_000
 
+/** Di bawah `consumer_timeout` RabbitMQ (bawaan 30 menit), dengan ruang untuk basis data. */
+const RABBIT_ACK_BUDGET_MS = 25 * MINUTE_MS
+
 /**
  * Lama perintah RabbitMQ dapat berada di jenjang tunda sebelum masuk dead
  * letter (Step 05). Batas menunggu saga yang lebih pendek dari ini
@@ -91,6 +94,18 @@ const envSchema = baseEnvSchema
     ABANDON_SWEEP_BATCH: z.coerce.number().int().positive().max(1_000).default(200),
 
     /**
+     * Rekonsiliasi dengan supplier (Step 28, FR-33). Enam jam: pemesanan
+     * bayangan ditemukan dalam hari yang sama, tanpa menjadikan rekonsiliasi
+     * beban tetap bagi supplier yang juga melayani pencarian pengguna.
+     */
+    RECONCILIATION_INTERVAL_MS: positiveMs(6 * 60 * MINUTE_MS),
+    /** Seberapa jauh ke belakang REFUNDED dan CANCELLED yang dibayar diperiksa. */
+    RECONCILIATION_LOOKBACK_MS: positiveMs(30 * 24 * 60 * MINUTE_MS),
+    /** Perubahan yang lebih baru dari ini belum diperiksa: catatan supplier mungkin tertinggal. */
+    RECONCILIATION_GRACE_MS: positiveMs(10 * MINUTE_MS),
+    RECONCILIATION_MAX_BOOKINGS: z.coerce.number().int().positive().max(5_000).default(200),
+
+    /**
      * Sewa proses untuk langkah langsung saga. Harus lebih panjang dari
      * langkah terlama — hold memanggil supplier-service lalu pricing-service,
      * masing-masing sampai UPSTREAM_TIMEOUT_MS. Sewa yang lebih pendek membuat
@@ -127,6 +142,19 @@ const envSchema = baseEnvSchema
         code: 'custom',
         path: ['DATABASE_TX_MAX_WAIT_MS'],
         message: 'dua kali batas tunggu harus lebih pendek dari SAGA_STEP_LEASE_MS',
+      })
+    }
+    // Satu putaran rekonsiliasi berjalan di dalam SATU pesan RabbitMQ, yang
+    // di-ack setelah putarannya selesai. Broker menutup kanal consumer yang
+    // tidak meng-ack dalam `consumer_timeout` (bawaan 30 menit) dan
+    // mengirim ulang pesannya — putaran yang dilanjutkan, berulang tanpa
+    // akhir bila setiap putaran memang lebih lama dari itu. Kasus terburuk:
+    // setiap pertanyaan ke supplier menunggu sampai batas waktunya.
+    if (env.RECONCILIATION_MAX_BOOKINGS * env.UPSTREAM_TIMEOUT_MS >= RABBIT_ACK_BUDGET_MS) {
+      context.addIssue({
+        code: 'custom',
+        path: ['RECONCILIATION_MAX_BOOKINGS'],
+        message: 'kali UPSTREAM_TIMEOUT_MS harus di bawah 25 menit (batas ack RabbitMQ 30 menit)',
       })
     }
     // Hold memanggil dua service berurutan; sewa minimal tiga kali batas

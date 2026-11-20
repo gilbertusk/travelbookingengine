@@ -1,6 +1,6 @@
 import type { Money } from '@tbe/money'
 import type { Logger } from '@tbe/shared-kernel'
-import type { Booking, BookingIn, SupplierCode } from '../domain/booking.js'
+import type { Booking, BookingIn, BookingStatus, SupplierCode } from '../domain/booking.js'
 import {
   compare,
   type LedgerAnswer,
@@ -104,6 +104,32 @@ export interface ReconciliationStore {
   begin(request: RunRequest, at: Date): Promise<RunStart>
   record(finding: Finding): Promise<void>
   finish(runId: string, totals: RunTotals, at: Date): Promise<void>
+}
+
+/** Satu putaran beserta temuannya, untuk panel operator. */
+export interface RunReport extends RunTotals {
+  readonly id: string
+  readonly day: string
+  readonly supplier: string | null
+  readonly startedAt: Date
+  /** `null`: masih berjalan, atau prosesnya mati dan menunggu pesan dikirim ulang. */
+  readonly finishedAt: Date | null
+  readonly findings: readonly FindingReport[]
+}
+
+/** Temuan sebagaimana tersimpan. String, bukan union domain: ini laporan, bukan masukan keputusan. */
+export interface FindingReport {
+  readonly bookingId: string
+  readonly supplier: string
+  readonly localStatus: BookingStatus
+  readonly kind: string
+  readonly detail: string
+  readonly flagged: boolean
+  readonly recordedAt: Date
+}
+
+export interface ReconciliationReports {
+  recent(runs: number, findingsPerRun: number): Promise<readonly RunReport[]>
 }
 
 export interface ReconcilePolicy {

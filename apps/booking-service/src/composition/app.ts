@@ -22,6 +22,10 @@ import { databaseBusyHandler } from '../http/busy.js'
 import { createInternalRouter } from '../http/internal-routes.js'
 import { createOpsRouter } from '../http/ops-routes.js'
 import { createPaymentRouter } from '../http/payment-routes.js'
+import {
+  createReconciliationRouter,
+  type ReconciliationOps,
+} from '../http/reconciliation-routes.js'
 import { createStatusRouter, type StatusStreamOptions } from '../http/status-routes.js'
 import type { OutboxRelay } from '../infrastructure/outbox-relay.js'
 import { periodicResource } from './periodic.js'
@@ -49,6 +53,8 @@ export interface BookingHttpOptions {
    * rute operator tidak dipasang, dan index.ts SELALU memberikannya.
    */
   readonly reviews?: ReviewReader
+  /** Laporan dan pemicu rekonsiliasi (Step 28). Pola yang sama: index.ts SELALU memberikannya. */
+  readonly reconciliation?: ReconciliationOps
 }
 
 /** Satu pembacaan per detik; komentar penjaga tiap lima belas detik. */
@@ -70,6 +76,10 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
       options.logger,
     ),
   )
+  // Rekonsiliasi lebih dulu: lihat createReconciliationRouter.
+  if (options.reconciliation !== undefined) {
+    app.use(createReconciliationRouter(options.reconciliation))
+  }
   if (options.reviews !== undefined) app.use(createOpsRouter(options.deps, options.reviews))
   app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
   app.use(createBookingListRouter(options.deps))

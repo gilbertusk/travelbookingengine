@@ -2,16 +2,13 @@ import { fromJson } from '@tbe/money'
 import { z } from 'zod'
 import type {
   Finding,
+  ReconciliationReports,
   ReconciliationSource,
   ReconciliationStore,
+  RunReport,
   RunStart,
 } from '../application/reconcile.js'
-import type {
-  BookingDb,
-  ReconciliationDb,
-  ReconciliationFindingRow,
-  ReconciliationRunRow,
-} from './booking-db.js'
+import type { BookingDb, ReconciliationDb } from './booking-db.js'
 import { fromRow } from './booking-rows.js'
 
 /**
@@ -109,15 +106,6 @@ export function createPrismaReconciliationStore(db: ReconciliationDb): Reconcili
   }
 }
 
-/** Satu putaran beserta temuannya, untuk panel operator. */
-export interface RunReport extends ReconciliationRunRow {
-  readonly findings: readonly ReconciliationFindingRow[]
-}
-
-export interface ReconciliationReports {
-  recent(runs: number, findingsPerRun: number): Promise<readonly RunReport[]>
-}
-
 export function createPrismaReconciliationReports(db: ReconciliationDb): ReconciliationReports {
   return {
     async recent(runs, findingsPerRun) {
@@ -131,9 +119,20 @@ export function createPrismaReconciliationReports(db: ReconciliationDb): Reconci
         take: runs * findingsPerRun,
       })
 
-      return recentRuns.map((run) => ({
+      return recentRuns.map((run): RunReport => ({
         ...run,
-        findings: findings.filter((finding) => finding.runId === run.id).slice(0, findingsPerRun),
+        findings: findings
+          .filter((finding) => finding.runId === run.id)
+          .slice(0, findingsPerRun)
+          .map(({ bookingId, supplier, localStatus, kind, detail, flagged, recordedAt }) => ({
+            bookingId,
+            supplier,
+            localStatus,
+            kind,
+            detail,
+            flagged,
+            recordedAt,
+          })),
       }))
     },
   }

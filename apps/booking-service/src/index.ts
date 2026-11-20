@@ -22,6 +22,7 @@ import {
 } from '@tbe/messaging'
 import { Redis } from 'ioredis'
 import { expireHold } from './application/expire-hold.js'
+import type { ReconcileDeps } from './application/reconcile.js'
 import type { BookingDeps } from './application/ports.js'
 import {
   createBookingHttpApp,
@@ -30,11 +31,18 @@ import {
   outboxPublisher,
   sagaSweeper,
 } from './composition/app.js'
+import {
+  operatorTrigger,
+  reconciliationConsumer,
+  reconciliationRequests,
+  reconciliationScheduler,
+} from './composition/reconciliation.js'
 import { loadConfig } from './config.js'
 import {
   createHttpPayments,
   createHttpPricing,
   createHttpPropertyDirectory,
+  createHttpSupplierLedger,
   createHttpSupplierQuotes,
   undiciTransport,
 } from './infrastructure/http-gateways.js'
@@ -44,7 +52,17 @@ import { createMessagingTransport } from './infrastructure/outbox-transport.js'
 import { createPrismaReviewReader } from './infrastructure/prisma-review-reader.js'
 import { createPrismaBookingRepository } from './infrastructure/prisma-booking-repository.js'
 import { createPrismaSagaStore } from './infrastructure/prisma-saga-store.js'
-import { bookingDbOf, createPrismaClient, prismaResource } from './infrastructure/prisma-client.js'
+import {
+  bookingDbOf,
+  createPrismaClient,
+  prismaResource,
+  reconciliationDbOf,
+} from './infrastructure/prisma-client.js'
+import {
+  createPrismaReconciliationReports,
+  createPrismaReconciliationSource,
+  createPrismaReconciliationStore,
+} from './infrastructure/prisma-reconciliation.js'
 import { createRedisHoldStore } from './infrastructure/redis-hold-store.js'
 import { systemClock, uuidFactory } from './infrastructure/system.js'
 import { SAGA_EVENTS, handleSagaEvent } from './messaging/saga-events.js'
@@ -111,10 +129,34 @@ const deps: BookingDeps = {
   logger,
 }
 
+const reconciliationDb = reconciliationDbOf(prisma)
+const reconcileDeps: ReconcileDeps = {
+  source: createPrismaReconciliationSource(db),
+  ledger: createHttpSupplierLedger(config.SUPPLIER_SERVICE_URL, transport),
+  runs: createPrismaReconciliationStore(reconciliationDb),
+  bookings: deps.bookings,
+  clock: systemClock,
+  logger,
+  policy: {
+    lookbackMs: config.RECONCILIATION_LOOKBACK_MS,
+    graceMs: config.RECONCILIATION_GRACE_MS,
+    maxBookings: config.RECONCILIATION_MAX_BOOKINGS,
+  },
+}
+// Pengirim langsung, bukan lewat outbox: perintah ini tidak lahir dari
+// transaksi pemesanan mana pun, jadi tidak ada yang perlu dijaga atomik
+// bersamanya. Yang gagal terkirim dicoba lagi oleh detak penjadwal berikutnya,
+// atau dilaporkan ke operator yang menekan tombolnya.
+const requests = reconciliationRequests(createCommandSender(rabbit.publisher))
+
 const { app } = createBookingHttpApp({
   deps,
   payments: createHttpPayments(config.PAYMENT_SERVICE_URL, transport),
   reviews: createPrismaReviewReader(db),
+  reconciliation: {
+    reports: createPrismaReconciliationReports(reconciliationDb),
+    request: operatorTrigger(requests, () => systemClock.now()),
+  },
   logger,
   serviceName: config.SERVICE_NAME,
   statusStream: {
@@ -216,6 +258,13 @@ const managed = createApp({
       afterMs: config.ABANDON_AFTER_MS,
       batch: config.ABANDON_SWEEP_BATCH,
     }),
+    reconciliationScheduler({
+      requests,
+      intervalMs: config.RECONCILIATION_INTERVAL_MS,
+      now: () => systemClock.now(),
+      logger,
+    }),
+    reconciliationConsumer(rabbit, reconcileDeps),
     consumerResource({
       consumer,
       topics: [topicFor('payment.succeeded').name, topicFor('supplier.booking_confirmed').name],
