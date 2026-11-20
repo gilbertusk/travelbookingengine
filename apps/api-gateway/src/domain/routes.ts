@@ -12,7 +12,18 @@
  */
 
 export type ServiceName =
-  'auth' | 'search' | 'booking' | 'payment' | 'voucher' | 'pricing' | 'analytics'
+  | 'auth'
+  | 'search'
+  | 'booking'
+  | 'payment'
+  | 'voucher'
+  | 'pricing'
+  | 'analytics'
+  | 'supplier'
+  | 'mock-supplier'
+
+/** Peran yang dapat dituntut sebuah rute. Pelanggan tidak perlu disebut: cukup `requiresAuth`. */
+export type RequiredRole = 'operator'
 
 export type RateLimitClass = 'public' | 'authenticated' | 'search' | 'sensitive'
 
@@ -21,6 +32,12 @@ export interface RouteDefinition {
   readonly prefix: string
   readonly service: ServiceName
   readonly requiresAuth: boolean
+  /**
+   * Peran yang dituntut (Step 27). Diperiksa di gateway SETELAH token
+   * diverifikasi, dan sekali lagi di service lewat `requireOperator` —
+   * lihat shared-kernel/src/http/operator.ts.
+   */
+  readonly requiredRole?: RequiredRole
   readonly rateLimit: RateLimitClass
   /** Server-Sent Events: tidak boleh di-buffer, dan batas waktunya panjang. */
   readonly streaming?: boolean
@@ -139,7 +156,42 @@ export const ROUTES: readonly RouteDefinition[] = [
     rateLimit: 'authenticated',
     timeoutMs: TIMEOUT.standard,
   },
+  ...opsRoutes(),
 ]
+
+/**
+ * Rute panel operator (Step 27, FR-29 sampai FR-32).
+ *
+ * Satu awalan `/ops` untuk seluruhnya, dan setiap service hulu memasang
+ * routernya di bawah awalan yang SAMA. Gateway meneruskan path apa adanya,
+ * jadi service melihat `/ops/...` dan memasang `requireOperator` di sana.
+ * Alternatif yang ditolak: menulis ulang `/ops/suppliers` menjadi
+ * `/internal/suppliers`. Itu membuat rute internal — yang sengaja tanpa
+ * pemeriksaan identitas karena pemanggilnya service — dapat dicapai dari luar
+ * cukup dengan satu kesalahan tabel.
+ *
+ * Kelas batas laju `authenticated`: operator adalah pengguna terautentikasi
+ * yang sedikit jumlahnya; kelas tersendiri tidak membeli apa pun.
+ */
+function opsRoutes(): RouteDefinition[] {
+  const targets: readonly (readonly [string, ServiceName])[] = [
+    ['/ops/analytics', 'analytics'],
+    ['/ops/suppliers', 'supplier'],
+    ['/ops/pricing', 'pricing'],
+    ['/ops/bookings', 'booking'],
+    ['/ops/payments', 'payment'],
+    ['/ops/mock-supplier', 'mock-supplier'],
+  ]
+
+  return targets.map(([prefix, service]) => ({
+    prefix,
+    service,
+    requiresAuth: true,
+    requiredRole: 'operator',
+    rateLimit: 'authenticated',
+    timeoutMs: TIMEOUT.standard,
+  }))
+}
 
 export const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'] as const
 

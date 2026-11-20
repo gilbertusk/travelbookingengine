@@ -8,6 +8,7 @@ import type {
   Upstream,
   UpstreamOutcome,
   UpstreamRequest,
+  VerifiedIdentity,
 } from '../application/ports.js'
 import { createGatewayApp } from '../composition/app.js'
 import { createMemoryRateLimiter, type RateLimitPolicy } from '../infrastructure/rate-limiters.js'
@@ -94,7 +95,7 @@ export function jsonResponse(statusCode: number, body: unknown): UpstreamOutcome
 }
 
 export function createFakeVerifier(
-  valid: Readonly<Record<string, { userId: string; email: string }>> = {},
+  valid: Readonly<Record<string, VerifiedIdentity>> = {},
 ): TokenVerifier {
   return {
     verify: async (token) => {
@@ -120,13 +121,24 @@ export interface GatewayHarness {
 }
 
 export const VALID_TOKEN = 'token-budi'
-export const BUDI = { userId: 'user-001', email: 'budi@example.com' }
+export const BUDI: VerifiedIdentity = {
+  userId: 'user-001',
+  email: 'budi@example.com',
+  role: 'customer',
+}
+
+export const OPERATOR_TOKEN = 'token-sari-operator'
+export const SARI: VerifiedIdentity = {
+  userId: 'user-002',
+  email: 'sari@example.com',
+  role: 'operator',
+}
 
 export function createGatewayHarness(overrides: Partial<GatewayDeps> = {}): GatewayHarness {
   const upstream = createFakeUpstream()
 
   const deps: GatewayDeps = {
-    verifier: createFakeVerifier({ [VALID_TOKEN]: BUDI }),
+    verifier: createFakeVerifier({ [VALID_TOKEN]: BUDI, [OPERATOR_TOKEN]: SARI }),
     limiter: createPermissiveLimiter(),
     upstream,
     ...overrides,

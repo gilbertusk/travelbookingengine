@@ -71,7 +71,10 @@ export function outboundHeaders(req: Request, res: Response): Record<string, str
 
   const identity = identityOf(res)
   if (identity !== undefined) {
-    Object.assign(headers, identityHeaders({ userId: identity.userId, email: identity.email }))
+    Object.assign(
+      headers,
+      identityHeaders({ userId: identity.userId, email: identity.email, role: identity.role }),
+    )
   }
 
   return headers

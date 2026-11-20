@@ -2,7 +2,7 @@ import type { SessionRepository, UserRepository } from '../application/ports.js'
 import type { Email } from '../domain/email.js'
 import { asPasswordHash } from '../domain/password.js'
 import type { RefreshSession } from '../domain/session.js'
-import type { User } from '../domain/user.js'
+import type { Role, User } from '../domain/user.js'
 import type { PrismaClient } from '../generated/prisma/client.js'
 
 /**
@@ -19,6 +19,7 @@ interface UserRow {
   email: string
   passwordHash: string
   name: string
+  role: Role
   createdAt: Date
   updatedAt: Date
 }
@@ -40,6 +41,7 @@ function toUser(row: UserRow): User {
     email: row.email as Email,
     passwordHash: asPasswordHash(row.passwordHash),
     name: row.name,
+    role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

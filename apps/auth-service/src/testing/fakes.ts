@@ -58,7 +58,7 @@ export function createMemoryUserRepository(): UserRepository {
     create: async (input) => {
       await Promise.resolve()
       const now = new Date()
-      const user: User = { ...input, createdAt: now, updatedAt: now }
+      const user: User = { ...input, role: 'customer', createdAt: now, updatedAt: now }
       byId.set(user.id, user)
       byEmail.set(user.email, user.id)
       return user
@@ -143,13 +143,16 @@ export function createFakeTokenIssuer(ttlSeconds = 900): TokenIssuer {
     accessTokenTtlSeconds: ttlSeconds,
     issueAccessToken: async (claims) => {
       await Promise.resolve()
-      return `access.${claims.sub}.${claims.email}`
+      return `access.${claims.role}.${claims.sub}.${claims.email}`
     },
     verifyAccessToken: async (token) => {
       await Promise.resolve()
-      const [prefix, sub, email] = token.split('.')
-      return prefix === 'access' && sub !== undefined && email !== undefined
-        ? { sub, email }
+      // Surel memuat titik, jadi sisanya digabung kembali alih-alih diambil
+      // sebagai satu potongan.
+      const [prefix, role, sub, ...email] = token.split('.')
+      const isRole = role === 'customer' || role === 'operator'
+      return prefix === 'access' && isRole && sub !== undefined && email.length > 0
+        ? { sub, email: email.join('.'), role }
         : undefined
     },
   }

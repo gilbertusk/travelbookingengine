@@ -22,11 +22,15 @@ interface TokenOptions {
   readonly audience?: string
   readonly subject?: string | undefined
   readonly email?: unknown
+  readonly role?: unknown
   readonly expiresIn?: string
 }
 
 async function sign(options: TokenOptions = {}): Promise<string> {
-  const builder = new SignJWT(options.email === undefined ? {} : { email: options.email })
+  const builder = new SignJWT({
+    ...(options.email === undefined ? {} : { email: options.email }),
+    ...(options.role === undefined ? {} : { role: options.role }),
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setIssuer(options.issuer ?? ISSUER)
@@ -49,7 +53,23 @@ describe('verifikasi token akses', () => {
     await expect(verifier.verify(tokenSah)).resolves.toEqual({
       userId: 'usr_1',
       email: 'budi@example.com',
+      role: 'customer',
     })
+  })
+
+  test('membaca peran operator dari token yang sah', async () => {
+    const token = await sign({ subject: 'usr_1', email: 'budi@example.com', role: 'operator' })
+
+    await expect(verifier.verify(token)).resolves.toMatchObject({ role: 'operator' })
+  })
+
+  test('peran yang tidak dikenal dibaca sebagai pelanggan, bukan diteruskan', async () => {
+    // Nilai apa pun selain "operator" — termasuk "admin" atau "Operator" —
+    // tidak boleh menjadi peran yang diteruskan ke hulu.
+    for (const role of ['admin', 'Operator', 1, true]) {
+      const token = await sign({ subject: 'usr_1', email: 'budi@example.com', role })
+      await expect(verifier.verify(token)).resolves.toMatchObject({ role: 'customer' })
+    }
   })
 
   test('menolak token yang ditandatangani rahasia lain', async () => {

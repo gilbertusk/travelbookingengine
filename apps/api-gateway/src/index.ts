@@ -43,6 +43,8 @@ const { app } = createGatewayApp({
       payment: config.PAYMENT_SERVICE_URL,
       voucher: config.VOUCHER_SERVICE_URL,
       analytics: config.ANALYTICS_SERVICE_URL,
+      supplier: config.SUPPLIER_SERVICE_URL,
+      'mock-supplier': config.MOCK_SUPPLIER_URL,
     }),
   },
 })

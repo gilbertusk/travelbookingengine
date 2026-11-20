@@ -67,6 +67,14 @@ export {
 export { createErrorHandler, notFoundHandler } from './http/error-handler.js'
 export { validate, type ValidatingMiddleware, type ValidationSource } from './http/validate.js'
 export { createHttpServer, finalizeHttpServer, type HttpServerOptions } from './http/server.js'
+export {
+  USER_ID_HEADER,
+  USER_ROLES,
+  USER_ROLE_HEADER,
+  isUserRole,
+  requireOperator,
+  type UserRole,
+} from './http/operator.js'
 
 export {
   createHealthRouter,

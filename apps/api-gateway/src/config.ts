@@ -33,6 +33,10 @@ const envSchema = baseEnvSchema.extend({
   PAYMENT_SERVICE_URL: serviceUrl(4007),
   VOUCHER_SERVICE_URL: serviceUrl(4008),
   ANALYTICS_SERVICE_URL: serviceUrl(4010),
+  /** Hanya untuk rute /ops (Step 27); di luar itu supplier-service tidak punya rute publik. */
+  SUPPLIER_SERVICE_URL: serviceUrl(4004),
+  /** Panel kendali mock supplier (FR-32), lewat /ops/mock-supplier. */
+  MOCK_SUPPLIER_URL: serviceUrl(4000),
 
   /** Kosong berarti seluruh asal ditolak — bawaan yang aman. */
   CORS_ORIGINS: z

@@ -32,7 +32,13 @@ export function createJoseVerifier(options: VerifierOptions): TokenVerifier {
         const email = payload.email
         if (payload.sub === undefined || typeof email !== 'string') return undefined
 
-        return { userId: payload.sub, email }
+        // Token tanpa klaim peran (terbit sebelum Step 27) atau dengan nilai
+        // yang tidak dikenal dibaca sebagai pelanggan. Tidak pernah sebaliknya.
+        return {
+          userId: payload.sub,
+          email,
+          role: payload.role === 'operator' ? 'operator' : 'customer',
+        }
       } catch {
         return undefined
       }
