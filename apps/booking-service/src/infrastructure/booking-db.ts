@@ -185,8 +185,9 @@ export interface BookingDb {
    */
   readonly bookingEvent: {
     findMany(args: {
-      where: { bookingId: string }
-      orderBy: { sequence: 'asc' }
+      /** `eventType`: harga hold untuk rekonsiliasi dibaca dari BookingHeld (Step 28). */
+      where: { bookingId: string; eventType?: BookingEventType }
+      orderBy: { sequence: 'asc' } | { sequence: 'desc' }
       take: number
     }): Promise<EventRow[]>
   }
@@ -239,6 +240,10 @@ export interface BookingWhere {
 export interface BookingClause {
   readonly status: { readonly in: BookingStatus[] }
   readonly checkOut?: { readonly gte: Date } | { readonly lt: Date }
+  /** Kandidat rekonsiliasi (Step 28). */
+  readonly updatedAt?: { readonly lte: Date } | { readonly gte: Date; readonly lte: Date }
+  /** Kandidat rekonsiliasi: hanya yang pernah dibayar (Step 28). */
+  readonly paymentId?: { readonly not: null }
 }
 
 export interface BookingOrder {
@@ -296,4 +301,73 @@ export function isUniqueViolation(error: unknown): boolean {
     'code' in error &&
     error.code === UNIQUE_VIOLATION
   )
+}
+
+/** Baris putaran rekonsiliasi (Step 28). */
+export interface ReconciliationRunRow {
+  readonly id: string
+  readonly day: string
+  readonly supplier: string | null
+  readonly startedAt: Date
+  readonly finishedAt: Date | null
+  readonly checked: number
+  readonly matched: number
+  readonly mismatched: number
+  readonly unverified: number
+  readonly flagged: number
+}
+
+export interface ReconciliationFindingRow {
+  readonly id: string
+  readonly runId: string
+  readonly bookingId: string
+  readonly supplier: string
+  readonly localStatus: BookingStatus
+  readonly kind: string
+  readonly detail: string
+  readonly flagged: boolean
+  readonly recordedAt: Date
+}
+
+type FindingColumns = Omit<ReconciliationFindingRow, 'id'>
+type RunTotalsColumns = Pick<
+  ReconciliationRunRow,
+  'checked' | 'matched' | 'mismatched' | 'unverified' | 'flagged' | 'finishedAt'
+>
+
+/**
+ * Port laporan rekonsiliasi (Step 28), terpisah dari [BookingDb] karena
+ * tabelnya bukan milik agregat pemesanan: tidak ada transaksi pemesanan yang
+ * menyentuhnya. Kesesuaiannya dengan PrismaClient dibuktikan di
+ * prisma-client.ts, seperti BookingDb.
+ */
+export interface ReconciliationDb {
+  readonly reconciliationRun: {
+    /** `skipDuplicates`: INSERT ... ON CONFLICT DO NOTHING — putaran yang sama dari instance lain. */
+    createMany(args: {
+      data: Omit<
+        ReconciliationRunRow,
+        'checked' | 'matched' | 'mismatched' | 'unverified' | 'flagged'
+      >[]
+      skipDuplicates: true
+    }): Promise<{ count: number }>
+    findUnique(args: { where: { id: string } }): Promise<ReconciliationRunRow | null>
+    update(args: { where: { id: string }; data: RunTotalsColumns }): Promise<unknown>
+    findMany(args: {
+      orderBy: { startedAt: 'desc' }
+      take: number
+    }): Promise<ReconciliationRunRow[]>
+  }
+  readonly reconciliationFinding: {
+    upsert(args: {
+      where: { runId_bookingId: { runId: string; bookingId: string } }
+      create: FindingColumns
+      update: Omit<FindingColumns, 'runId' | 'bookingId'>
+    }): Promise<unknown>
+    findMany(args: {
+      where: { runId: { in: string[] } }
+      orderBy: { recordedAt: 'asc' }
+      take: number
+    }): Promise<ReconciliationFindingRow[]>
+  }
 }

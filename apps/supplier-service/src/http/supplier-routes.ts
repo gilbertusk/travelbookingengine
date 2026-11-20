@@ -211,9 +211,20 @@ function cancelHandler(deps: ResilienceDeps): RequestHandler {
 }
 
 /**
- * Catatan pemesanan di supplier (Step 28). `not_found` menjadi 404 — jawaban
- * yang sah dan berarti ("supplier tidak menyimpannya"), berbeda dari 502/503/
- * 504 yang berarti "tidak tahu". Rekonsiliasi bergantung pada perbedaan itu.
+ * Kode jawaban "supplier tidak menyimpan pemesanan ini" (Step 28).
+ *
+ * Sengaja BUKAN `NOT_FOUND` biasa. 404 dengan kode itu juga dijawab untuk rute
+ * yang tidak ada — supplier-service versi lama tanpa rute ini, atau salah
+ * ketik di URL. Rekonsiliasi yang membaca 404 itu sebagai "tidak ada di
+ * supplier" akan menandai SETIAP pemesanan terkonfirmasi sebagai hilang.
+ * booking-service hanya menerima kode ini sebagai jawaban "tidak ada".
+ */
+export const SUPPLIER_BOOKING_NOT_FOUND = 'SUPPLIER_BOOKING_NOT_FOUND'
+
+/**
+ * Catatan pemesanan di supplier (Step 28). `not_found` adalah jawaban yang sah
+ * dan berarti ("supplier tidak menyimpannya"), berbeda dari 502/503/504 yang
+ * berarti "tidak tahu". Rekonsiliasi bergantung pada perbedaan itu.
  */
 function lookupHandler(deps: ResilienceDeps): RequestHandler {
   return (_req, res, next) => {
@@ -221,7 +232,15 @@ function lookupHandler(deps: ResilienceDeps): RequestHandler {
 
     void lookupBooking(deps, body, { correlationId: correlation(res) }).then((result) => {
       if (!result.ok) {
-        next(toHttpError(result.error))
+        next(
+          result.error.kind === 'not_found'
+            ? new AppError({
+                code: SUPPLIER_BOOKING_NOT_FOUND,
+                httpStatus: 404,
+                message: `supplier ${result.error.supplier} tidak menyimpan pemesanan ini`,
+              })
+            : toHttpError(result.error),
+        )
         return
       }
 

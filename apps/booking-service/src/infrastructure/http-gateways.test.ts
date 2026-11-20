@@ -9,6 +9,7 @@ import {
   createHttpSupplierQuotes,
   toPaymentStart,
   toSellQuote,
+  toLedgerAnswer,
   toSupplierAnswer,
   toPropertyAnswer,
   undiciTransport,
@@ -143,6 +144,48 @@ describe('jawaban supplier-service menjadi keputusan', () => {
       method === 'hold' ? await quotes.hold({ ...STAY, guests: 1 }) : await quotes.priceCheck(STAY)
 
     expect(answer).toEqual({ kind: 'unreachable' })
+  })
+})
+
+describe('catatan supplier untuk rekonsiliasi (Step 28)', () => {
+  const record = {
+    supplier: 'SKY',
+    bookingReference: 'SKY-BK-1',
+    status: 'CONFIRMED',
+    total: { amountMinor: 1_800_000, currency: 'IDR' },
+    checkIn: '2026-11-10',
+    checkOut: '2026-11-12',
+  }
+
+  test('200 menjadi catatan kanonis dengan uang sungguhan', () => {
+    expect(toLedgerAnswer({ status: 200, body: { data: record, error: null } })).toEqual({
+      kind: 'found',
+      record: {
+        status: 'CONFIRMED',
+        total: money(1_800_000, 'IDR'),
+        checkIn: '2026-11-10',
+        checkOut: '2026-11-12',
+      },
+    })
+  })
+
+  test('hanya 404 berkode SUPPLIER_BOOKING_NOT_FOUND yang berarti "tidak ada di supplier"', () => {
+    expect(
+      toLedgerAnswer({ status: 404, body: { error: { code: 'SUPPLIER_BOOKING_NOT_FOUND' } } }),
+    ).toEqual({ kind: 'not_found' })
+  })
+
+  test.each([
+    ['404 rute yang tidak ada', { status: 404, body: { error: { code: 'NOT_FOUND' } } }],
+    ['404 tanpa isi', { status: 404, body: 'Not Found' }],
+    [
+      '200 yang bentuknya tidak dikenal',
+      { status: 200, body: { data: { status: 'OK' }, error: null } },
+    ],
+    ['503 pemutus terbuka', { status: 503, body: { error: { code: 'SUPPLIER_UNAVAILABLE' } } }],
+    ['jaringan putus', { status: 0, body: { error: { code: 'NETWORK' } } }],
+  ])('%s: tidak tahu, BUKAN tidak ada', (_label, response: HttpResponse) => {
+    expect(toLedgerAnswer(response)).toEqual({ kind: 'unreachable' })
   })
 })
 

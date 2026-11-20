@@ -188,6 +188,9 @@ function withinUpdated(
 
 function matchesClause(row: BookingRow, clause: BookingClause): boolean {
   if (!clause.status.in.includes(row.status)) return false
+  if (clause.updatedAt !== undefined && !withinUpdated(row.updatedAt, clause.updatedAt))
+    return false
+  if (clause.paymentId !== undefined && row.paymentId === null) return false
   const bound = clause.checkOut
   if (bound === undefined) return true
 
@@ -225,12 +228,17 @@ function readersOver(
 ): Pick<BookingDb, 'booking' | 'bookingEvent' | 'sagaState'> {
   return {
     bookingEvent: {
-      findMany: async ({ where, take }) => {
+      findMany: async ({ where, orderBy, take }) => {
         await Promise.resolve()
+        const direction = orderBy.sequence === 'desc' ? -1 : 1
         return structuredClone(
           committed()
-            .events.filter((row) => row.bookingId === where.bookingId)
-            .toSorted((a, b) => a.sequence - b.sequence)
+            .events.filter(
+              (row) =>
+                row.bookingId === where.bookingId &&
+                (where.eventType === undefined || row.eventType === where.eventType),
+            )
+            .toSorted((a, b) => direction * (a.sequence - b.sequence))
             .slice(0, take),
         )
       },

@@ -205,6 +205,21 @@ describe('catatan pemesanan di supplier (Step 28)', () => {
       .send({ supplier: 'SKY', bookingReference: 'bkg_1' })
 
     expect(response.status).toBe(404)
+    // Kode khusus, bukan NOT_FOUND: 404 rute yang tidak ada tidak boleh
+    // terbaca sebagai "tidak ada di supplier" oleh rekonsiliasi.
+    expect(response.body.error.code).toBe('SUPPLIER_BOOKING_NOT_FOUND')
+  })
+
+  test('supplier yang tidak menjawab bukan "tidak ada": 504, bukan 404', async () => {
+    const world = harness({
+      script: { lookup: [err(failure('SKY', 'getBooking', 'timeout'))] },
+    })
+
+    const response = await request(appWith(world))
+      .post('/internal/suppliers/lookup')
+      .send({ supplier: 'SKY', bookingReference: 'bkg_1' })
+
+    expect(response.status).toBe(504)
   })
 
   test('menyebut kedua pegangan sekaligus ditolak', async () => {

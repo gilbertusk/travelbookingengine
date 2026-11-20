@@ -390,3 +390,53 @@ model ConsumedMessage {
 
   @@map("consumed_messages")
 }
+
+/// Satu putaran rekonsiliasi dengan supplier (Step 28, FR-33).
+///
+/// `id` adalah eventId perintah `reconciliation.run`. Penjadwal di setiap
+/// instance mengirim perintah dengan eventId yang SAMA untuk slot waktu yang
+/// sama, jadi beberapa instance tidak menghasilkan beberapa putaran: baris
+/// ini yang menyatukannya.
+model ReconciliationRun {
+  id         String    @id @db.Uuid
+  /// Hari yang direkonsiliasi, dari perintahnya (YYYY-MM-DD, UTC).
+  day        String    @db.VarChar(10)
+  /// Satu supplier saja, atau seluruhnya bila kosong.
+  supplier   String?   @db.VarChar(8)
+  startedAt  DateTime  @map("started_at") @db.Timestamptz(3)
+  /// Kosong selama berjalan — atau bila prosesnya mati di tengah; perintah
+  /// yang dikirim ulang melanjutkannya.
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(3)
+  checked    Int       @default(0)
+  matched    Int       @default(0)
+  mismatched Int       @default(0)
+  unverified Int       @default(0)
+  flagged    Int       @default(0)
+
+  findings ReconciliationFinding[]
+
+  @@index([startedAt])
+  @@map("reconciliation_runs")
+}
+
+/// Satu temuan: ketidaksesuaian, atau pemesanan yang tidak dapat diperiksa.
+/// Unik per (putaran, pemesanan): putaran yang dilanjutkan tidak mencatat
+/// pemesanan yang sama dua kali.
+model ReconciliationFinding {
+  id          String        @id @default(uuid()) @db.Uuid
+  runId       String        @map("run_id") @db.Uuid
+  bookingId   String        @map("booking_id") @db.Uuid
+  supplier    String        @db.VarChar(8)
+  localStatus BookingStatus @map("local_status")
+  /// Jenis ketidaksesuaian (MISMATCH_KINDS), atau `unverified`.
+  kind        String        @db.VarChar(32)
+  detail      String
+  /// true bila pemesanannya berhasil dipindahkan ke NEEDS_REVIEW oleh temuan ini.
+  flagged     Boolean
+  recordedAt  DateTime      @map("recorded_at") @db.Timestamptz(3)
+
+  run ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, bookingId])
+  @@map("reconciliation_findings")
+}

@@ -1,5 +1,9 @@
 import { money, moneySchema, toJson, type MoneyJson } from '@tbe/money'
-import { holdResultSchema, priceCheckResultSchema } from '@tbe/supplier-adapters'
+import {
+  bookingResultSchema,
+  holdResultSchema,
+  priceCheckResultSchema,
+} from '@tbe/supplier-adapters'
 import { request } from 'undici'
 import { z } from 'zod'
 import type {
@@ -15,7 +19,9 @@ import type {
   SupplierQuotes,
   PropertyAnswer,
 } from '../application/ports.js'
+import type { SupplierLedger } from '../application/reconcile.js'
 import { cancellationPolicyOf } from '../domain/offer-terms.js'
+import type { LedgerAnswer, SupplierRecord } from '../domain/reconciliation.js'
 import type { SellQuote } from '../domain/sell-price.js'
 
 /**
@@ -102,6 +108,49 @@ export function createHttpSupplierQuotes(baseUrl: string, transport: Transport):
     async hold(stay) {
       const response = await transport(`${baseUrl}/internal/suppliers/hold`, stay)
       return toSupplierAnswer(response, holdSchema)
+    },
+  }
+}
+
+const ledgerRecordSchema = bookingResultSchema.transform((value): SupplierRecord => ({
+  status: value.status,
+  total: toMoney(value.total),
+  checkIn: value.checkIn,
+  checkOut: value.checkOut,
+}))
+
+/**
+ * Jawaban supplier-service untuk rekonsiliasi (Step 28).
+ *
+ * "Tidak ada di supplier" HANYA dari 404 dengan kode
+ * `SUPPLIER_BOOKING_NOT_FOUND`. 404 lain — rute yang tidak ada di
+ * supplier-service versi lama, URL yang salah — adalah "tidak tahu". Membaca
+ * keduanya sama akan memindahkan setiap pemesanan terkonfirmasi ke peninjauan
+ * dalam satu putaran. Begitu juga 200 yang bentuknya tidak dikenal: tidak
+ * tahu, bukan "cocok" dan bukan "tidak ada".
+ */
+export function toLedgerAnswer(response: HttpResponse): LedgerAnswer {
+  if (response.status === 200) {
+    const parsed = envelope(ledgerRecordSchema).safeParse(response.body)
+    return parsed.success ? { kind: 'found', record: parsed.data.data } : { kind: 'unreachable' }
+  }
+
+  const code = errorEnvelope.safeParse(response.body)
+  if (
+    response.status === 404 &&
+    code.success &&
+    code.data.error.code === 'SUPPLIER_BOOKING_NOT_FOUND'
+  ) {
+    return { kind: 'not_found' }
+  }
+
+  return { kind: 'unreachable' }
+}
+
+export function createHttpSupplierLedger(baseUrl: string, transport: Transport): SupplierLedger {
+  return {
+    async lookup(query) {
+      return toLedgerAnswer(await transport(`${baseUrl}/internal/suppliers/lookup`, query))
     },
   }
 }

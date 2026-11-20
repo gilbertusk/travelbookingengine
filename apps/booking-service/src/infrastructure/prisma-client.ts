@@ -1,7 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import type { ManagedResource } from '@tbe/shared-kernel'
 import { PrismaClient } from '../generated/prisma/client.js'
-import type { BookingDb } from './booking-db.js'
+import type { BookingDb, ReconciliationDb } from './booking-db.js'
 
 /**
  * Klien Prisma lewat driver adapter.
@@ -55,5 +55,10 @@ export function prismaResource(client: PrismaClient): ManagedResource {
  * perubahan skema yang membuat keduanya tidak sepakat menggagalkan typecheck.
  */
 export function bookingDbOf(client: PrismaClient): BookingDb {
+  return client
+}
+
+/** Bukti yang sama untuk port laporan rekonsiliasi (Step 28). */
+export function reconciliationDbOf(client: PrismaClient): ReconciliationDb {
   return client
 }
