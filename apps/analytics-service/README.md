@@ -60,4 +60,4 @@ pnpm --filter @tbe/analytics-service test:integration   # Postgres + Kafka sungg
 
 Uji integrasi memakai `INTEGRATION_DATABASE_URL` dan `INTEGRATION_KAFKA_BROKERS` bila keduanya diisi, selain itu Testcontainers; tanpa keduanya dan tanpa Docker, uji GAGAL. Yang dibuktikan: penambahan serentak (50 penulis → 50), deduplikasi serentak (10 penulis atas pesan yang sama → 1), atomisitas transaksi, CHECK tulisan tangan, kolom DATE di zona waktu proses bukan UTC — dan replay: bangun dari Kafka, replay ditolak saat consumer hidup, hapus, bangun ulang, hasil sama persis, offset consumer group lain tidak bergeser, dead letter tidak bertambah.
 
-Belum dijalankan: jalur Testcontainers (container ini tanpa Docker; CI menjalankannya).
+Kedua jalur sudah dijalankan: env `INTEGRATION_*` terhadap Postgres dan Kafka native, dan Testcontainers di CI (`integration`, PR #13).

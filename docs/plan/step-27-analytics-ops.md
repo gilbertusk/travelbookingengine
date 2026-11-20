@@ -179,7 +179,6 @@ Setiap penjaga dirusak dengan sengaja, uji terkait harus GAGAL, lalu berkas dipu
 - **Retensi 7 hari** untuk `tbe.search.v1` dan `tbe.supplier.v1` membatasi replay. Agregat pencarian yang lebih tua hilang setelah replay.
 - **`analytics_processed_events` tumbuh tanpa batas.** Belum ada pemangkasan; replay mengosongkannya.
 - **Belum dijalankan:**
-  - Jalur Testcontainers untuk uji integrasi analytics (container ini tanpa Docker; CI menjalankannya).
   - Panel terhadap supplier-, pricing-, booking-, dan payment-service yang hidup.
   - Tampilan panel di peramban sungguhan: yang diperiksa hanya HTML dan status HTTP, tanpa tangkapan layar.
   - Uji Playwright.
