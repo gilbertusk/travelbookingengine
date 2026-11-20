@@ -17,6 +17,7 @@ const OPERATOR = {
   [USER_ROLE_HEADER]: 'operator',
 }
 const RUN_ID = '0b5e7a5e-1c2d-4e3f-8a9b-0c1d2e3f4a5b'
+const OTHER_RUN = '1c6f8b6f-2d3e-4f40-9bac-1d2e3f4a5b6c'
 const BOOKING_ID = '3f0c8a52-6d1e-4c3b-9a7f-000000000001'
 
 async function setup() {
@@ -56,7 +57,7 @@ async function setup() {
     },
   }).app
 
-  return { app, requested }
+  return { app, requested, store }
 }
 
 describe('laporan rekonsiliasi di panel operator (Step 28)', () => {
@@ -91,6 +92,23 @@ describe('laporan rekonsiliasi di panel operator (Step 28)', () => {
         ],
       },
     ])
+  })
+
+  test('putaran yang belum selesai dilaporkan tanpa waktu selesai', async () => {
+    const { app, store } = await setup()
+    // Putaran kedua yang dimulai lalu tidak pernah selesai — proses mati.
+    await store.begin(
+      { id: OTHER_RUN, day: '2026-10-02', supplier: 'NOVA' },
+      new Date('2026-10-02T03:00:00Z'),
+    )
+
+    const response = await request(app).get('/ops/bookings/reconciliation').set(OPERATOR)
+
+    expect(response.body.data[0]).toMatchObject({
+      id: OTHER_RUN,
+      supplier: 'NOVA',
+      finishedAt: null,
+    })
   })
 
   test('tidak terbaca sebagai pengenal pemesanan oleh /ops/bookings/:id', async () => {

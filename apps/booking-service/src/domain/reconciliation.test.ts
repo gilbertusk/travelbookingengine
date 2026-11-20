@@ -71,6 +71,12 @@ describe('CONFIRMED di sistem', () => {
     expect(compare(confirmed, found(dates))).toMatchObject({ mismatch: 'dates_mismatch' })
   })
 
+  test('tanggal yang tidak dijawab supplier ditulis "?" di alasan, bukan "undefined"', () => {
+    const verdict = compare(confirmed, found({ checkIn: undefined, checkOut: '2026-11-13' }))
+
+    expect(verdict.kind === 'mismatch' && verdict.reason).toContain('?–2026-11-13')
+  })
+
   test('supplier yang tidak mengembalikan tanggal tidak dianggap berbeda tanggal', () => {
     expect(compare(confirmed, found({ checkIn: undefined, checkOut: undefined }))).toEqual({
       kind: 'match',
