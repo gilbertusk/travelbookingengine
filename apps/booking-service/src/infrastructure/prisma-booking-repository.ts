@@ -117,6 +117,7 @@ export function createPrismaBookingRepository(db: BookingDb): BookingRepository 
     save,
     findExpiredHolds: async (now, limit) => await expiredHolds(db, now, limit),
     findOverdueCancellations: async (now, limit) => await overdueCancellations(db, now, limit),
+    findAbandoned: async (before, limit) => await abandoned(db, before, limit),
     findByUser: async (query) => await byUser(db, query),
   }
 }
@@ -162,6 +163,20 @@ async function byUser(db: BookingDb, query: UserBookingsQuery): Promise<readonly
  * Pembatalan yang batas menunggu jawabannya sudah lewat (Step 25), yang paling
  * lama lebih dulu. Dilayani indeks `(status, cancel_deadline_at)`.
  */
+/**
+ * Pemesanan pra-hold yang tidak disentuh sejak `before`. Dilayani indeks
+ * `(status, updated_at)`. `lte`, seperti penyapu hold: batasnya termasuk.
+ */
+async function abandoned(db: BookingDb, before: Date, limit: number): Promise<readonly Booking[]> {
+  const rows = await db.booking.findMany({
+    where: { OR: [{ status: { in: ['DRAFT', 'PRICE_CHECKED'] } }], updatedAt: { lte: before } },
+    orderBy: { updatedAt: 'asc' },
+    take: limit,
+  })
+
+  return rows.map(fromRow)
+}
+
 async function overdueCancellations(
   db: BookingDb,
   now: Date,

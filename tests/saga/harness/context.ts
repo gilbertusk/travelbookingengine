@@ -13,6 +13,16 @@ export interface InfraInfo {
   readonly redisUrl: string
   readonly kafkaBrokers: readonly string[]
   readonly rabbitmqUrl: string
+  /**
+   * Id kontainer broker dan basis data (Step 28), supaya uji chaos dapat
+   * MEMATIKAN, MEMBEKUKAN, dan MEMERINTAH infrastruktur sungguhan.
+   */
+  readonly containers: {
+    readonly postgres: string
+    readonly redis: string
+    readonly rabbit: string
+    readonly kafka: string
+  }
   readonly mockSupplier: {
     readonly url: string
     /** Id kontainer Docker, supaya uji dapat MEMATIKAN supplier sungguhan. */

@@ -1,12 +1,17 @@
 {
   "extends": "@tbe/tsconfig/node.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
   "include": [
     "harness/**/*",
     "scenarios/**/*",
+    "chaos/**/*",
     "load/**/*",
     "vitest.config.ts",
-    "vitest.load.config.ts"
+    "vitest.load.config.ts",
+    "vitest.chaos.config.ts"
   ],
   "exclude": ["node_modules"]
 }

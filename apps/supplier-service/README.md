@@ -109,6 +109,7 @@ Dua jalur masuk, **satu use case**. Tidak ada logika bisnis di lapisan masuk —
 | `POST`  | `/internal/suppliers/hold`        |                                        |
 | `POST`  | `/internal/suppliers/confirm`     | 202 bila status tidak dapat dipastikan |
 | `POST`  | `/internal/suppliers/cancel`      |                                        |
+| `POST`  | `/internal/suppliers/lookup`      | Step 28, rekonsiliasi: lihat di bawah  |
 | `GET`   | `/internal/suppliers`             | Konfigurasi kelima supplier            |
 | `PATCH` | `/internal/suppliers/:code`       | FR-29 — aktif/nonaktif, ambang pemutus |
 
@@ -145,3 +146,7 @@ Di balik `requireOperator` (dan peran operator di gateway):
 - `PATCH /ops/suppliers/:code` — handler yang sama dengan `/internal/suppliers/:code` (FR-29).
 
 Pemutus dibaca per operasi, bukan hanya `search` seperti daftar internal: pemutus `book` yang terbuka sementara pencarian sehat adalah tepat kasus yang perlu dilihat operator.
+
+## Catatan pemesanan untuk rekonsiliasi (Step 28)
+
+`POST /internal/suppliers/lookup` menerima `{ supplier, bookingReference }` **atau** `{ supplier, idempotencyKey }` — tepat satu pegangan; permintaan yang menyebut keduanya ditolak 400. "Supplier tidak menyimpannya" dijawab 404 berkode **`SUPPLIER_BOOKING_NOT_FOUND`**, sengaja bukan `NOT_FOUND`: 404 rute yang tidak ada juga berkode `NOT_FOUND`, dan rekonsiliasi yang membacanya sebagai "tidak ada" akan menandai setiap pemesanan terkonfirmasi. Kegagalan lain (timeout, pemutus terbuka, galat supplier) dijawab seperti operasi lain — "tidak tahu", bukan "tidak ada". Lihat ADR-0005.

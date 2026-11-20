@@ -127,6 +127,28 @@ describe('kebijakan pemberitahuan', () => {
     expect(decision).toEqual({ kind: 'skip', reason: 'hold_expired' })
   })
 
+  test('temuan rekonsiliasi tidak dikabarkan: operator memeriksanya lebih dulu (Step 28)', () => {
+    const decision = decideNow({
+      kind: 'booking_failed',
+      bookingId: BOOKING,
+      stage: 'reconciliation',
+      requiresManualReview: true,
+    })
+
+    expect(decision).toEqual({ kind: 'skip', reason: 'reconciliation' })
+  })
+
+  test('pemesanan yang ditinggalkan sebelum hold tidak dikabarkan (Step 28)', () => {
+    const decision = decideNow({
+      kind: 'booking_cancelled',
+      bookingId: BOOKING,
+      reason: 'abandoned',
+      refundAmount: null,
+    })
+
+    expect(decision).toEqual({ kind: 'skip', reason: 'abandoned' })
+  })
+
   test('setiap refund dikabarkan sendiri, dikunci pengenal refund', () => {
     const amount = { amountMinor: 2_442_000, currency: 'IDR' } as const
 

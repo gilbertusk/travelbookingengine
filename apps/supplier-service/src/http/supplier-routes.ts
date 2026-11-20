@@ -4,7 +4,13 @@ import { Router, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
 import { confirmBooking } from '../application/confirm-booking.js'
 import type { ResilienceDeps } from '../application/ports.js'
-import { cancel, hold, priceCheck, search } from '../application/supplier-operations.js'
+import {
+  cancel,
+  hold,
+  lookupBooking,
+  priceCheck,
+  search,
+} from '../application/supplier-operations.js'
 
 /**
  * Antarmuka internal.
@@ -66,6 +72,20 @@ const cancelBody = validate(
   'body',
 )
 
+/**
+ * Tepat satu pegangan: booking reference ATAU idempotency key. `strict` supaya
+ * permintaan yang menyebut keduanya ditolak alih-alih diam-diam memilih salah
+ * satunya — dua pegangan yang menunjuk pemesanan berbeda adalah pertanyaan
+ * yang jawabannya menyesatkan.
+ */
+const lookupBody = validate(
+  z.union([
+    z.object({ supplier: supplierParam, bookingReference: z.string().min(1) }).strict(),
+    z.object({ supplier: supplierParam, idempotencyKey: z.string().min(1).max(200) }).strict(),
+  ]),
+  'body',
+)
+
 export const settingsBody = validate(
   z.object({
     isActive: z.boolean().optional(),
@@ -88,6 +108,7 @@ export function createSupplierRouter(deps: ResilienceDeps): Router {
   router.post('/internal/suppliers/hold', holdBody, holdHandler(deps))
   router.post('/internal/suppliers/confirm', confirmBody, confirmHandler(deps))
   router.post('/internal/suppliers/cancel', cancelBody, cancelHandler(deps))
+  router.post('/internal/suppliers/lookup', lookupBody, lookupHandler(deps))
 
   router.get('/internal/suppliers', listHandler(deps))
   router.patch('/internal/suppliers/:code', settingsBody, updateHandler(deps))
@@ -185,6 +206,45 @@ function cancelHandler(deps: ResilienceDeps): RequestHandler {
       }
 
       res.json(success({ status: 'cancelled' }))
+    }, next)
+  }
+}
+
+/**
+ * Kode jawaban "supplier tidak menyimpan pemesanan ini" (Step 28).
+ *
+ * Sengaja BUKAN `NOT_FOUND` biasa. 404 dengan kode itu juga dijawab untuk rute
+ * yang tidak ada — supplier-service versi lama tanpa rute ini, atau salah
+ * ketik di URL. Rekonsiliasi yang membaca 404 itu sebagai "tidak ada di
+ * supplier" akan menandai SETIAP pemesanan terkonfirmasi sebagai hilang.
+ * booking-service hanya menerima kode ini sebagai jawaban "tidak ada".
+ */
+export const SUPPLIER_BOOKING_NOT_FOUND = 'SUPPLIER_BOOKING_NOT_FOUND'
+
+/**
+ * Catatan pemesanan di supplier (Step 28). `not_found` adalah jawaban yang sah
+ * dan berarti ("supplier tidak menyimpannya"), berbeda dari 502/503/504 yang
+ * berarti "tidak tahu". Rekonsiliasi bergantung pada perbedaan itu.
+ */
+function lookupHandler(deps: ResilienceDeps): RequestHandler {
+  return (_req, res, next) => {
+    const body = lookupBody.value(res)
+
+    void lookupBooking(deps, body, { correlationId: correlation(res) }).then((result) => {
+      if (!result.ok) {
+        next(
+          result.error.kind === 'not_found'
+            ? new AppError({
+                code: SUPPLIER_BOOKING_NOT_FOUND,
+                httpStatus: 404,
+                message: `supplier ${result.error.supplier} tidak menyimpan pemesanan ini`,
+              })
+            : toHttpError(result.error),
+        )
+        return
+      }
+
+      res.json(success(result.value))
     }, next)
   }
 }

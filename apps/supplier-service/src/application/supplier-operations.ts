@@ -1,5 +1,6 @@
 import type { Result } from '@tbe/shared-kernel'
 import type {
+  BookingResult,
   HoldResult,
   PriceCheckResult,
   SupplierCode,
@@ -102,5 +103,44 @@ export async function cancel(
     requestPayload: { bookingReference },
     correlationId: context.correlationId,
     run: async () => await deps.registry.get(supplier).cancel(bookingReference),
+  })
+}
+
+/**
+ * Catatan pemesanan di supplier (Step 28) — bahan rekonsiliasi booking-service.
+ *
+ * Dua cara bertanya, karena booking-service tidak selalu memegang booking
+ * reference: pemesanan yang direfund setelah konfirmasi yang dianggap gagal
+ * tidak pernah menerimanya. Untuk yang itu, satu-satunya pegangan adalah
+ * idempotency key yang dikirim saat `book` — dan pertanyaan inilah yang
+ * menemukan pemesanan bayangan.
+ *
+ * Membaca saja, jadi aman diulang lewat kebijakan percobaan ulang umum.
+ */
+export type BookingLookup =
+  | { readonly supplier: SupplierCode; readonly bookingReference: string }
+  | { readonly supplier: SupplierCode; readonly idempotencyKey: string }
+
+export async function lookupBooking(
+  deps: ResilienceDeps,
+  query: BookingLookup,
+  context: OperationContext = {},
+): Promise<Result<BookingResult, SupplierError>> {
+  const gateway = deps.registry.get(query.supplier)
+
+  return await callSupplier(deps, {
+    supplier: query.supplier,
+    operation: 'getBooking',
+    correlationId: context.correlationId,
+    ...('bookingReference' in query
+      ? {
+          requestPayload: { bookingReference: query.bookingReference },
+          run: async () => await gateway.getBooking(query.bookingReference),
+        }
+      : {
+          idempotencyKey: query.idempotencyKey,
+          requestPayload: { idempotencyKey: query.idempotencyKey },
+          run: async () => await gateway.findBookingByIdempotencyKey(query.idempotencyKey),
+        }),
   })
 }

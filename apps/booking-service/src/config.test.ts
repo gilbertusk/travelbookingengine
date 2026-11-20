@@ -37,6 +37,14 @@ describe('konfigurasi', () => {
     ).toThrow(/SAGA_STEP_LEASE_MS/)
   })
 
+  test('putaran rekonsiliasi yang dapat melewati batas ack RabbitMQ ditolak (Step 28)', () => {
+    // 400 pemesanan × 5 detik = 33 menit: broker menutup kanalnya di tengah putaran.
+    expect(() => loadConfig({ ...REQUIRED, RECONCILIATION_MAX_BOOKINGS: '400' })).toThrow(
+      /RECONCILIATION_MAX_BOOKINGS/,
+    )
+    expect(loadConfig({ ...REQUIRED }).RECONCILIATION_MAX_BOOKINGS).toBe(200)
+  })
+
   test('batas tunggu koneksi yang menghabiskan sewa langkah saga ditolak', () => {
     expect(() =>
       loadConfig({ ...REQUIRED, DATABASE_TX_MAX_WAIT_MS: '30000', SAGA_STEP_LEASE_MS: '60000' }),

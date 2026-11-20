@@ -35,7 +35,8 @@
     "loadtest:search": "node infra/k6/run.mjs baseline",
     "loadtest:search:degraded": "node infra/k6/run.mjs degraded",
     "loadtest:cache": "node infra/k6/run.mjs cache",
-    "loadtest:booking": "pnpm --filter @tbe/saga-tests load"
+    "loadtest:booking": "pnpm --filter @tbe/saga-tests load",
+    "chaos:run": "pnpm --filter @tbe/saga-tests chaos"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

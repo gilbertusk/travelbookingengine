@@ -50,3 +50,4 @@ infra/data/
 
 # Log service dari uji saga yang gagal (Step 20)
 tests/saga/.logs/
+tests/saga/.chaos/

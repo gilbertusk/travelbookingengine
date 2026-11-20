@@ -11,6 +11,7 @@ import { applyCommand } from '../../src/domain/transitions.js'
 import { money } from '@tbe/money'
 import {
   draftChange,
+  idr,
   inState,
   minutesAfter,
   narrow,
@@ -338,6 +339,7 @@ describe('penyapu: kueri hold yang lewat', () => {
         at: checked.booking.updatedAt,
         holdRef: 'h',
         heldUntil: new Date(Date.UTC(2031, 0, 1) + offsetMs),
+        supplierTotal: idr(1_800_000),
       })
       await repository.save(held)
       return id

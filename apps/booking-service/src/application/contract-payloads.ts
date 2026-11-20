@@ -120,11 +120,17 @@ function createdPayload(event: BookingCreated): EventPayload<'booking.created'> 
  *   tidak terjawab, jadi tahapnya `cancellation` — kamarnya mungkin sudah
  *   lepas, dan surelnya tidak boleh berkata "belum terkonfirmasi".
  *   Ketiganya `requiresManualReview`.
+ * - Dari CONFIRMED, REFUNDED, atau CANCELLED (Step 28): rekonsiliasi
+ *   membantah keadaan final itu. Tahapnya `reconciliation`, bukan tahap saga
+ *   asalnya — saganya sudah lama selesai dengan benar menurut catatan kita.
  */
 const REVIEW_STAGES = {
   PAID: 'supplier_confirm',
   FAILED: 'payment',
   CANCELLING: 'cancellation',
+  CONFIRMED: 'reconciliation',
+  REFUNDED: 'reconciliation',
+  CANCELLED: 'reconciliation',
 } as const satisfies Record<ReviewRequired['from'], EventPayload<'booking.failed'>['stage']>
 
 function failedPayload(

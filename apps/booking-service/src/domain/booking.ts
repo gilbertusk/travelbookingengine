@@ -91,7 +91,18 @@ export type SupplierCode = (typeof SUPPLIER_CODES)[number]
  * punya keadaannya sendiri (EXPIRED), karena pertanyaan "berapa hold yang habis
  * tanpa dibayar" adalah metrik bisnis, bukan sekadar alasan pembatalan.
  */
-export const CANCELLATION_REASONS = ['user_request', 'payment_failed', 'supplier_rejected'] as const
+export const CANCELLATION_REASONS = [
+  'user_request',
+  'payment_failed',
+  'supplier_rejected',
+  /**
+   * Ditinggalkan sebelum hold (Step 28): DRAFT atau PRICE_CHECKED yang tidak
+   * disentuh lebih lama dari batasnya. Step 22 meninggalkan 990 baris seperti
+   * itu dalam satu jalan uji beban — tidak memegang kamar maupun uang, tetapi
+   * juga tidak pernah final, sehingga NFR-06 secara harfiah tidak terpenuhi.
+   */
+  'abandoned',
+] as const
 export type CancellationReason = (typeof CANCELLATION_REASONS)[number]
 
 /**
@@ -116,13 +127,28 @@ export interface Failure {
   readonly reason: string
 }
 
+/**
+ * Keadaan asal peninjauan. Tiga yang pertama dari saga yang buntu; tiga
+ * terakhir dari rekonsiliasi (Step 28) — keadaan final yang dibantah catatan
+ * supplier.
+ */
+export const REVIEW_ORIGINS = [
+  'PAID',
+  'FAILED',
+  'CANCELLING',
+  'CONFIRMED',
+  'REFUNDED',
+  'CANCELLED',
+] as const satisfies readonly BookingStatus[]
+export type ReviewOrigin = (typeof REVIEW_ORIGINS)[number]
+
 export interface Review {
   /**
    * Keadaan asal. Menentukan apa yang harus diperiksa manusia lebih dulu:
    * kamar (PAID), refund kompensasi (FAILED), atau refund pembatalan oleh
    * pengguna yang kamarnya mungkin sudah lepas (CANCELLING).
    */
-  readonly from: 'PAID' | 'FAILED' | 'CANCELLING'
+  readonly from: ReviewOrigin
   readonly reason: string
 }
 

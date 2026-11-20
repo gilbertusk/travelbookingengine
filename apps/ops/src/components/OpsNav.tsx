@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 export const NAV_ITEMS = [
   { href: '/', label: 'Kesehatan supplier' },
   { href: '/tinjauan', label: 'Tinjauan' },
+  { href: '/rekonsiliasi', label: 'Rekonsiliasi' },
   { href: '/kendali', label: 'Kendali mock supplier' },
   { href: '/supplier', label: 'Konfigurasi supplier' },
   { href: '/markup', label: 'Aturan markup' },

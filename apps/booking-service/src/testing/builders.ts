@@ -139,6 +139,7 @@ export function validCommand<C extends CommandType>(booking: Booking, type: C): 
       at,
       holdRef: 'sky-hold-001',
       heldUntil: new Date(at.getTime() + HOLD_MS),
+      supplierTotal: idr(1_800_000),
     },
     expireHold: {
       type: 'expireHold',
@@ -154,6 +155,7 @@ export function validCommand<C extends CommandType>(booking: Booking, type: C): 
     fail: { type: 'fail', at, reason: 'supplier menolak konfirmasi setelah tiga percobaan' },
     recordRefund: { type: 'recordRefund', at, refundId: REFUND_ID, amount: booking.price.total },
     cancel: { type: 'cancel', at, reason: 'user_request' },
+    flagMismatch: { type: 'flagMismatch', at, reason: 'tidak ditemukan di supplier' },
     requireReview: { type: 'requireReview', at, reason: 'status supplier tidak dapat dipastikan' },
     ...cancellationCommands(booking, at),
   }
@@ -255,8 +257,16 @@ export function sampleFor(status: BookingStatus, command: CommandType): Booking 
   if (status === 'PRICE_CHECKED' && command === 'acceptPrice') return priceChanged()
   // Refund hanya dapat tuntas setelah supplier membatalkan (Step 25).
   if (status === 'CANCELLING' && command === 'completeCancellation') return refunding()
+  // Rekonsiliasi hanya membantah CANCELLED yang sudah dibayar (Step 28).
+  if (status === 'CANCELLED' && command === 'flagMismatch') return cancelledAfterPayment()
 
   return inState(status)
+}
+
+/** CANCELLED oleh pengguna setelah terkonfirmasi: bentuk CANCELLED yang membawa pembayaran. */
+export function cancelledAfterPayment(): BookingIn<'CANCELLED'> {
+  const pending = refunding()
+  return narrow(step(pending, validCommand(pending, 'completeCancellation')), 'CANCELLED')
 }
 
 /** CANCELLING yang supplier-nya sudah membatalkan dan sedang menunggu refund. */

@@ -88,6 +88,8 @@ export interface BookingHeld extends EventBase {
   readonly type: 'BookingHeld'
   readonly holdRef: string
   readonly heldUntil: Date
+  /** Harga bersih supplier saat hold (Step 28). Lihat perintah `hold`. */
+  readonly supplierTotal: Money
 }
 
 export interface HoldExpired extends EventBase {

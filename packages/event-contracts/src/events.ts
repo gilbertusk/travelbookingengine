@@ -88,8 +88,20 @@ export const bookingConfirmedPayload = z.object({
 
 export const bookingFailedPayload = z.object({
   bookingId: z.uuid(),
-  /** Langkah saga tempat kegagalan terjadi. Menentukan kompensasi apa yang perlu. */
-  stage: z.enum(['price_check', 'hold', 'payment', 'supplier_confirm', 'voucher', 'cancellation']),
+  /**
+   * Langkah saga tempat kegagalan terjadi. Menentukan kompensasi apa yang perlu.
+   * `reconciliation` (Step 28): bukan langkah saga, melainkan rekonsiliasi
+   * yang membantah keadaan final — selalu `requiresManualReview`.
+   */
+  stage: z.enum([
+    'price_check',
+    'hold',
+    'payment',
+    'supplier_confirm',
+    'voucher',
+    'cancellation',
+    'reconciliation',
+  ]),
   reason: z.string(),
   /** true bila status di supplier tidak dapat dipastikan — lihat US-05. */
   requiresManualReview: z.boolean(),
@@ -97,7 +109,20 @@ export const bookingFailedPayload = z.object({
 
 export const bookingCancelledPayload = z.object({
   bookingId: z.uuid(),
-  reason: z.enum(['user_request', 'hold_expired', 'payment_failed', 'supplier_rejected']),
+  /**
+   * `abandoned` ditambahkan Step 28: pemesanan yang ditinggalkan sebelum hold
+   * — tidak ada kamar maupun uang yang tertahan. Penambahan nilai enum, bukan
+   * perubahan bentuk: konsumen di monorepo ini dikerahkan bersama kontraknya.
+   * Konsumen yang dikerahkan dengan kontrak lama akan menolak pesannya ke
+   * dead-letter, bukan salah membacanya.
+   */
+  reason: z.enum([
+    'user_request',
+    'hold_expired',
+    'payment_failed',
+    'supplier_rejected',
+    'abandoned',
+  ]),
   refundAmount: moneySchema.optional(),
 })
 

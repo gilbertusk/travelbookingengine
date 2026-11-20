@@ -38,7 +38,12 @@ export interface RefundCall {
 
 export interface Notification {
   readonly orderId: string
-  readonly status: 'settlement' | 'deny'
+  /**
+   * `pending` (Step 28): status awal transaksi Midtrans. Dikirim SETELAH
+   * `settlement` dalam skenario chaos webhook terbalik — urutan yang dapat
+   * terjadi karena Midtrans mengirim ulang notifikasi yang gagal diantar.
+   */
+  readonly status: 'settlement' | 'deny' | 'pending'
   /** Pengenal transaksi Midtrans; sama = notifikasi yang sama dikirim ulang. */
   readonly transactionId?: string | undefined
 }
@@ -59,7 +64,7 @@ export interface MidtransStub {
   close(): Promise<void>
 }
 
-const STATUS_CODES = { settlement: '200', deny: '202' } as const
+const STATUS_CODES = { settlement: '200', deny: '202', pending: '201' } as const
 
 export async function startMidtransStub(): Promise<MidtransStub> {
   const serverKey = `SB-Mid-server-saga-it-${randomUUID()}`

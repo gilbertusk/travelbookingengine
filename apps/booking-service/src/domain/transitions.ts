@@ -15,6 +15,7 @@ import {
   confirm,
   expireHold,
   fail,
+  flagMismatch,
   hold,
   recordPayment,
   recordRefund,
@@ -38,6 +39,8 @@ import {
  *   PAID           ─confirm→ CONFIRMED   ─fail→ FAILED   ─requireReview→ NEEDS_REVIEW
  *   FAILED         ─recordRefund→ REFUNDED               ─requireReview→ NEEDS_REVIEW
  *   CONFIRMED      ─requestCancellation→ CANCELLING      (hanya atas permintaan pengguna)
+ *                  ─flagMismatch→ NEEDS_REVIEW           (hanya dari rekonsiliasi, Step 28)
+ *   REFUNDED, CANCELLED ─flagMismatch→ NEEDS_REVIEW       (hanya dari rekonsiliasi, Step 28)
  *   CANCELLING     ─confirmSupplierCancellation→ CANCELLING   ─completeCancellation→ CANCELLED
  *                  ─restoreConfirmation→ CONFIRMED       ─requireReview→ NEEDS_REVIEW
  *
@@ -72,15 +75,15 @@ export const TRANSITIONS = {
   HELD: { expireHold, recordPayment, cancel },
   PAID: { confirm, fail, requireReview },
   FAILED: { recordRefund, requireReview },
-  CONFIRMED: { requestCancellation },
+  CONFIRMED: { requestCancellation, flagMismatch },
   CANCELLING: {
     confirmSupplierCancellation,
     completeCancellation,
     restoreConfirmation,
     requireReview,
   },
-  REFUNDED: {},
-  CANCELLED: {},
+  REFUNDED: { flagMismatch },
+  CANCELLED: { flagMismatch },
   EXPIRED: {},
   NEEDS_REVIEW: {},
 } as const satisfies TransitionTable
@@ -105,6 +108,28 @@ export const USER_INITIATED_COMMANDS = [
 
 export function isUserInitiated(command: CommandType): boolean {
   return USER_INITIATED_COMMANDS.some((candidate) => candidate === command)
+}
+
+/**
+ * Perintah dari REKONSILIASI (Step 28): bukti dari luar sistem bahwa keadaan
+ * final kita tidak sesuai catatan supplier. Seperti perintah pengguna, ia
+ * datang dari luar saga — tidak ada peristiwa, batas waktu, atau pemulihan
+ * yang menjalankannya — dan karena itu boleh dipasang pada keadaan final.
+ *
+ * Bedanya dengan perintah pengguna: tujuannya SELALU keadaan final
+ * (NEEDS_REVIEW). Keadaan final yang dibantah tidak dibuka kembali untuk saga;
+ * ia berpindah dari satu akhir yang sah NFR-06 ke akhir sah lainnya, yaitu
+ * "ditandai untuk peninjauan manual". transitions.test.ts memeriksa ini.
+ */
+export const RECONCILIATION_COMMANDS = ['flagMismatch'] as const satisfies readonly CommandType[]
+
+export function isReconciliation(command: CommandType): boolean {
+  return RECONCILIATION_COMMANDS.some((candidate) => candidate === command)
+}
+
+/** Perintah yang datang dari luar saga: milik pengguna, atau milik rekonsiliasi. */
+export function isOutsideSaga(command: CommandType): boolean {
+  return isUserInitiated(command) || isReconciliation(command)
 }
 
 /** Perintah yang sah pada sebuah keadaan, sebagaimana dinyatakan tabel. */

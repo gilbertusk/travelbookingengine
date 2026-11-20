@@ -158,6 +158,12 @@ export async function startSystem(options: SystemOptions = {}): Promise<System> 
     booking: new pg.Pool({ connectionString: url('booking'), max: 4 }),
     payment: new pg.Pool({ connectionString: url('payment'), max: 4 }),
   }
+  // Koneksi menganggur yang diputus server — uji chaos Postgres (Step 28)
+  // memutus SEMUA backend sebuah basis data — dilaporkan pg.Pool sebagai
+  // peristiwa 'error'. Tanpa pendengar, Node menjadikannya galat yang tidak
+  // tertangkap dan proses uji mati. Pool membuang koneksi itu sendiri; kueri
+  // berikutnya membuka yang baru.
+  for (const pool of [db.booking, db.payment]) pool.on('error', () => undefined)
   const supplier = createSupplierControl(env.mockSupplier)
   await supplier.reset()
 

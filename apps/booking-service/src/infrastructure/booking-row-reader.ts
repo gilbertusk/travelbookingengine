@@ -1,5 +1,5 @@
 import { fromColumns, type Money } from '@tbe/money'
-import type { Review } from '../domain/booking.js'
+import { REVIEW_ORIGINS, type Review } from '../domain/booking.js'
 import type { BookingRow } from './booking-db.js'
 
 /**
@@ -56,14 +56,15 @@ export class BookingRowReader {
 
   reviewFrom(): Review['from'] {
     const from = this.required('reviewFrom')
-    if (from !== 'PAID' && from !== 'FAILED' && from !== 'CANCELLING') {
+    const origin = REVIEW_ORIGINS.find((candidate) => candidate === from)
+    if (origin === undefined) {
       throw new CorruptBookingRowError(
         this.row.id,
         'reviewFrom',
-        `bukan PAID, FAILED, atau CANCELLING: ${from}`,
+        `bukan asal peninjauan yang dikenal (${REVIEW_ORIGINS.join(', ')}): ${from}`,
       )
     }
 
-    return from
+    return origin
   }
 }

@@ -67,6 +67,12 @@ export const BOOKING_RULES = [
   'refund_due_mismatch',
   /** Batas waktu menunggu jawaban tidak berada di masa depan. */
   'deadline_in_past',
+  /**
+   * Ketidaksesuaian dilaporkan untuk pemesanan yang tidak pernah dibayar
+   * (Step 28). Pemesanan seperti itu tidak pernah dikirim ke supplier untuk
+   * dikonfirmasi, dan NEEDS_REVIEW menuntut pembayaran yang dapat diperiksa.
+   */
+  'mismatch_without_payment',
 ] as const
 
 export type BookingRule = (typeof BOOKING_RULES)[number]

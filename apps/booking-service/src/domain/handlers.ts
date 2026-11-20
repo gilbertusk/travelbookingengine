@@ -155,7 +155,7 @@ export const hold: Handler<BookingIn<'PRICE_CHECKED'>, 'hold'> = (booking, comma
 
   return ok({
     booking: { ...base, status: 'HELD', ...held },
-    event: { type: 'BookingHeld', ...meta(base), ...held },
+    event: { type: 'BookingHeld', ...meta(base), ...held, supplierTotal: command.supplierTotal },
   })
 }
 
@@ -298,6 +298,44 @@ export const cancel: Handler<Booking, 'cancel'> = (booking, command) => {
   return ok({
     booking: { ...base, status: 'CANCELLED', cancellation: command.reason },
     event: { type: 'BookingCancelled', ...meta(base), reason: command.reason },
+  })
+}
+
+/**
+ * Rekonsiliasi membantah keadaan final (Step 28, FR-33).
+ *
+ * Dari CONFIRMED, REFUNDED, atau CANCELLED yang sudah dibayar — ketiganya
+ * keadaan yang tercatat di supplier atau seharusnya sudah lepas dari sana.
+ * TIDAK ada perbaikan di sini: pemesanan tidak dikonfirmasi ulang, refund
+ * tidak dikirim, pembatalan tidak diulang. Satu-satunya akibat adalah
+ * pemesanan berhenti di depan manusia dengan alasannya. Perbaikan otomatis
+ * atas data finansial tanpa pengawasan lebih berbahaya daripada
+ * ketidaksesuaiannya sendiri — supplier yang sedang bermasalah dapat
+ * membuat ratusan pemesanan sah tampak "hilang" dalam satu putaran.
+ *
+ * CANCELLED tanpa pembayaran ditolak: ia dibatalkan sebelum uang berpindah,
+ * jadi tidak pernah dikirim ke supplier untuk dikonfirmasi, dan tidak ada
+ * pembayaran yang dapat diperiksa peninjau.
+ */
+export const flagMismatch: Handler<
+  BookingIn<'CONFIRMED' | 'REFUNDED' | 'CANCELLED'>,
+  'flagMismatch'
+> = (booking, command) => {
+  if (isBlank(command.reason)) return violation(booking, 'blank_field', 'Alasan peninjauan kosong')
+  if (booking.paymentId === undefined) {
+    return violation(
+      booking,
+      'mismatch_without_payment',
+      'Pemesanan yang tidak pernah dibayar tidak dapat dibantah catatan supplier',
+    )
+  }
+
+  const base = next(booking, command.at)
+  const review = { from: booking.status, reason: command.reason }
+
+  return ok({
+    booking: { ...base, status: 'NEEDS_REVIEW', paymentId: booking.paymentId, review },
+    event: { type: 'ReviewRequired', ...meta(base), paymentId: booking.paymentId, ...review },
   })
 }
 

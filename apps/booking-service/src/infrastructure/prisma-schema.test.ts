@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { BOOKING_STATUSES, CANCELLATION_REASONS } from '../domain/booking.js'
 import { BOOKING_EVENT_TYPES } from '../domain/events.js'
+import { MISMATCH_KINDS } from '../domain/reconciliation.js'
 import { SAGA_STEPS } from '../domain/saga-definition.js'
 
 /**
@@ -181,5 +182,23 @@ describe('uang pada skema (NFR-08)', () => {
     expect(column('Booking', 'currency')).toMatch(/^currency String$/)
     expect(column('Booking', 'quotedAmountMinor')).toMatch(/^quotedAmountMinor Int\? /)
     expect(column('Booking', 'quotedCurrency')).toMatch(/^quotedCurrency String\? /)
+  })
+})
+
+describe('laporan rekonsiliasi (Step 28)', () => {
+  test('CHECK jenis temuan di migrasi sama dengan jenis ketidaksesuaian domain, ditambah unverified', () => {
+    const check = /reconciliation_findings_kind_known"\s*CHECK \("kind" IN \(([^)]*)\)\)/.exec(
+      MIGRATION,
+    )
+    const listed = (check?.[1] ?? '').split(',').map((value) => value.trim().replaceAll("'", ''))
+
+    expect(listed.sort()).toEqual([...MISMATCH_KINDS, 'unverified'].sort())
+  })
+
+  test('temuan unik per putaran dan pemesanan: putaran yang dilanjutkan tidak mencatat dua kali', () => {
+    expect(SCHEMA).toMatch(/@@unique\(\[runId, bookingId\]\)/)
+    expect(MIGRATION).toContain(
+      'CREATE UNIQUE INDEX "reconciliation_findings_run_id_booking_id_key" ON "reconciliation_findings"("run_id", "booking_id")',
+    )
   })
 })

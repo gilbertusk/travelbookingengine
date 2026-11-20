@@ -86,6 +86,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
       redisUrl: redis.url,
       kafkaBrokers: kafka.brokers,
       rabbitmqUrl: rabbit.url,
+      containers: {
+        postgres: postgres.container.getId(),
+        redis: redis.container.getId(),
+        rabbit: rabbit.container.getId(),
+        kafka: kafka.container.getId(),
+      },
       mockSupplier: {
         url: mock.url,
         containerId: mock.container.getId(),
