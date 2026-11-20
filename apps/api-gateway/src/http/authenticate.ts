@@ -1,4 +1,4 @@
-import { UnauthorizedError } from '@tbe/shared-kernel'
+import { ForbiddenError, UnauthorizedError } from '@tbe/shared-kernel'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import type { TokenVerifier, VerifiedIdentity } from '../application/ports.js'
 import { matchRoute } from '../domain/routes.js'
@@ -44,6 +44,14 @@ export function createIdentityMiddleware(verifier: TokenVerifier): RequestHandle
           }
 
           next()
+          return
+        }
+
+        // Peran diperiksa SETELAH token terbukti sah, dan sebelum pembatasan
+        // laju serta penerusan: pelanggan yang mengetuk /ops tidak menghabiskan
+        // kuota siapa pun dan tidak pernah sampai ke hulu.
+        if (route?.requiredRole !== undefined && identity.role !== route.requiredRole) {
+          next(new ForbiddenError())
           return
         }
 

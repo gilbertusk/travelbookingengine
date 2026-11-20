@@ -8,7 +8,9 @@ import {
   type Metrics,
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
-import type { ResilienceDeps } from '../application/ports.js'
+import type { RequestHistory, ResilienceDeps } from '../application/ports.js'
+import type { HealthWindow } from '../application/supplier-health.js'
+import { createOpsRouter } from '../http/ops-routes.js'
 import { createSupplierRouter } from '../http/supplier-routes.js'
 
 /**
@@ -33,6 +35,9 @@ export interface SupplierHttpOptions {
    * dicatat di registry yang tidak pernah muncul di `/metrics`.
    */
   readonly metrics?: Metrics | undefined
+  /** Pembacaan catatan percobaan untuk panel operator (Step 27). */
+  readonly history: RequestHistory
+  readonly healthWindow: HealthWindow
 }
 
 export function createSupplierHttpApp(options: SupplierHttpOptions): {
@@ -54,6 +59,7 @@ export function createSupplierHttpApp(options: SupplierHttpOptions): {
     ),
   )
   app.use(createSupplierRouter(options.deps))
+  app.use(createOpsRouter({ ...options.deps, history: options.history }, options.healthWindow))
 
   finalizeHttpServer(app, options.logger)
 

@@ -30,7 +30,11 @@ export async function issueTokens(
   })
 
   return {
-    accessToken: await deps.tokens.issueAccessToken({ sub: user.id, email: user.email }),
+    accessToken: await deps.tokens.issueAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    }),
     refreshToken: refresh.token,
     accessTokenExpiresIn: deps.tokens.accessTokenTtlSeconds,
   }
@@ -67,7 +71,11 @@ export async function rotateTokens(
   await deps.sessions.markUsed(previousSessionId, now, sessionId)
 
   return {
-    accessToken: await deps.tokens.issueAccessToken({ sub: user.id, email: user.email }),
+    accessToken: await deps.tokens.issueAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    }),
     refreshToken: refresh.token,
     accessTokenExpiresIn: deps.tokens.accessTokenTtlSeconds,
   }

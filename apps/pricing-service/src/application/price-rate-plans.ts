@@ -47,14 +47,29 @@ export async function priceRatePlans(
   // Dua pemuatan. Bukan dua per rate plan.
   const [rates, rules] = await Promise.all([deps.rates.current(), deps.markupRules.listActive()])
 
-  const rateIndex = indexRates(rates)
-  const sellingCurrency = deps.settings.sellingCurrency
+  return { results: requests.map(pricerFor(deps, { rates, rules })), ratesUsed: rates }
+}
 
-  const results = requests.map((request) =>
-    priceOne(request, { rules, rateIndex, sellingCurrency, deps }),
-  )
+/**
+ * Penetapan harga dengan kurs dan aturan yang SUDAH dimuat. Dipisahkan untuk
+ * pratinjau markup (Step 27): pratinjau harus menghitung dengan mesin yang
+ * sama persis dengan pencarian, hanya dengan daftar aturan yang berbeda.
+ * Mesin kedua "khusus pratinjau" akan menyimpang diam-diam dari yang pertama.
+ *
+ * `rules` boleh memuat aturan nonaktif — `selectRule` menyaringnya.
+ */
+export function pricerFor(
+  deps: PricingDeps,
+  loaded: { readonly rates: readonly ExchangeRate[]; readonly rules: readonly MarkupRule[] },
+): (request: RatePlanPriceRequest) => RatePlanPriceResult {
+  const context: RunContext = {
+    rules: loaded.rules,
+    rateIndex: indexRates(loaded.rates),
+    sellingCurrency: deps.settings.sellingCurrency,
+    deps,
+  }
 
-  return { results, ratesUsed: rates }
+  return (request) => priceOne(request, context)
 }
 
 interface RunContext {

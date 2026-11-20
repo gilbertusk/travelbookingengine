@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
-const TOKEN_FILE = resolve(ROOT, 'apps/web/src/styles/globals.css')
+const TOKEN_FILE = resolve(ROOT, 'packages/ui/src/styles/tokens.css')
 
 const AA_NORMAL = 4.5
 const AA_LARGE = 3

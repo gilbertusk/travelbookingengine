@@ -4,6 +4,7 @@ import {
   createHttpServer,
   createMetrics,
   finalizeHttpServer,
+  requireOperator,
   type Metrics,
 } from '@tbe/shared-kernel'
 import { createChaosRegistry, type ChaosRegistry } from '../application/chaos.js'
@@ -85,8 +86,19 @@ export function buildMockSupplierApp(options: BuildAppOptions): MockSupplierApp 
     res.json({ data: { status: 'alive' }, error: null })
   })
 
-  app.use('/admin', createAdminRouter({ chaos, script, deps, refs: context.refs }))
+  const admin = createAdminRouter({ chaos, script, deps, refs: context.refs })
+  app.use('/admin', admin)
   app.use('/admin', createCatalogRouter(catalog))
+  // Panel kendali yang sama — instance router yang SAMA, jadi keadaan kegagalan
+  // yang disuntikkan dari panel operator adalah keadaan yang dibaca uji beban
+  // lewat /admin — dipasang kedua kalinya untuk panel operator (Step 27,
+  // FR-32), di balik `requireOperator`.
+  //
+  // `/admin` sendiri sengaja dibiarkan tanpa peran: mock supplier memerankan
+  // sistem PIHAK LUAR, dipanggil k6 dan uji integrasi yang tidak punya token
+  // operator, dan tidak pernah dirutekan gateway. Yang dijaga adalah jalan
+  // masuk dari luar, yaitu /ops.
+  app.use('/ops/mock-supplier', requireOperator, admin)
 
   for (const code of SUPPLIER_CODES) {
     const path = `/${code.toLowerCase()}`

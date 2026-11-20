@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest'
 import { createEmail, normalizeEmail } from './email.js'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, validatePassword } from './password.js'
 import { evaluateSession, isActive, type RefreshSession } from './session.js'
-import { toPublicUser } from './user.js'
+import { USER_ROLES } from '@tbe/shared-kernel'
+import { ROLES, toPublicUser } from './user.js'
 import type { Email } from './email.js'
 import { asPasswordHash } from './password.js'
 
@@ -112,6 +113,15 @@ describe('sesi refresh', () => {
   })
 })
 
+describe('peran', () => {
+  test('daftar peran pemilik (auth) sama persis dengan yang dibaca service lain', () => {
+    // shared-kernel membaca header peran; auth menerbitkannya. Peran baru di
+    // satu sisi saja berarti token sah yang ditolak, atau lebih buruk, peran
+    // yang tidak pernah diperiksa.
+    expect([...ROLES]).toEqual([...USER_ROLES])
+  })
+})
+
 describe('bentuk publik pengguna', () => {
   test('tidak pernah menyertakan hash kata sandi', () => {
     // Cukup sekali seseorang menulis res.json(user) untuk membocorkannya.
@@ -120,11 +130,13 @@ describe('bentuk publik pengguna', () => {
       email: 'budi@example.com' as Email,
       passwordHash: asPasswordHash('$argon2id$rahasia'),
       name: 'Budi',
+      role: 'customer',
       createdAt: NOW,
       updatedAt: NOW,
     })
 
     expect(JSON.stringify(publik)).not.toContain('argon2')
+    expect(publik.role).toBe('customer')
     expect(publik).not.toHaveProperty('passwordHash')
     expect(publik).not.toHaveProperty('updatedAt')
   })

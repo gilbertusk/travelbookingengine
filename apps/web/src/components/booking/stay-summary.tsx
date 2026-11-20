@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns'
 import { id as localeId } from 'date-fns/locale'
 import { CalendarDays, MapPin, Users } from 'lucide-react'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton } from '@tbe/ui/skeleton'
 import { nightsBetween } from '@/features/search/criteria'
 import type { Money } from '@/features/booking/types'
 import { formatMoney } from './rate-change-dialog'

@@ -88,6 +88,8 @@ function urls(overrides: Partial<ServiceUrls> = {}): ServiceUrls {
     voucher: baseUrl,
     pricing: baseUrl,
     analytics: baseUrl,
+    supplier: baseUrl,
+    'mock-supplier': baseUrl,
     ...overrides,
   }
 }

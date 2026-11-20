@@ -102,6 +102,12 @@ export interface EventWriteColumns {
 }
 
 /** Baris saga_states (Step 19). Ditulis dan dibaca dengan bentuk yang sama. */
+/** Baris booking_events sebagaimana dibaca kembali (Step 27). */
+export interface EventRow extends Omit<EventWriteColumns, 'payload'> {
+  readonly id: string
+  readonly payload: unknown
+}
+
 export interface SagaRow {
   readonly id: string
   readonly bookingId: string
@@ -172,6 +178,18 @@ export interface BookingDb {
      */
     findMany(args: BookingQuery): Promise<BookingRow[]>
   }
+  /**
+   * Jejak audit satu pemesanan, urut nomor urut (Step 27). Dilayani batasan
+   * UNIK `(booking_id, sequence)`, yang sekaligus indeksnya. Di LUAR
+   * transaksi: membaca jejak tidak pernah ikut mengubahnya.
+   */
+  readonly bookingEvent: {
+    findMany(args: {
+      where: { bookingId: string }
+      orderBy: { sequence: 'asc' }
+      take: number
+    }): Promise<EventRow[]>
+  }
   readonly sagaState: {
     findUnique(args: { where: { bookingId: string } }): Promise<SagaRow | null>
     /**
@@ -207,7 +225,8 @@ export interface BookingQuery {
 }
 
 export interface BookingWhere {
-  readonly status?: 'HELD' | 'CANCELLING'
+  /** NEEDS_REVIEW sejak Step 27: daftar tinjauan panel operator. */
+  readonly status?: 'HELD' | 'CANCELLING' | 'NEEDS_REVIEW'
   readonly heldUntil?: { readonly lte: Date }
   readonly cancelDeadlineAt?: { readonly lte: Date }
   readonly userId?: string
@@ -224,7 +243,7 @@ export interface BookingOrder {
   readonly heldUntil?: 'asc'
   readonly cancelDeadlineAt?: 'asc'
   readonly checkIn?: 'asc' | 'desc'
-  readonly updatedAt?: 'desc'
+  readonly updatedAt?: 'asc' | 'desc'
   readonly id?: 'asc'
 }
 

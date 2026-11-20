@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { formatMoney } from '@/components/booking/rate-change-dialog'
 import { ErrorState, LoadingState } from '@/components/state/states'
-import { Button } from '@/components/ui/button'
+import { Button } from '@tbe/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -15,8 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
+} from '@tbe/ui/dialog'
+import { Skeleton } from '@tbe/ui/skeleton'
 import type { Money } from '@/features/booking/types'
 import { cancelBooking, fetchCancellationPreview } from '@/features/bookings/api'
 import { formatDeadline, policyLines } from '@/features/bookings/presentation'

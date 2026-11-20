@@ -119,3 +119,10 @@ pnpm --filter @tbe/pricing-service test
 ```
 
 76 test, cakupan 100%. Uji HTTP dirangkai lewat factory yang sama dengan produksi — hanya port-nya yang dipalsukan.
+
+## Rute operator (Step 27)
+
+`/ops/pricing/markup-rules` — CRUD dengan handler yang SAMA dengan `/internal`, di balik `requireOperator`, ditambah `POST /ops/pricing/markup-rules/preview`: perubahan (buat, ubah, nonaktifkan) diterapkan pada SALINAN daftar aturan di memori, lalu sampel dihargai dua kali dengan `pricerFor` — mesin yang sama dengan pencarian. Tidak ada yang tersimpan.
+
+- Sampel diberikan pemanggil; service ini tidak menyimpan harga, jadi tidak ada "seluruh rate plan hari ini" untuk dipratinjau.
+- Aturan baru memakai pengenal sementara. Bila ia seri dengan aturan aktif lain (prioritas, kekhususan, dan cakupan sama), `isTieBreakUncertain` ditandai: pemutus terakhir adalah pengenal, dan pengenal sungguhannya baru ada setelah disimpan.

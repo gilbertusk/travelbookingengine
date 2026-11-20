@@ -20,26 +20,34 @@ Tabel ini adalah cerminan langsung dari [`src/domain/routes.ts`](src/domain/rout
 
 Pencocokan memakai **awalan terpanjang**, bukan urutan daftar, dan hanya berhenti pada batas segmen path (`/searching` tidak cocok dengan `/search`).
 
-| Path                | Metode     | Service   | Autentikasi | Batas laju      | Batas waktu |
-| ------------------- | ---------- | --------- | ----------- | --------------- | ----------- |
-| `/auth/login`       | `POST`     | auth      | —           | `sensitive`     | 10s         |
-| `/auth/register`    | `POST`     | auth      | —           | `sensitive`     | 10s         |
-| `/auth/refresh`     | `POST`     | auth      | —           | `sensitive`     | 10s         |
-| `/auth/*`           | seluruhnya | auth      | —¹          | `public`        | 10s         |
-| `/search/*`         | seluruhnya | search    | —           | `search`        | 3s          |
-| `/properties/*`     | seluruhnya | search    | —           | `search`        | 3s          |
-| `/bookings/stream`  | `GET`      | booking   | **Bearer**  | `authenticated` | 300s (SSE)  |
-| `/bookings/*`       | seluruhnya | booking   | **Bearer**  | `authenticated` | 10s         |
-| `/payments/webhook` | `POST`     | payment   | —²          | `public`        | 20s         |
-| `/payments/*`       | seluruhnya | payment   | **Bearer**  | `authenticated` | 20s         |
-| `/vouchers/*`       | seluruhnya | voucher   | **Bearer**  | `authenticated` | 10s         |
-| `/health/live`      | `GET`      | — (lokal) | —           | —               | —           |
-| `/health/ready`     | `GET`      | — (lokal) | —           | —               | —           |
-| `/metrics`          | `GET`      | — (lokal) | —           | —               | —           |
+| Path                   | Metode     | Service       | Autentikasi   | Batas laju      | Batas waktu |
+| ---------------------- | ---------- | ------------- | ------------- | --------------- | ----------- |
+| `/auth/login`          | `POST`     | auth          | —             | `sensitive`     | 10s         |
+| `/auth/register`       | `POST`     | auth          | —             | `sensitive`     | 10s         |
+| `/auth/refresh`        | `POST`     | auth          | —             | `sensitive`     | 10s         |
+| `/auth/*`              | seluruhnya | auth          | —¹            | `public`        | 10s         |
+| `/search/*`            | seluruhnya | search        | —             | `search`        | 3s          |
+| `/properties/*`        | seluruhnya | search        | —             | `search`        | 3s          |
+| `/bookings/stream`     | `GET`      | booking       | **Bearer**    | `authenticated` | 300s (SSE)  |
+| `/bookings/*`          | seluruhnya | booking       | **Bearer**    | `authenticated` | 10s         |
+| `/payments/webhook`    | `POST`     | payment       | —²            | `public`        | 20s         |
+| `/payments/*`          | seluruhnya | payment       | **Bearer**    | `authenticated` | 20s         |
+| `/vouchers/*`          | seluruhnya | voucher       | **Bearer**    | `authenticated` | 10s         |
+| `/ops/analytics/*`     | seluruhnya | analytics     | **operator**³ | `authenticated` | 10s         |
+| `/ops/suppliers/*`     | seluruhnya | supplier      | **operator**³ | `authenticated` | 10s         |
+| `/ops/pricing/*`       | seluruhnya | pricing       | **operator**³ | `authenticated` | 10s         |
+| `/ops/bookings/*`      | seluruhnya | booking       | **operator**³ | `authenticated` | 10s         |
+| `/ops/payments/*`      | seluruhnya | payment       | **operator**³ | `authenticated` | 10s         |
+| `/ops/mock-supplier/*` | seluruhnya | mock-supplier | **operator**³ | `authenticated` | 10s         |
+| `/health/live`         | `GET`      | — (lokal)     | —             | —               | —           |
+| `/health/ready`        | `GET`      | — (lokal)     | —             | —               | —           |
+| `/metrics`             | `GET`      | — (lokal)     | —             | —               | —           |
 
 ¹ Token tetap diverifikasi bila dikirim, dan identitasnya diteruskan — auth-service sendiri yang menolak `/auth/me` tanpa token. Gateway tidak perlu tahu endpoint mana di dalam `/auth` yang butuh sesi.
 
 ² Webhook penyedia pembayaran tidak membawa token pengguna. Keasliannya diverifikasi lewat tanda tangan di payment-service, bukan di sini — gateway tidak boleh memegang kunci penyedia.
+
+³ Step 27. Token sah tanpa klaim `role: operator` dijawab **403** di gateway, sebelum pembatasan laju dan sebelum hulu tersentuh. Path diteruskan apa adanya: service memasang router operatornya di bawah `/ops/...` dan memeriksa peran SEKALI LAGI dengan `requireOperator` dari shared-kernel — permintaan yang tidak lewat gateway tidak boleh menjawab rute operator. Penulisan ulang `/ops/x` → `/internal/x` ditolak: rute `/internal` sengaja tanpa identitas, dan satu kesalahan tabel akan membukanya ke luar. supplier-service dan mock supplier HANYA dapat dicapai lewat `/ops` (diuji di `routes.test.ts`).
 
 Batas waktu sengaja berbeda per jenis rute. Pencarian menembak lima supplier dan punya anggaran waktunya sendiri; pembayaran menunggu penyedia luar; SSE dibiarkan hidup sampai klien menutupnya.
 
@@ -62,10 +70,11 @@ Gateway memverifikasi token; service hulu mempercayai hasilnya. Konsekuensinya h
 
 Identitas diteruskan lewat header internal:
 
-| Header             | Isi                     |
-| ------------------ | ----------------------- |
-| `x-tbe-user-id`    | `sub` dari access token |
-| `x-tbe-user-email` | `email` dari token      |
+| Header             | Isi                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `x-tbe-user-id`    | `sub` dari access token                                                               |
+| `x-tbe-user-email` | `email` dari token                                                                    |
+| `x-tbe-user-role`  | `role` dari token (Step 27): `customer` atau `operator`; nilai lain dibaca `customer` |
 
 **Seluruh header berawalan `x-tbe-` yang datang dari klien dibuang lebih dulu**, sebelum yang terverifikasi ditambahkan. Ini bukan kerapian: tanpa pembuangan itu, siapa pun dapat mengirim `x-tbe-user-id` sendiri dan service hulu akan mempercayainya. Pembuangan dilakukan berdasarkan awalan, bukan daftar nama, supaya header internal baru tidak diam-diam menjadi celah sampai seseorang ingat memperbarui daftarnya.
 

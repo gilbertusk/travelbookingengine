@@ -6,20 +6,14 @@ import { CalendarDays, Search, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { DateRange } from 'react-day-picker'
-import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
-import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Button } from '@tbe/ui/button'
+import { Calendar } from '@tbe/ui/calendar'
+import { Label } from '@tbe/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@tbe/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@tbe/ui/select'
 import { MAX_GUESTS, MAX_STAY_NIGHTS, searchHref } from '@/features/search/criteria'
 import type { SearchCriteria } from '@/features/search/criteria'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 import { CityAutocomplete } from './city-autocomplete'
 
 /**

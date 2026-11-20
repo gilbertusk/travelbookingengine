@@ -9,6 +9,7 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { PaymentDeps, WebhookRateLimiter } from '../application/ports.js'
+import { createOpsRouter } from '../http/ops-routes.js'
 import { createPaymentRouter } from '../http/payment-routes.js'
 
 /**
@@ -52,6 +53,7 @@ export function createPaymentHttpApp(options: PaymentHttpOptions): {
     ),
   )
   app.use(createPaymentRouter({ deps: options.deps, limiter: options.limiter }))
+  app.use(createOpsRouter(options.deps))
 
   finalizeHttpServer(app, options.logger)
 

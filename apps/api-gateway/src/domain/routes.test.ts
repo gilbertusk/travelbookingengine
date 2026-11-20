@@ -6,6 +6,7 @@ import {
   stripForgedHeaders,
   USER_EMAIL_HEADER,
   USER_ID_HEADER,
+  USER_ROLE_HEADER,
 } from './identity.js'
 import { isAllowedMethod, matchRoute, ROUTES } from './routes.js'
 
@@ -29,6 +30,35 @@ describe('tabel rute', () => {
     )
 
     expect(terbuka).toEqual([])
+  })
+
+  test('setiap rute /ops menuntut peran operator DAN autentikasi', () => {
+    const ops = ROUTES.filter((route) => route.prefix.startsWith('/ops'))
+
+    expect(ops.length).toBeGreaterThan(0)
+    for (const route of ops) {
+      expect(route.requiredRole).toBe('operator')
+      expect(route.requiresAuth).toBe(true)
+    }
+  })
+
+  test('tuntutan peran hanya ada di bawah /ops — tidak bocor ke rute pelanggan', () => {
+    const elsewhere = ROUTES.filter(
+      (route) => route.requiredRole !== undefined && !route.prefix.startsWith('/ops'),
+    )
+
+    expect(elsewhere).toEqual([])
+  })
+
+  test('tidak ada rute publik yang menunjuk ke supplier-service atau mock supplier', () => {
+    // Keduanya hanya boleh dicapai lewat /ops. Rute publik ke sana membuka
+    // lapisan ketahanan dan panel kegagalan kepada siapa pun.
+    const exposed = ROUTES.filter(
+      (route) =>
+        ['supplier', 'mock-supplier'].includes(route.service) && route.requiredRole !== 'operator',
+    )
+
+    expect(exposed).toEqual([])
   })
 
   test('endpoint kredensial memakai kelas batas laju paling ketat', () => {
@@ -111,9 +141,10 @@ describe('header identitas', () => {
   })
 
   test('membangun header identitas dari identitas terverifikasi', () => {
-    expect(identityHeaders({ userId: 'u1', email: 'a@b.com' })).toEqual({
+    expect(identityHeaders({ userId: 'u1', email: 'a@b.com', role: 'operator' })).toEqual({
       [USER_ID_HEADER]: 'u1',
       [USER_EMAIL_HEADER]: 'a@b.com',
+      [USER_ROLE_HEADER]: 'operator',
     })
   })
 

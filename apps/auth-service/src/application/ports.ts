@@ -1,7 +1,7 @@
 import type { Email } from '../domain/email.js'
 import type { PasswordHash, RawPassword } from '../domain/password.js'
 import type { RefreshSession } from '../domain/session.js'
-import type { User } from '../domain/user.js'
+import type { Role, User } from '../domain/user.js'
 
 export interface Clock {
   now(): Date
@@ -40,6 +40,12 @@ export interface PasswordHasher {
 export interface AccessClaims {
   readonly sub: string
   readonly email: string
+  /**
+   * Ikut di dalam token supaya gateway dapat memeriksa peran TANPA bertanya
+   * ke auth-service pada setiap permintaan. Konsekuensinya: peran yang
+   * dicabut baru berlaku setelah access token kedaluwarsa (paling lama TTL-nya).
+   */
+  readonly role: Role
 }
 
 export interface TokenIssuer {

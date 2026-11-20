@@ -14,10 +14,15 @@ export const IDENTITY_HEADER_PREFIX = 'x-tbe-'
 
 export const USER_ID_HEADER = 'x-tbe-user-id'
 export const USER_EMAIL_HEADER = 'x-tbe-user-email'
+/** Dibaca `requireOperator` di service (Step 27). Nilai sama dengan shared-kernel. */
+export const USER_ROLE_HEADER = 'x-tbe-user-role'
+
+export type UserRole = 'customer' | 'operator'
 
 export interface ForwardedIdentity {
   readonly userId: string
   readonly email: string
+  readonly role: UserRole
 }
 
 /**
@@ -47,6 +52,7 @@ export function identityHeaders(identity: ForwardedIdentity): Record<string, str
   return {
     [USER_ID_HEADER]: identity.userId,
     [USER_EMAIL_HEADER]: identity.email,
+    [USER_ROLE_HEADER]: identity.role,
   }
 }
 

@@ -1,5 +1,5 @@
 import { formatRupiah } from '@/features/search/criteria'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 import type { Money } from '@/features/search/types'
 
 /**

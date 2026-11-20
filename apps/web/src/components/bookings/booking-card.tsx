@@ -5,7 +5,7 @@ import { formatMoney } from '@/components/booking/rate-change-dialog'
 import { bookingStatusHref } from '@/features/booking/selection'
 import { statusOf } from '@/features/bookings/presentation'
 import type { BookingListItem } from '@/features/bookings/types'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 import { StatusBadge } from './status-badge'
 
 /**

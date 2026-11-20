@@ -3,7 +3,7 @@
 import { Clock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { announcement, countdown, crossedThreshold } from '@/features/booking/countdown'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 
 /**
  * Hitung mundur hold (FR-15) — DESIGN-SYSTEM.md bagian 6.

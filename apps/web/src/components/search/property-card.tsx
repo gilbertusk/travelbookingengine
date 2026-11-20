@@ -1,7 +1,7 @@
 import { MapPin, Star } from 'lucide-react'
 import Link from 'next/link'
 import { amenityLabel } from '@/features/search/criteria'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 import { PriceDisplay } from './price-display'
 import { PropertyPhoto } from './property-photo'
 import type { SearchProperty } from '@/features/search/types'

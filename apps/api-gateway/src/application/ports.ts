@@ -1,9 +1,11 @@
 import type { Readable } from 'node:stream'
+import type { UserRole } from '../domain/identity.js'
 import type { RateLimitClass, ServiceName } from '../domain/routes.js'
 
 export interface VerifiedIdentity {
   readonly userId: string
   readonly email: string
+  readonly role: UserRole
 }
 
 export interface TokenVerifier {

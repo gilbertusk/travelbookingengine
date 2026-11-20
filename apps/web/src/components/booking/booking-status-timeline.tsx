@@ -1,6 +1,6 @@
 import { Check, Circle, Minus } from 'lucide-react'
 import type { Stage, StageState } from '@/features/booking/timeline'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 
 /**
  * Tahapan pemesanan secara vertikal, dengan keadaan sekarang ditandai

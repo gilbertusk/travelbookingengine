@@ -26,6 +26,14 @@ const envSchema = baseEnvSchema.extend({
   SUPPLIER_RATE_PER_SECOND: z.coerce.number().int().positive().default(20),
   SUPPLIER_RATE_BURST: z.coerce.number().int().positive().default(40),
 
+  /**
+   * Jendela statistik halaman kesehatan supplier (Step 27). Lima belas menit:
+   * cukup panjang untuk persentil yang stabil, cukup pendek untuk melihat
+   * suntikan kegagalan dari panel kendali dalam hitungan detik.
+   */
+  OPS_HEALTH_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
+  OPS_HEALTH_SAMPLE_LIMIT: z.coerce.number().int().positive().max(100_000).default(5_000),
+
   CORS_ORIGINS: z
     .string()
     .default('')

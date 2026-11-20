@@ -15,6 +15,17 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Peran pengguna (Step 27). Hanya dua, dan sengaja enum, bukan tabel peran
+/// dan izin: tidak ada kebutuhan di PRD yang membedakan izin operator satu
+/// dengan yang lain. RBAC berbutir halus untuk dua peran adalah perkakas yang
+/// belum dibutuhkan (PRD Bab 12).
+enum UserRole {
+  customer
+  operator
+
+  @@map("user_role")
+}
+
 model User {
   /// UUID v7 — terurut menurut waktu, sehingga indeks tidak terfragmentasi
   /// seperti pada v4 yang acak sepenuhnya.
@@ -22,6 +33,10 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   name         String
+  /// Bawaan `customer`. Pendaftaran publik tidak dapat menetapkan peran —
+  /// operator hanya lahir dari skrip `operator:grant`, yang dijalankan orang
+  /// yang memegang akses basis data.
+  role         UserRole @default(customer)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

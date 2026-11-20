@@ -3,13 +3,13 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Alert, AlertDescription } from '@tbe/ui/alert'
+import { Button } from '@tbe/ui/button'
+import { Input } from '@tbe/ui/input'
 import { MIN_PASSWORD_LENGTH, registerSchema, type RegisterInput } from '@/features/auth/types'
 import { useRegister } from '@/features/auth/use-auth'
 import { humanMessage } from '@/lib/api-error'
-import { Field } from '@/components/ui/field'
+import { Field } from '@tbe/ui/field'
 
 export function RegisterForm() {
   const router = useRouter()

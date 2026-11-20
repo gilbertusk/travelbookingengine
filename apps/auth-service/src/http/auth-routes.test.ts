@@ -28,6 +28,20 @@ describe('POST /auth/register', () => {
     expect(data.refreshToken).toBeDefined()
   })
 
+  test('pendaftaran publik SELALU melahirkan pelanggan, meski badan meminta operator', async () => {
+    // Skema masukan tidak mengenal `role`, jadi bidang itu dibuang — tetapi
+    // yang dibuktikan di sini adalah hasilnya, bukan bentuk skemanya.
+    const harness = createAuthHarness()
+
+    const response = await request(harness.app)
+      .post('/auth/register')
+      .send({ ...REGISTER_BODY, role: 'operator' })
+
+    expect(response.status).toBe(201)
+    expect(response.body.data.user.role).toBe('customer')
+    expect(response.body.data.accessToken).toMatch(/^access\.customer\./)
+  })
+
   test('tidak pernah mengembalikan hash kata sandi', async () => {
     const harness = createAuthHarness()
 

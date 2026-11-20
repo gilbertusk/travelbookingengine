@@ -1,3 +1,4 @@
+import { SignJWT } from 'jose'
 import { describe, expect, test } from 'vitest'
 import { asPasswordHash, asRawPassword } from '../domain/password.js'
 import { ARGON2_OPTIONS, createArgon2Hasher } from './argon2-hasher.js'
@@ -71,19 +72,45 @@ describe('penerbit token JWT', () => {
   test('menerbitkan token yang dapat diverifikasi kembali', async () => {
     const issuer = createJoseTokenIssuer(ISSUER_OPTIONS)
 
-    const token = await issuer.issueAccessToken({ sub: 'user-1', email: 'budi@example.com' })
+    const token = await issuer.issueAccessToken({
+      sub: 'user-1',
+      email: 'budi@example.com',
+      role: 'operator',
+    })
 
     expect(await issuer.verifyAccessToken(token)).toEqual({
       sub: 'user-1',
       email: 'budi@example.com',
+      role: 'operator',
     })
+  })
+
+  test('token tanpa klaim peran (terbit sebelum Step 27) dibaca sebagai pelanggan', async () => {
+    // Ditandatangani dengan kunci yang SAMA, jadi sah — yang diuji hanya
+    // bahwa ketiadaan peran tidak pernah diterjemahkan menjadi operator.
+    const key = new TextEncoder().encode(SECRET)
+    const token = await new SignJWT({ email: 'lama@example.com' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-lama')
+      .setIssuer(ISSUER_OPTIONS.issuer)
+      .setAudience(ISSUER_OPTIONS.audience)
+      .setExpirationTime('5m')
+      .sign(key)
+
+    const claims = await createJoseTokenIssuer(ISSUER_OPTIONS).verifyAccessToken(token)
+
+    expect(claims?.role).toBe('customer')
   })
 
   test('menolak token dari rahasia yang berbeda', async () => {
     const asli = createJoseTokenIssuer(ISSUER_OPTIONS)
     const penyerang = createJoseTokenIssuer({ ...ISSUER_OPTIONS, secret: `${SECRET}-lain` })
 
-    const token = await penyerang.issueAccessToken({ sub: 'user-1', email: 'x@example.com' })
+    const token = await penyerang.issueAccessToken({
+      sub: 'user-1',
+      email: 'x@example.com',
+      role: 'customer',
+    })
 
     expect(await asli.verifyAccessToken(token)).toBeUndefined()
   })
@@ -92,7 +119,11 @@ describe('penerbit token JWT', () => {
     const asli = createJoseTokenIssuer(ISSUER_OPTIONS)
     const lain = createJoseTokenIssuer({ ...ISSUER_OPTIONS, audience: 'layanan-lain' })
 
-    const token = await lain.issueAccessToken({ sub: 'user-1', email: 'x@example.com' })
+    const token = await lain.issueAccessToken({
+      sub: 'user-1',
+      email: 'x@example.com',
+      role: 'customer',
+    })
 
     expect(await asli.verifyAccessToken(token)).toBeUndefined()
   })

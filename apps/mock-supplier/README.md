@@ -130,3 +130,7 @@ Deterministik sepenuhnya — tidak ada `Math.random` di jalur pembangkitan data.
 8 kota, 40 properti per kota, 2–4 jenis kamar, 2–3 rate plan per kamar. Ketersediaan per malam dihitung dari fungsi, bukan disimpan; yang tersimpan hanya unit yang sedang ditahan atau sudah terjual.
 
 Keacakan sungguhan hanya dipakai untuk keputusan kegagalan dan pergeseran harga — kalau keduanya deterministik atas isi permintaan, percobaan ulang tidak akan pernah bisa berhasil dan kebijakan retry pada Step 11 tidak dapat diuji.
+
+## Panel kendali lewat panel operator (Step 27)
+
+Router `/admin` yang SAMA dipasang kedua kalinya di `/ops/mock-supplier`, di balik `requireOperator` — jadi suntikan dari panel operator mengenai keadaan yang dibaca uji beban. `/admin` sendiri dibiarkan tanpa peran: mock supplier memerankan pihak luar, dipanggil k6 dan uji integrasi yang tidak punya token operator, dan tidak pernah dirutekan gateway. Di lingkungan yang dapat dijangkau dari luar, `/admin` tidak boleh terbuka (Step 30).

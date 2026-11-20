@@ -209,8 +209,21 @@ function sortValue(row: BookingRow, column: string): number | string {
 }
 
 /** Pembaca di luar transaksi: selalu melihat tabel yang SUDAH di-commit. */
-function readersOver(committed: () => Tables): Pick<BookingDb, 'booking' | 'sagaState'> {
+function readersOver(
+  committed: () => Tables,
+): Pick<BookingDb, 'booking' | 'bookingEvent' | 'sagaState'> {
   return {
+    bookingEvent: {
+      findMany: async ({ where, take }) => {
+        await Promise.resolve()
+        return structuredClone(
+          committed()
+            .events.filter((row) => row.bookingId === where.bookingId)
+            .toSorted((a, b) => a.sequence - b.sequence)
+            .slice(0, take),
+        )
+      },
+    },
     booking: {
       findUnique: async ({ where }) => {
         await Promise.resolve()

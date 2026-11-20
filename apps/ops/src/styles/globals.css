@@ -1,0 +1,8 @@
+@import 'tailwindcss';
+
+/*
+ * Token yang SAMA dengan apps/web (Q6): panel operator tidak punya warna
+ * sendiri. Lihat packages/ui/README.md untuk alasan `@source`.
+ */
+@import '@tbe/ui/tokens.css';
+@source '../../../../packages/ui/src';

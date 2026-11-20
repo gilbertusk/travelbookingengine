@@ -10,6 +10,7 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { BookingDeps, Payments } from '../application/ports.js'
+import type { ReviewReader } from '../application/review-queue.js'
 import { sweepCancellations } from '../application/cancellation/sweep.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
 import { sweepHolds } from '../application/sweep-holds.js'
@@ -18,6 +19,7 @@ import { createBookingRouter } from '../http/booking-routes.js'
 import { createCancellationRouter } from '../http/cancellation-routes.js'
 import { databaseBusyHandler } from '../http/busy.js'
 import { createInternalRouter } from '../http/internal-routes.js'
+import { createOpsRouter } from '../http/ops-routes.js'
 import { createPaymentRouter } from '../http/payment-routes.js'
 import { createStatusRouter, type StatusStreamOptions } from '../http/status-routes.js'
 import type { OutboxRelay } from '../infrastructure/outbox-relay.js'
@@ -41,6 +43,11 @@ export interface BookingHttpOptions {
    * SELALU memberikannya.
    */
   readonly payments?: Payments
+  /**
+   * Pembaca antrean tinjauan (Step 27). Sama seperti `payments`: tanpa ini
+   * rute operator tidak dipasang, dan index.ts SELALU memberikannya.
+   */
+  readonly reviews?: ReviewReader
 }
 
 /** Satu pembacaan per detik; komentar penjaga tiap lima belas detik. */
@@ -62,6 +69,7 @@ export function createBookingHttpApp(options: BookingHttpOptions): {
       options.logger,
     ),
   )
+  if (options.reviews !== undefined) app.use(createOpsRouter(options.deps, options.reviews))
   app.use(createStatusRouter(options.deps, options.statusStream ?? DEFAULT_STATUS_STREAM))
   app.use(createBookingListRouter(options.deps))
   app.use(createBookingRouter(options.deps))

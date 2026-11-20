@@ -3,9 +3,11 @@ import { CORRELATION_HEADER } from '@tbe/shared-kernel'
 import type { Request, Response } from 'express'
 import request from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
-import { USER_EMAIL_HEADER, USER_ID_HEADER } from '../domain/identity.js'
+import { USER_EMAIL_HEADER, USER_ID_HEADER, USER_ROLE_HEADER } from '../domain/identity.js'
 import {
   BUDI,
+  OPERATOR_TOKEN,
+  SARI,
   VALID_TOKEN,
   createGatewayHarness,
   jsonResponse,
@@ -48,6 +50,86 @@ describe('pemalsuan identitas', () => {
     await request(app).get('/search').set('x-tbe-peran', 'admin')
 
     expect(upstream.calls[0]?.headers['x-tbe-peran']).toBeUndefined()
+  })
+})
+
+describe('peran operator (Step 27)', () => {
+  const OPS_PATHS = [
+    '/ops/analytics/summary',
+    '/ops/suppliers',
+    '/ops/pricing/markup-rules',
+    '/ops/bookings/review',
+    '/ops/payments/p_1',
+    '/ops/mock-supplier/state',
+  ]
+
+  test('tanpa token: 401 dan hulu tidak tersentuh', async () => {
+    const { app, upstream } = createGatewayHarness()
+
+    for (const path of OPS_PATHS) {
+      expect((await request(app).get(path)).status).toBe(401)
+    }
+    expect(upstream.calls).toHaveLength(0)
+  })
+
+  test('pelanggan dengan token sah: 403 dan hulu tidak tersentuh', async () => {
+    const { app, upstream } = createGatewayHarness()
+
+    for (const path of OPS_PATHS) {
+      const response = await request(app).get(path).set('authorization', AUTH_HEADER)
+      expect(response.status).toBe(403)
+      expect(response.body.error.code).toBe('FORBIDDEN')
+    }
+    expect(upstream.calls).toHaveLength(0)
+  })
+
+  test('header peran palsu dari pelanggan tidak menolong', async () => {
+    // Inti seluruh mekanisme: peran datang dari TOKEN, bukan dari header
+    // yang dapat ditulis siapa pun.
+    const { app, upstream } = createGatewayHarness()
+
+    const response = await request(app)
+      .get('/ops/suppliers')
+      .set('authorization', AUTH_HEADER)
+      .set(USER_ROLE_HEADER, 'operator')
+
+    expect(response.status).toBe(403)
+    expect(upstream.calls).toHaveLength(0)
+  })
+
+  test('operator diteruskan ke service yang benar beserta perannya', async () => {
+    const { app, upstream } = createGatewayHarness()
+
+    await request(app).get('/ops/suppliers').set('authorization', `Bearer ${OPERATOR_TOKEN}`)
+    await request(app)
+      .get('/ops/mock-supplier/state')
+      .set('authorization', `Bearer ${OPERATOR_TOKEN}`)
+
+    expect(upstream.calls.map((call) => call.request.service)).toEqual([
+      'supplier',
+      'mock-supplier',
+    ])
+    expect(upstream.calls[0]?.request.path).toBe('/ops/suppliers')
+    expect(upstream.calls[0]?.headers[USER_ID_HEADER]).toBe(SARI.userId)
+    expect(upstream.calls[0]?.headers[USER_ROLE_HEADER]).toBe('operator')
+  })
+
+  test('pelanggan meneruskan perannya juga, supaya service tidak menebak', async () => {
+    const { app, upstream } = createGatewayHarness()
+
+    await request(app).get('/bookings').set('authorization', AUTH_HEADER)
+
+    expect(upstream.calls[0]?.headers[USER_ROLE_HEADER]).toBe(BUDI.role)
+  })
+
+  test('operator tetap boleh memakai rute pelanggan', async () => {
+    const { app } = createGatewayHarness()
+
+    const response = await request(app)
+      .get('/bookings')
+      .set('authorization', `Bearer ${OPERATOR_TOKEN}`)
+
+    expect(response.status).toBe(200)
   })
 })
 

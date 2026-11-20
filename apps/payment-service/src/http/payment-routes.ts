@@ -51,7 +51,7 @@ const intentBody = validate(
   'body',
 )
 
-const paymentParams = validate(z.object({ id: z.uuid() }), 'params')
+export const paymentParams = validate(z.object({ id: z.uuid() }), 'params')
 
 /**
  * Bentuk notifikasi Midtrans.
@@ -157,7 +157,7 @@ function intentError(why: IntentRejection): Error {
   })
 }
 
-function getPaymentHandler(deps: PaymentDeps): RequestHandler {
+export function getPaymentHandler(deps: PaymentDeps): RequestHandler {
   return async (_req, res, next) => {
     try {
       const { id } = paymentParams.value(res)

@@ -23,7 +23,7 @@ export function createJoseTokenIssuer(options: TokenIssuerOptions): TokenIssuer 
     accessTokenTtlSeconds: options.accessTokenTtlSeconds,
 
     async issueAccessToken(claims: AccessClaims) {
-      return await new SignJWT({ email: claims.email })
+      return await new SignJWT({ email: claims.email, role: claims.role })
         .setProtectedHeader({ alg: 'HS256' })
         .setSubject(claims.sub)
         .setIssuer(options.issuer)
@@ -48,7 +48,13 @@ export function createJoseTokenIssuer(options: TokenIssuerOptions): TokenIssuer 
         const email = payload.email
         if (payload.sub === undefined || typeof email !== 'string') return undefined
 
-        return { sub: payload.sub, email }
+        // Token yang terbit sebelum Step 27 tidak membawa peran. Dibaca sebagai
+        // pelanggan — tidak pernah sebagai operator.
+        return {
+          sub: payload.sub,
+          email,
+          role: payload.role === 'operator' ? 'operator' : 'customer',
+        }
       } catch {
         // Tanda tangan salah, kedaluwarsa, atau bentuk rusak — semuanya berarti
         // token tidak sah, dan tidak satu pun perlu dibedakan oleh pemanggil.

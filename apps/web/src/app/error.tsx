@@ -3,7 +3,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { useEffect } from 'react'
 import { ErrorState } from '@/components/state/states'
-import { Button } from '@/components/ui/button'
+import { Button } from '@tbe/ui/button'
 
 /**
  * Halaman galat.

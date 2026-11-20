@@ -14,6 +14,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // @tbe/ui dikirim sebagai sumber TypeScript (lihat README-nya), jadi Next
+  // yang mengompilasinya.
+  transpilePackages: ['@tbe/ui'],
   poweredByHeader: false,
   // Next menuntut nilai balik berupa Promise, tetapi tidak ada yang ditunggu
   // di sini — daftarnya statis.

@@ -2,8 +2,8 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import { Field } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { Field } from '@tbe/ui/field'
+import { Input } from '@tbe/ui/input'
 import { guestSchema, type GuestInput } from '@/features/booking/types'
 
 /**

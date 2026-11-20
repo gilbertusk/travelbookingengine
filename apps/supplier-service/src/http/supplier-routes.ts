@@ -66,7 +66,7 @@ const cancelBody = validate(
   'body',
 )
 
-const settingsBody = validate(
+export const settingsBody = validate(
   z.object({
     isActive: z.boolean().optional(),
     circuit: z
@@ -236,10 +236,13 @@ function listHandler(deps: ResilienceDeps): RequestHandler {
 /**
  * Mengubah konfigurasi supplier — FR-29.
  *
- * Dilindungi peran operator di api-gateway, bukan di sini: rute ini tidak
- * terdaftar sebagai rute publik sama sekali.
+ * Dipasang dua kali: di `/internal/suppliers/:code` untuk pemanggil di jaringan
+ * service, dan di `/ops/suppliers/:code` (ops-routes.ts) di balik
+ * `requireOperator`. Sebelum Step 27 komentar ini mengklaim rute ini
+ * "dilindungi peran operator di api-gateway" — padahal gateway belum mengenal
+ * peran sama sekali, dan tidak punya rute ke service ini.
  */
-function updateHandler(deps: ResilienceDeps): RequestHandler {
+export function updateHandler(deps: Pick<ResilienceDeps, 'directory'>): RequestHandler {
   return (req, res, next) => {
     const code = String(req.params.code).toUpperCase()
 

@@ -2,10 +2,10 @@
 
 import { Building2, MapPin } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Input } from '@tbe/ui/input'
+import { Label } from '@tbe/ui/label'
 import { useSuggestions } from '@/features/search/use-search'
-import { cn } from '@/lib/cn'
+import { cn } from '@tbe/ui/cn'
 
 /**
  * Masukan kota dengan saran otomatis (FR-08).

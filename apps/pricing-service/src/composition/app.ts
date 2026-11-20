@@ -9,6 +9,7 @@ import {
 } from '@tbe/shared-kernel'
 import type { Express } from 'express'
 import type { PricingDeps } from '../application/ports.js'
+import { createOpsRouter } from '../http/ops-routes.js'
 import { createPricingRouter } from '../http/pricing-routes.js'
 
 /**
@@ -39,6 +40,7 @@ export function createPricingHttpApp(options: PricingHttpOptions): {
     createHealthRouter([...(options.extraChecks ?? []), ratesCheck(options.deps)], options.logger),
   )
   app.use(createPricingRouter(options.deps))
+  app.use(createOpsRouter(options.deps))
 
   finalizeHttpServer(app, options.logger)
 

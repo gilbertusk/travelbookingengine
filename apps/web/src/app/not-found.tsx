@@ -1,7 +1,7 @@
 import { Compass } from 'lucide-react'
 import Link from 'next/link'
 import { EmptyState } from '@/components/state/states'
-import { Button } from '@/components/ui/button'
+import { Button } from '@tbe/ui/button'
 
 export default function NotFoundPage() {
   return (
