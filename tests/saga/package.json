@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test:integration": "vitest run",
-    "load": "vitest run --config vitest.load.config.ts"
+    "load": "vitest run --config vitest.load.config.ts",
+    "chaos": "node scripts/chaos-run.mjs"
   },
   "devDependencies": {
     "@tbe/booking-service": "workspace:*",

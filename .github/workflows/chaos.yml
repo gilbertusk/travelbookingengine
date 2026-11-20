@@ -1,0 +1,67 @@
+# Rangkaian chaos (Step 28): `pnpm chaos:run` di runner dengan Docker.
+#
+# Terpisah dari workflow integration karena durasinya: kegagalan yang
+# berlangsung 30 detik, jenjang retry RabbitMQ yang sungguhan, dan webhook yang
+# terlambat lima menit. Berjalan untuk PR yang menyentuh alur saga, pembayaran,
+# supplier, atau rangkaian ini sendiri — dan atas permintaan.
+#
+# Laporan dan trace Jaeger SELALU diunggah, juga bila ada skenario yang gagal:
+# laporan yang hanya ada saat lulus menyembunyikan persis yang dicari.
+
+name: chaos
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/booking-service/**'
+      - 'apps/payment-service/**'
+      - 'apps/supplier-service/**'
+      - 'apps/mock-supplier/**'
+      - 'packages/messaging/**'
+      - 'tests/saga/**'
+      - '.github/workflows/chaos.yml'
+
+concurrency:
+  group: chaos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Skenario chaos (Testcontainers + Jaeger)
+        run: pnpm chaos:run
+
+      - name: Laporan chaos dan trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-report
+          path: tests/saga/.chaos/
+          if-no-files-found: warn
+
+      - name: Log service dari skenario yang gagal
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-logs
+          path: tests/saga/.logs/
+          if-no-files-found: ignore
