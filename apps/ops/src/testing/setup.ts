@@ -26,25 +26,33 @@ configure({ asyncUtilTimeout: 5_000 })
  * memakai tampilan terang dan hasilnya tidak berubah mengikuti setelan mesin
  * yang menjalankannya.
  */
-window.matchMedia = (query: string): MediaQueryList => ({
-  matches: false,
-  media: query,
-  onchange: null,
-  addListener: vi.fn(),
-  removeListener: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  dispatchEvent: vi.fn(() => false),
-})
+// Berkas uji yang memilih lingkungan node (cookie Next) tidak punya window.
+const hasWindow = typeof window !== 'undefined'
+
+if (hasWindow)
+  window.matchMedia = (query: string): MediaQueryList => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => false),
+  })
 
 afterEach(() => {
   cleanup()
+  // fakeFetch() memasang fetch palsuan per uji; tanpa ini uji berikutnya
+  // memakai jawaban uji sebelumnya.
+  vi.unstubAllGlobals()
 
   // Dua tempat yang tidak ikut dibersihkan cleanup(): elemen akar, dan
   // penyimpanan peramban. next-themes memakai keduanya, jadi tanpa ini tema
   // yang disetel satu pengujian terbawa ke pengujian berikutnya — dan yang
   // berikutnya gagal karena alasan yang sama sekali tidak terlihat dari
   // isinya sendiri.
+  if (!hasWindow) return
   document.documentElement.removeAttribute('data-theme')
   document.documentElement.style.colorScheme = ''
   window.localStorage.clear()
