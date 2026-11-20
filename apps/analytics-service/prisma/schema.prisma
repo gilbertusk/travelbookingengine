@@ -1,0 +1,57 @@
+// Skema analytics-service (Step 27).
+//
+// Tiga tabel, dan ketiganya TURUNAN dari log peristiwa Kafka: dapat dihapus
+// lalu dibangun ulang dengan `pnpm replay` (application/replay.ts). Tidak ada
+// data di sini yang tidak dapat diperoleh kembali dari topik.
+//
+// Agregat dalam PostgreSQL, bukan ClickHouse — PRD Bab 12: volume portofolio
+// ini ribuan peristiwa per hari, bukan miliaran, dan satu basis data lagi untuk
+// dioperasikan adalah biaya tanpa imbalan.
+//
+// Waktu bertipe TIMESTAMPTZ, hari bertipe DATE (tanggal UTC) — CONVENTIONS.md
+// bagian 9.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Satu penghitung: (hari, metrik, dimensi) → nilai. Lihat domain/counters.ts.
+/// Dinaikkan dengan INSERT ... ON CONFLICT DO UPDATE SET value = value + n,
+/// atomik terhadap instance lain tanpa kunci di kode.
+model Counter {
+  day       DateTime @db.Date
+  metric    String
+  /// '' untuk metrik tanpa dimensi — bukan NULL, yang tidak pernah sama
+  /// dengan NULL lain di kunci primer.
+  dimension String
+  value     BigInt
+
+  @@id([day, metric, dimension])
+  @@index([metric, day])
+  @@map("analytics_counters")
+}
+
+/// Pesan yang sudah dihitung. Kafka mengantar minimal sekali; tanpa tabel ini
+/// penyeimbangan ulang consumer group menghitung pesan yang sama dua kali.
+model ProcessedEvent {
+  eventId     String   @id @map("event_id") @db.Uuid
+  eventType   String   @map("event_type")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(3)
+
+  @@map("analytics_processed_events")
+}
+
+/// bookingId → supplier, dari booking.created. booking.price_changed dan
+/// booking.failed tidak menyebut supplier; tanpa pemetaan ini performa supplier
+/// tidak dapat menghitung tingkat perubahan harga maupun kegagalan.
+model BookingSupplier {
+  bookingId String @id @map("booking_id") @db.Uuid
+  supplier  String
+
+  @@map("analytics_booking_suppliers")
+}
