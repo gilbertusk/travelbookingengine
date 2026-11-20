@@ -25,6 +25,7 @@ import { expireHold } from './application/expire-hold.js'
 import type { BookingDeps } from './application/ports.js'
 import {
   createBookingHttpApp,
+  abandonSweeper,
   holdSweeper,
   outboxPublisher,
   sagaSweeper,
@@ -211,6 +212,10 @@ const managed = createApp({
       },
     }),
     holdSweeper(deps, config.HOLD_SWEEP_INTERVAL_MS),
+    abandonSweeper(deps, config.ABANDON_SWEEP_INTERVAL_MS, {
+      afterMs: config.ABANDON_AFTER_MS,
+      batch: config.ABANDON_SWEEP_BATCH,
+    }),
     consumerResource({
       consumer,
       topics: [topicFor('payment.succeeded').name, topicFor('supplier.booking_confirmed').name],

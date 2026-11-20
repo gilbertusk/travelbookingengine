@@ -229,6 +229,8 @@ export interface BookingWhere {
   readonly status?: 'HELD' | 'CANCELLING' | 'NEEDS_REVIEW'
   readonly heldUntil?: { readonly lte: Date }
   readonly cancelDeadlineAt?: { readonly lte: Date }
+  /** Penyapu pemesanan yang ditinggalkan dan rekonsiliasi (Step 28). */
+  readonly updatedAt?: { readonly lte: Date } | { readonly gte: Date; readonly lte: Date }
   readonly userId?: string
   /** Kelompok daftar pemesanan: keadaan tertentu, dibatasi tanggal keluar bila perlu. */
   readonly OR?: BookingClause[]

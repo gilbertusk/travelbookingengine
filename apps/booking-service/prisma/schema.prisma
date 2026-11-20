@@ -61,6 +61,7 @@ enum CancellationReason {
   user_request
   payment_failed
   supplier_rejected
+  abandoned
 
   @@map("cancellation_reason")
 }
@@ -219,6 +220,9 @@ model Booking {
   @@index([status, heldUntil])
   /// Penyapu pembatalan Step 25: `status = 'CANCELLING' AND cancel_deadline_at < now()`.
   @@index([status, cancelDeadlineAt])
+  /// Penyapu pemesanan yang ditinggalkan dan rekonsiliasi (Step 28): keadaan
+  /// tertentu yang terakhir berubah sebelum batas waktu.
+  @@index([status, updatedAt])
   /// Daftar pemesanan pengguna (Step 26): selalu menurut pemiliknya, diurutkan
   /// menurut tanggal masuk untuk kelompok "akan datang" dan "selesai".
   @@index([userId, checkIn])

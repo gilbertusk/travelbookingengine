@@ -84,6 +84,12 @@ export interface BookingRepository {
   findOverdueCancellations(now: Date, limit: number): Promise<readonly Booking[]>
 
   /**
+   * DRAFT dan PRICE_CHECKED yang terakhir berubah pada atau sebelum `before`
+   * (Step 28), yang paling lama lebih dulu.
+   */
+  findAbandoned(before: Date, limit: number): Promise<readonly Booking[]>
+
+  /**
    * Pemesanan milik pengguna dalam satu kelompok daftar (Step 26), berhalaman.
    * Pencarian SELALU bersama pemiliknya, seperti kunci idempotensi.
    */

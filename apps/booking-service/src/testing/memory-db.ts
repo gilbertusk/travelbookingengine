@@ -153,7 +153,7 @@ function insertEvent(tables: Tables, data: EventWriteColumns): void {
 
 /**
  * Meniru `findMany` Prisma untuk bentuk kueri yang dipakai repository:
- * kesamaan, `lte`/`gte`/`lt` pada kolom waktu, `in` pada status, `OR`,
+ * kesamaan, `lte`/`gte`/`lt` pada kolom waktu (termasuk `updatedAt`), `in` pada status, `OR`,
  * urutan berlapis, `skip`, dan `take`.
  */
 function queryRows(tables: Tables, query: BookingQuery): BookingRow[] {
@@ -165,6 +165,7 @@ function queryRows(tables: Tables, query: BookingQuery): BookingRow[] {
     (where.heldUntil === undefined || time(row.heldUntil) <= where.heldUntil.lte.getTime()) &&
     (where.cancelDeadlineAt === undefined ||
       time(row.cancelDeadlineAt) <= where.cancelDeadlineAt.lte.getTime()) &&
+    (where.updatedAt === undefined || withinUpdated(row.updatedAt, where.updatedAt)) &&
     (where.OR === undefined || where.OR.some((clause) => matchesClause(row, clause)))
   const orders = Array.isArray(query.orderBy) ? query.orderBy : [query.orderBy]
   const skip = query.skip ?? 0
@@ -173,6 +174,16 @@ function queryRows(tables: Tables, query: BookingQuery): BookingRow[] {
     .filter(matches)
     .sort((a, b) => compareBy(orders, a, b))
     .slice(skip, skip + query.take)
+}
+
+function withinUpdated(
+  value: Date,
+  bound: { readonly lte: Date } | { readonly gte: Date; readonly lte: Date },
+): boolean {
+  const time = value.getTime()
+  const lower = 'gte' in bound ? bound.gte.getTime() : Number.NEGATIVE_INFINITY
+
+  return time >= lower && time <= bound.lte.getTime()
 }
 
 function matchesClause(row: BookingRow, clause: BookingClause): boolean {

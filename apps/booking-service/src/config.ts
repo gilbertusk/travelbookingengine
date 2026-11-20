@@ -81,6 +81,16 @@ const envSchema = baseEnvSchema
     HOLD_SWEEP_BATCH: z.coerce.number().int().positive().max(1_000).default(100),
 
     /**
+     * Berapa lama DRAFT atau PRICE_CHECKED tidak disentuh sebelum dibatalkan
+     * sebagai `abandoned` (Step 28). Sehari: jauh di atas sesi memesan mana
+     * pun, dan price check ulang tetap wajib sebelum hold, jadi pengguna yang
+     * kembali sesudahnya tidak kehilangan apa pun selain memulai dari tawaran.
+     */
+    ABANDON_AFTER_MS: positiveMs(24 * 60 * MINUTE_MS),
+    ABANDON_SWEEP_INTERVAL_MS: positiveMs(10 * MINUTE_MS),
+    ABANDON_SWEEP_BATCH: z.coerce.number().int().positive().max(1_000).default(200),
+
+    /**
      * Sewa proses untuk langkah langsung saga. Harus lebih panjang dari
      * langkah terlama — hold memanggil supplier-service lalu pricing-service,
      * masing-masing sampai UPSTREAM_TIMEOUT_MS. Sewa yang lebih pendek membuat

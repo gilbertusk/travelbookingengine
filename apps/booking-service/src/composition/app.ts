@@ -13,6 +13,7 @@ import type { BookingDeps, Payments } from '../application/ports.js'
 import type { ReviewReader } from '../application/review-queue.js'
 import { sweepCancellations } from '../application/cancellation/sweep.js'
 import { sweepSagas } from '../application/saga/sweep-sagas.js'
+import { sweepAbandoned, type AbandonPolicy } from '../application/sweep-abandoned.js'
 import { sweepHolds } from '../application/sweep-holds.js'
 import { createBookingListRouter } from '../http/booking-list-routes.js'
 import { createBookingRouter } from '../http/booking-routes.js'
@@ -107,6 +108,31 @@ export function holdSweeper(deps: BookingDeps, intervalMs: number): ManagedResou
       const released = report.due.expired + report.orphansReleased
       if (released > 0) deps.logger.info(report, 'penyapu hold melepaskan hold')
       return false
+    },
+  })
+}
+
+/**
+ * Penyapu pemesanan yang ditinggalkan sebelum hold (Step 28). Terpisah dari
+ * penyapu hold karena iramanya lain: hold harus lepas dalam detik, pemesanan
+ * yang ditinggalkan sehari tidak dirugikan menunggu beberapa menit lagi.
+ */
+export function abandonSweeper(
+  deps: BookingDeps,
+  intervalMs: number,
+  policy: AbandonPolicy,
+): ManagedResource {
+  return periodicResource({
+    name: 'abandon-sweeper',
+    intervalMs,
+    logger: deps.logger,
+    failure: 'putaran penyapu pemesanan yang ditinggalkan gagal',
+    tick: async () => {
+      const report = await sweepAbandoned(deps, policy)
+      if (report.abandoned > 0) deps.logger.info(report, 'pemesanan yang ditinggalkan dibatalkan')
+      // Batch penuh: masih ada yang tersisa — sisa uji beban, atau pemadaman
+      // panjang. Putaran berikutnya segera, seperti penerbit outbox.
+      return report.abandoned + report.superseded >= policy.batch
     },
   })
 }
