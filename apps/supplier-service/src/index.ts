@@ -28,6 +28,7 @@ import {
 } from './infrastructure/kafka-events.js'
 import { createPrismaClient, prismaResource } from './infrastructure/prisma-client.js'
 import { createPrismaDirectory } from './infrastructure/prisma-directory.js'
+import { createPrismaRequestHistory } from './infrastructure/prisma-request-history.js'
 import { createPrismaRequestLog } from './infrastructure/prisma-request-log.js'
 import { createSupplierMetrics } from './infrastructure/prom-metrics.js'
 import { createRedisCircuitStore } from './infrastructure/redis-circuit-store.js'
@@ -81,6 +82,11 @@ const { app } = createSupplierHttpApp({
   serviceName: config.SERVICE_NAME,
   corsOrigins: config.CORS_ORIGINS,
   metrics,
+  history: createPrismaRequestHistory(prisma),
+  healthWindow: {
+    windowMs: config.OPS_HEALTH_WINDOW_MS,
+    sampleLimit: config.OPS_HEALTH_SAMPLE_LIMIT,
+  },
 })
 
 function buildDeps(): ResilienceDeps {

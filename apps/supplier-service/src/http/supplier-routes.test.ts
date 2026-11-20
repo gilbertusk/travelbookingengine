@@ -10,6 +10,7 @@ import {
   harness,
   memoryCircuitStore,
   memoryDirectory,
+  memoryHistory,
   ok,
 } from '../testing/fakes.js'
 
@@ -24,7 +25,13 @@ import {
 const logger = createLogger({ serviceName: 'supplier-service-test', level: 'silent' })
 
 function appWith(world: ReturnType<typeof harness>) {
-  return createSupplierHttpApp({ deps: world.deps, logger, serviceName: 'supplier-service' }).app
+  return createSupplierHttpApp({
+    deps: world.deps,
+    logger,
+    serviceName: 'supplier-service',
+    history: memoryHistory(),
+    healthWindow: { windowMs: 900_000, sampleLimit: 5_000 },
+  }).app
 }
 
 const CONFIRM_BODY = {

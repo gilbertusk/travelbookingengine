@@ -27,8 +27,10 @@ import type {
   CancelReplies,
   ConfirmReplies,
   OutboundRateLimiter,
+  RequestHistory,
   RequestLog,
   RequestLogEntry,
+  RequestRecord,
   ResilienceDeps,
   SupplierDirectory,
   SupplierEvents,
@@ -106,6 +108,38 @@ export function recordingLog(): RequestLog & { readonly entries: RequestLogEntry
     async record(entry) {
       entries.push(entry)
       await Promise.resolve()
+    },
+  }
+}
+
+export interface StoredRequest {
+  readonly idempotencyKey: string | null
+  readonly record: RequestRecord
+}
+
+/**
+ * Catatan percobaan dalam memori. Meniru dua sifat kueri Prisma yang
+ * diandalkan panel: `since` mengambil yang TERBARU sampai batasnya, dan
+ * `byIdempotencyKey` urut waktu naik.
+ */
+export function memoryHistory(stored: readonly StoredRequest[] = []): RequestHistory {
+  return {
+    async since(from, limit) {
+      await Promise.resolve()
+      return stored
+        .map((entry) => entry.record)
+        .filter((record) => record.createdAt.getTime() >= from.getTime())
+        .toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, limit)
+        .map(({ supplier, outcome, latencyMs }) => ({ supplier, outcome, latencyMs }))
+    },
+    async byIdempotencyKey(key, limit) {
+      await Promise.resolve()
+      return stored
+        .filter((entry) => entry.idempotencyKey === key)
+        .map((entry) => entry.record)
+        .toSorted((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .slice(0, limit)
     },
   }
 }

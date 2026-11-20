@@ -40,6 +40,7 @@ import {
 import { expiryListener } from './infrastructure/keyspace-expiry.js'
 import { createOutboxRelay } from './infrastructure/outbox-relay.js'
 import { createMessagingTransport } from './infrastructure/outbox-transport.js'
+import { createPrismaReviewReader } from './infrastructure/prisma-review-reader.js'
 import { createPrismaBookingRepository } from './infrastructure/prisma-booking-repository.js'
 import { createPrismaSagaStore } from './infrastructure/prisma-saga-store.js'
 import { bookingDbOf, createPrismaClient, prismaResource } from './infrastructure/prisma-client.js'
@@ -112,6 +113,7 @@ const deps: BookingDeps = {
 const { app } = createBookingHttpApp({
   deps,
   payments: createHttpPayments(config.PAYMENT_SERVICE_URL, transport),
+  reviews: createPrismaReviewReader(db),
   logger,
   serviceName: config.SERVICE_NAME,
   statusStream: {

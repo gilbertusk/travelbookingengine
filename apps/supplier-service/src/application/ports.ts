@@ -75,6 +75,39 @@ export interface RequestLog {
   record(entry: RequestLogEntry): Promise<void>
 }
 
+/** Satu baris catatan percobaan, sebagaimana dibaca panel operator (Step 27). */
+export interface RequestRecord {
+  readonly id: string
+  readonly supplier: SupplierCode
+  readonly operation: string
+  readonly outcome: 'success' | 'failure'
+  readonly errorKind: string | null
+  readonly attemptNumber: number
+  readonly latencyMs: number
+  /** Sudah diredaksi dari kredensial sebelum disimpan (domain/redaction.ts). */
+  readonly requestPayload: unknown
+  readonly responsePayload: unknown
+  readonly createdAt: Date
+}
+
+export interface RequestSampleRow {
+  readonly supplier: SupplierCode
+  readonly outcome: 'success' | 'failure'
+  readonly latencyMs: number
+}
+
+/**
+ * Pembacaan catatan percobaan — dipisah dari [RequestLog] karena yang menulis
+ * (jalur kritis setiap panggilan supplier) tidak boleh ikut bergantung pada
+ * kebutuhan panel operator.
+ */
+export interface RequestHistory {
+  /** Percobaan sejak `from`, paling banyak `limit` yang TERBARU. */
+  since(from: Date, limit: number): Promise<readonly RequestSampleRow[]>
+  /** Riwayat satu pemesanan lewat kunci idempotensinya, urut waktu. */
+  byIdempotencyKey(key: string, limit: number): Promise<readonly RequestRecord[]>
+}
+
 export interface SupplierEvents {
   degraded(supplier: SupplierCode, state: 'open' | 'half_open', reason: string): Promise<void>
   recovered(supplier: SupplierCode): Promise<void>

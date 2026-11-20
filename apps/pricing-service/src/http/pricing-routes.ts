@@ -10,9 +10,12 @@ import { MARKUP_KINDS } from '../domain/markup.js'
 /**
  * Antarmuka internal.
  *
- * Dipakai search-service dan booking-service. Rute aturan markup juga di sini
- * dan dilindungi peran operator di api-gateway — bukan di sini, karena tidak
- * satu pun rute ini terdaftar sebagai rute publik.
+ * Dipakai search-service dan booking-service. Rute aturan markup di bawah
+ * `/internal` tidak dapat dicapai dari luar — gateway tidak merutekan awalan
+ * itu. Panel operator memakai salinannya di `/ops/pricing` (ops-routes.ts),
+ * di balik `requireOperator`. Sebelum Step 27 komentar ini mengklaim rute
+ * markup "dilindungi peran operator di api-gateway"; gateway saat itu belum
+ * mengenal peran sama sekali.
  */
 
 /**
@@ -42,7 +45,7 @@ const priceBody = validate(
   'body',
 )
 
-const createRuleBody = validate(
+export const createRuleBody = validate(
   z.object({
     name: z.string().min(1).max(120),
     priority: z.number().int().min(-1_000).max(1_000).default(0),
@@ -60,7 +63,7 @@ const createRuleBody = validate(
   'body',
 )
 
-const updateRuleBody = validate(
+export const updateRuleBody = validate(
   z.object({
     name: z.string().min(1).max(120).optional(),
     priority: z.number().int().min(-1_000).max(1_000).optional(),
@@ -115,7 +118,7 @@ function ratesHandler(deps: PricingDeps): RequestHandler {
   }
 }
 
-function listRulesHandler(deps: PricingDeps): RequestHandler {
+export function listRulesHandler(deps: PricingDeps): RequestHandler {
   return (_req, res, next) => {
     void deps.markupRules.listAll().then((rules) => {
       res.json(success(rules))
@@ -123,7 +126,7 @@ function listRulesHandler(deps: PricingDeps): RequestHandler {
   }
 }
 
-function createRuleHandler(deps: PricingDeps): RequestHandler {
+export function createRuleHandler(deps: PricingDeps): RequestHandler {
   return (_req, res, next) => {
     const body = createRuleBody.value(res)
 
@@ -156,7 +159,7 @@ function createRuleHandler(deps: PricingDeps): RequestHandler {
  * nominalnya, adalah aturan yang tidak dapat diterapkan. Ditolak saat dibuat,
  * bukan diam-diam menjadi "tanpa markup" saat dipakai.
  */
-function validateRuleShape(body: {
+export function validateRuleShape(body: {
   kind: string
   percentageBasisPoints?: number | undefined
   fixedAmount?: unknown
@@ -180,7 +183,7 @@ function validateRuleShape(body: {
   return undefined
 }
 
-function updateRuleHandler(deps: PricingDeps): RequestHandler {
+export function updateRuleHandler(deps: PricingDeps): RequestHandler {
   return (req, res, next) => {
     const id = String(req.params.id)
 
@@ -195,7 +198,7 @@ function updateRuleHandler(deps: PricingDeps): RequestHandler {
   }
 }
 
-function deleteRuleHandler(deps: PricingDeps): RequestHandler {
+export function deleteRuleHandler(deps: PricingDeps): RequestHandler {
   return (req, res, next) => {
     const id = String(req.params.id)
 
